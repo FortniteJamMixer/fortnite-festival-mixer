@@ -14,16 +14,62 @@
   <div id="app"></div>
   
   <script type="module">
-    const songs = [
+    const songs = [let songs = [];
+
+// Fetch real songs from Fortnite API
+async function loadSongs() {
+  try {
+    const response = await fetch('https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks');
+    const data = await response.json();
+    
+    const keyToCamelot = {
+      'C Major': '8B', 'A Minor': '8A', 'G Major': '9B', 'E Minor': '9A',
+      'D Major': '10B', 'B Minor': '10A', 'A Major': '11B', 'F# Minor': '11A',
+      'F#': '11A', 'Gb': '11A', 'E Major': '12B', 'C# Minor': '12A',
+      'C#': '12A', 'Db': '12A', 'B Major': '1B', 'G# Minor': '1A',
+      'F# Major': '2B', 'D# Minor': '2A', 'Db Major': '3B', 'Bb Minor': '3A',
+      'Ab Major': '4B', 'F Minor': '4A', 'Eb Major': '5B', 'C Minor': '5A',
+      'Bb Major': '6B', 'G Minor': '6A', 'F Major': '7B', 'D Minor': '7A',
+      'G': '9B', 'E': '9A', 'D': '10B', 'B': '10A', 'A': '11A', 'C': '8B', 'F': '7B'
+    }; }
+    
+    songs = Object.entries(data)
+      .filter(([key]) => !key.startsWith('_'))
+      .map(([id, item]) => {
+        const track = item.track;
+        if (!track) return null;
+        
+        const fullKey = track.mk && track.mm ? `${track.mk} ${track.mm}` : null;
+        const camelot = fullKey ? (keyToCamelot[fullKey] || keyToCamelot[track.mk] || '?') : '?';
+        
+        return {
+          id,
+          title: track.tt,
+          artist: track.an,
+          bpm: track.mt,
+          key: track.mk,
+          mode: track.mm,
+          camelot,
+          duration: track.dn,
+          albumArt: track.au
+        };
+      })
+      .filter(song => song !== null && song.title && song.bpm);
+    
+    render();
+  } catch (error) {
+    console.error('Failed to load songs:', error);
+    // Fallback to mock data
+    songs = [
       { id: '1', title: 'Blinding Lights', artist: 'The Weeknd', bpm: 171, key: 'F', mode: 'Minor', camelot: '4A', duration: 204, albumArt: 'https://cdn2.unrealengine.com/dwiqbfganihcdqkl-512x512-9b9092b2f9ef.jpg' },
       { id: '2', title: 'bad guy', artist: 'Billie Eilish', bpm: 135, key: 'G', mode: 'Minor', camelot: '6A', duration: 196, albumArt: 'https://cdn2.unrealengine.com/5awcq15j2xhcus36-512x512-c8b418948f1f.jpg' },
-      { id: '3', title: 'Save Your Tears', artist: 'The Weeknd', bpm: 118, key: 'C', mode: 'Major', camelot: '8B', duration: 219, albumArt: 'https://cdn2.unrealengine.com/mybrx597ew0doulr-512x512-c447caa16835.jpg' },
-      { id: '4', title: 'The Hills', artist: 'The Weeknd', bpm: 113, key: 'C', mode: 'Minor', camelot: '5A', duration: 239, albumArt: 'https://cdn2.unrealengine.com/2q5tumpatzkhfnke-512x512-9a6ec6930261.jpg' },
-      { id: '5', title: 'Mr. Brightside', artist: 'The Killers', bpm: 148, key: 'Db', mode: 'Major', camelot: '3B', duration: 226, albumArt: 'https://cdn2.unrealengine.com/fsncprpk4rtykrbs-512x512-4fd7561b257c.jpg' },
-      { id: '6', title: 'Thunder', artist: 'Imagine Dragons', bpm: 84, key: 'C', mode: 'Major', camelot: '8B', duration: 188, albumArt: 'https://cdn2.unrealengine.com/kpohymojtu08lftx-512x512-016ded9b240d.jpg' },
-      { id: '7', title: 'Party Rock Anthem', artist: 'LMFAO', bpm: 130, key: 'F', mode: 'Minor', camelot: '4A', duration: 265, albumArt: 'https://cdn2.unrealengine.com/swwkk9br3yfen87i-512x512-ed6d80bcbf73.jpg' },
-      { id: '8', title: 'Bad Romance', artist: 'Lady Gaga', bpm: 119, key: 'A', mode: 'Minor', camelot: '8A', duration: 296, albumArt: 'https://cdn2.unrealengine.com/4x64ijnnnqpb5fqt-512x512-98bbfa3d4ed0.jpg' },
     ];
+    render();
+  }
+}
+
+loadSongs();
+      
 
     const camelotColors = {
       '4A': '#98D8C8', '6A': '#4D96FF', '8B': '#FF6B81', '5A': '#6BCB77',
