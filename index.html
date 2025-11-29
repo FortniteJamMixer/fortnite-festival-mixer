@@ -11,17 +11,25 @@
   </style>
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">
+    <div class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-gray-900 text-white flex items-center justify-center">
+      <div class="text-center">
+        <div class="text-6xl mb-4">🎵</div>
+        <div class="text-2xl font-bold">Loading tracks...</div>
+      </div>
+    </div>
+  </div>
   
   <script type="module">
-    const songs = [let songs = [];
+    const camelotColors = {
+      '1A': '#FF6B9D', '1B': '#FF8FAB', '2A': '#FFA07A', '2B': '#FFB699',
+      '3A': '#FFD700', '3B': '#FFE55C', '4A': '#98D8C8', '4B': '#7FD8BE',
+      '5A': '#6BCB77', '5B': '#8FD89F', '6A': '#4D96FF', '6B': '#6FB1FF',
+      '7A': '#9D4EDD', '7B': '#B877FF', '8A': '#E84A5F', '8B': '#FF6B81',
+      '9A': '#00D9FF', '9B': '#4DFFFF', '10A': '#FFA400', '10B': '#FFBB5C',
+      '11A': '#FE6D73', '11B': '#FF8C94', '12A': '#A8E6CF', '12B': '#C1F0DD'
+    };
 
-// Fetch real songs from Fortnite API
-async function loadSongs() {
-  try {
-    const response = await fetch('https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks');
-    const data = await response.json();
-    
     const keyToCamelot = {
       'C Major': '8B', 'A Minor': '8A', 'G Major': '9B', 'E Minor': '9A',
       'D Major': '10B', 'B Minor': '10A', 'A Major': '11B', 'F# Minor': '11A',
@@ -31,52 +39,9 @@ async function loadSongs() {
       'Ab Major': '4B', 'F Minor': '4A', 'Eb Major': '5B', 'C Minor': '5A',
       'Bb Major': '6B', 'G Minor': '6A', 'F Major': '7B', 'D Minor': '7A',
       'G': '9B', 'E': '9A', 'D': '10B', 'B': '10A', 'A': '11A', 'C': '8B', 'F': '7B'
-    }; }
-    
-    songs = Object.entries(data)
-      .filter(([key]) => !key.startsWith('_'))
-      .map(([id, item]) => {
-        const track = item.track;
-        if (!track) return null;
-        
-        const fullKey = track.mk && track.mm ? `${track.mk} ${track.mm}` : null;
-        const camelot = fullKey ? (keyToCamelot[fullKey] || keyToCamelot[track.mk] || '?') : '?';
-        
-        return {
-          id,
-          title: track.tt,
-          artist: track.an,
-          bpm: track.mt,
-          key: track.mk,
-          mode: track.mm,
-          camelot,
-          duration: track.dn,
-          albumArt: track.au
-        };
-      })
-      .filter(song => song !== null && song.title && song.bpm);
-    
-    render();
-  } catch (error) {
-    console.error('Failed to load songs:', error);
-    // Fallback to mock data
-    songs = [
-      { id: '1', title: 'Blinding Lights', artist: 'The Weeknd', bpm: 171, key: 'F', mode: 'Minor', camelot: '4A', duration: 204, albumArt: 'https://cdn2.unrealengine.com/dwiqbfganihcdqkl-512x512-9b9092b2f9ef.jpg' },
-      { id: '2', title: 'bad guy', artist: 'Billie Eilish', bpm: 135, key: 'G', mode: 'Minor', camelot: '6A', duration: 196, albumArt: 'https://cdn2.unrealengine.com/5awcq15j2xhcus36-512x512-c8b418948f1f.jpg' },
-    ];
-    render();
-  }
-}
-
-loadSongs();
-      
-
-    const camelotColors = {
-      '4A': '#98D8C8', '6A': '#4D96FF', '8B': '#FF6B81', '5A': '#6BCB77',
-      '3B': '#FFE55C', '8A': '#E84A5F', '10A': '#FFA400'
     };
 
-    // Load owned tracks from localStorage
+    let songs = [];
     let ownedTracks = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
     let selectedSong = null;
     let setlist = [];
@@ -84,235 +49,27 @@ loadSongs();
     let view = 'browser';
     let showOwnedOnly = false;
 
-    function saveOwned() {
-      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
-    }
-
-    function toggleOwned(id) {
-      if (ownedTracks.includes(id)) {
-        ownedTracks = ownedTracks.filter(t => t !== id);
-      } else {
-        ownedTracks.push(id);
-      }
-      saveOwned();
-      render();
-    }
-
-    function markAllOwned() {
-      ownedTracks = songs.map(s => s.id);
-      saveOwned();
-      render();
-    }
-
-    function clearAllOwned() {
-      ownedTracks = [];
-      saveOwned();
-      render();
-    }
-
-    function formatDuration(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-
-    function render() {
-      let filteredSongs = songs.filter(s => 
-        (s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.artist.toLowerCase().includes(searchTerm.toLowerCase())) &&
-        (!showOwnedOnly || ownedTracks.includes(s.id))
-      );
-
-      const ownedCount = ownedTracks.length;
-      const totalCount = songs.length;
-
-      const app = document.getElementById('app');
-      app.innerHTML = `
-        <div class="min-h-screen bg-gradient-to-br from-purple-900 via-indigo-900 to-gray-900 text-white">
-          <!-- Header -->
-          <div class="bg-black/40 backdrop-blur-xl border-b border-white/10 sticky top-0 z-50">
-            <div class="max-w-7xl mx-auto px-6 py-4">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                  <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
-                    🎵
-                  </div>
-                  <div>
-                    <h1 class="text-2xl font-bold">Festival Pro Mixer</h1>
-                    <p class="text-xs text-purple-300">You own ${ownedCount}/${totalCount} tracks</p>
-                  </div>
-                </div>
-                <div class="flex gap-2">
-                  <button onclick="switchView('browser')" class="px-4 py-2 rounded-lg font-medium transition ${view === 'browser' ? 'bg-purple-500' : 'bg-white/10'}">
-                    Browse
-                  </button>
-                  <button onclick="switchView('setlist')" class="px-4 py-2 rounded-lg font-medium transition ${view === 'setlist' ? 'bg-purple-500' : 'bg-white/10'}">
-                    Setlist (${setlist.length})
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="max-w-7xl mx-auto px-6 py-6">
-            ${view === 'browser' ? `
-              <!-- Controls -->
-              <div class="mb-6 space-y-4">
-                <!-- Search -->
-                <input
-                  type="text"
-                  placeholder="Search tracks or artists..."
-                  value="${searchTerm}"
-                  oninput="updateSearch(this.value)"
-                  class="w-full px-4 py-3 bg-gray-800/80 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                
-                <!-- Filters & Actions -->
-                <div class="flex flex-wrap gap-3">
-                  <button onclick="toggleOwnedFilter()" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-green-500' : 'bg-white/10'}">
-                    ${showOwnedOnly ? '✓ Owned Only' : 'Show All'}
-                  </button>
-                  <button onclick="markAllOwned()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition">
-                    Mark All Owned
-                  </button>
-                  <button onclick="clearAllOwned()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition">
-                    Clear All
-                  </button>
-                </div>
-              </div>
-
-              <!-- Selected Song -->
-              ${selectedSong ? `
-                <div class="mb-6 bg-purple-500/20 border border-purple-500/30 rounded-xl p-4">
-                  <div class="flex items-center gap-4">
-                    <img src="${selectedSong.albumArt}" class="w-16 h-16 rounded-lg" />
-                    <div class="flex-1">
-                      <div class="text-sm text-purple-300">Now Mixing From:</div>
-                      <div class="font-bold text-lg">${selectedSong.title}</div>
-                      <div class="text-purple-200 text-sm">${selectedSong.artist}</div>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-2xl font-mono font-bold" style="color: ${camelotColors[selectedSong.camelot]}">${selectedSong.camelot}</div>
-                      <div class="text-xs text-purple-200">${selectedSong.key} ${selectedSong.mode}</div>
-                    </div>
-                    <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded">✕</button>
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Songs Grid -->
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                ${filteredSongs.map(song => {
-                  const isOwned = ownedTracks.includes(song.id);
-                  return `
-                    <div class="bg-gray-800/60 hover:bg-gray-700/60 border ${selectedSong?.id === song.id ? 'border-purple-400 ring-2 ring-purple-400/50' : 'border-gray-700'} rounded-xl p-4 transition relative">
-                      ${isOwned ? '<div class="absolute top-2 right-2 text-2xl">⭐</div>' : ''}
-                      
-                      <div class="flex gap-4 mb-3">
-                        <img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer" onclick="selectSong('${song.id}')" />
-                        <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
-                          <div class="font-bold text-lg mb-1">${song.title}</div>
-                          <div class="text-gray-300 mb-2">${song.artist}</div>
-                          <div class="flex items-center gap-2 text-sm flex-wrap">
-                            <span class="px-3 py-1 rounded-lg font-mono font-bold text-white" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
-                            <span class="px-2 py-1 bg-gray-700 rounded text-gray-300 text-xs">${song.key} ${song.mode}</span>
-                            <span class="text-white font-semibold">${song.bpm} BPM</span>
-                            <span class="text-gray-400">${formatDuration(song.duration)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div class="flex gap-2">
-                        <button onclick="event.stopPropagation(); toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg font-medium transition">
-                          ${isOwned ? '✓ Owned' : 'Mark as Owned'}
-                        </button>
-                        <button onclick="event.stopPropagation(); addToSetlist('${song.id}')" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg font-medium transition ${!isOwned ? 'opacity-50' : ''}">
-                          + Setlist
-                        </button>
-                      </div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            ` : `
-              <!-- Setlist View -->
-              ${setlist.length === 0 ? `
-                <div class="text-center py-12">
-                  <div class="text-6xl mb-4">🎵</div>
-                  <p class="text-xl mb-4">Your setlist is empty</p>
-                  <button onclick="switchView('browser')" class="px-6 py-3 bg-purple-500 rounded-lg">Browse Tracks</button>
-                </div>
-              ` : `
-                <div class="space-y-4">
-                  ${setlist.map((song, i) => {
-                    const isOwned = ownedTracks.includes(song.id);
-                    return `
-                      <div class="bg-gray-800/60 border border-gray-700 rounded-xl p-4 flex items-center gap-4 ${!isOwned ? 'opacity-60' : ''}">
-                        <div class="text-2xl font-bold text-purple-400">${i + 1}</div>
-                        <img src="${song.albumArt}" class="w-16 h-16 rounded-lg" />
-                        <div class="flex-1">
-                          <div class="font-bold text-lg flex items-center gap-2">
-                            ${song.title}
-                            ${!isOwned ? '<span class="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded">Not Owned</span>' : ''}
-                          </div>
-                          <div class="text-gray-300">${song.artist}</div>
-                        </div>
-                        <div class="text-xl font-mono font-bold" style="color: ${camelotColors[song.camelot]}">${song.camelot}</div>
-                        <button onclick="removeFromSetlist('${song.id}')" class="p-2 hover:bg-red-500/20 rounded text-red-400">✕</button>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              `}
-            `}
-          </div>
-        </div>
-      `;
-    }
-
-    window.selectSong = (id) => {
-      selectedSong = songs.find(s => s.id === id);
-      render();
-    };
-
-    window.clearSelection = () => {
-      selectedSong = null;
-      render();
-    };
-
-    window.toggleOwned = toggleOwned;
-    window.markAllOwned = markAllOwned;
-    window.clearAllOwned = clearAllOwned;
-
-    window.toggleOwnedFilter = () => {
-      showOwnedOnly = !showOwnedOnly;
-      render();
-    };
-
-    window.addToSetlist = (id) => {
-      const song = songs.find(s => s.id === id);
-      if (!setlist.find(s => s.id === id)) {
-        setlist.push(song);
-        render();
-      }
-    };
-
-    window.removeFromSetlist = (id) => {
-      setlist = setlist.filter(s => s.id !== id);
-      render();
-    };
-
-    window.updateSearch = (value) => {
-      searchTerm = value;
-      render();
-    };
-
-    window.switchView = (newView) => {
-      view = newView;
-      render();
-    };
-
-    render();
-  </script>
-</body>
-</html>
+    async function loadSongs() {
+      try {
+        const response = await fetch('https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks');
+        const data = await response.json();
+        
+        songs = Object.entries(data)
+          .filter(([key]) => !key.startsWith('_'))
+          .map(([id, item]) => {
+            const track = item.track;
+            if (!track || !track.tt) return null;
+            
+            const fullKey = track.mk && track.mm ? `${track.mk} ${track.mm}` : null;
+            const camelot = fullKey ? (keyToCamelot[fullKey] || keyToCamelot[track.mk] || '?') : '?';
+            
+            return {
+              id,
+              title: track.tt,
+              artist: track.an || 'Unknown Artist',
+              bpm: track.mt || 0,
+              key: track.mk || '?',
+              mode: track.mm || '',
+              camelot,
+              duration: track.dn || 0,
+              albumAr
