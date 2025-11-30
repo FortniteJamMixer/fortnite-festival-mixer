@@ -1084,18 +1084,31 @@
     }
 
     function showGenreMenu(songId, event) {
-      // Remove existing menu if any
-      const existing = document.getElementById('genreContextMenu');
-      if (existing) existing.remove();
-      
-      const menu = document.createElement('div');
-      menu.id = 'genreContextMenu';
-      menu.className = 'context-menu';
-      
-      // Position near the click
-      const rect = event.target.getBoundingClientRect();
-      menu.style.left = rect.left + 'px';
-      menu.style.top = (rect.bottom + 5) + 'px';
+  const existing = document.getElementById('genreContextMenu');
+  if (existing) existing.remove();
+  
+  const menu = document.createElement('div');
+  menu.id = 'genreContextMenu';
+  menu.className = 'context-menu';
+  
+  const rect = event.target.getBoundingClientRect();
+  
+  // Smart positioning - check if menu would go off screen
+  let left = rect.left;
+  let top = rect.bottom + 5;
+  
+  // If too far right, position to the left of the button
+  if (left + 180 > window.innerWidth) {
+    left = rect.right - 180;
+  }
+  
+  // If too far down, position above the button
+  if (top + 400 > window.innerHeight) {
+    top = rect.top - 405;
+  }
+  
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
       
       const genres = ['Rock', 'Classic Rock', 'Alternative', 'Punk', 'Metal', 'Pop', 
                       'Hip-Hop', 'R&B', 'Electronic', 'Indie', 'Country', 
