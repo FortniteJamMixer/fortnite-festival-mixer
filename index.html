@@ -195,9 +195,9 @@
               <div class="mb-6 space-y-4">
                 <input
                   type="text"
+                  id="searchInput"
                   placeholder="Search tracks or artists..."
                   value="${searchTerm}"
-                  oninput="updateSearch(this.value)"
                   class="w-full px-4 py-3 bg-gray-800/80 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
                 <div class="flex flex-wrap gap-3">
@@ -290,6 +290,15 @@
           </div>
         </div>
       `;
+      
+      // Add event listener after rendering
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          searchTerm = e.target.value;
+          render();
+        });
+      }
     }
 
     window.selectSong = (id) => { selectedSong = songs.find(s => s.id === id); render(); };
@@ -300,7 +309,6 @@
     window.toggleOwnedFilter = () => { showOwnedOnly = !showOwnedOnly; render(); };
     window.addToSetlist = (id) => { const song = songs.find(s => s.id === id); if (!setlist.find(s => s.id === id)) { setlist.push(song); render(); } };
     window.removeFromSetlist = (id) => { setlist = setlist.filter(s => s.id !== id); render(); };
-    window.updateSearch = (value) => { searchTerm = value; render(); };
     window.switchView = (newView) => { view = newView; render(); };
 
     loadSongs();
