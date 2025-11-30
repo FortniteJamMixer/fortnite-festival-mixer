@@ -12,7 +12,7 @@
     .dj-background {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
       position: relative;
-      overflow: hidden;
+      overflow-y: auto;
     }
     
     .dj-background::before {
@@ -71,7 +71,6 @@
       z-index: 1;
     }
 
-    /* Smooth scrolling */
     html {
       scroll-behavior: smooth;
     }
@@ -121,7 +120,6 @@
     let view = 'browser';
     let showOwnedOnly = false;
     let showMixableOnly = false;
-    let displayCount = 50; // Show 50 at a time
 
     function saveUserProfile() {
       if (!currentUser) return;
@@ -345,8 +343,21 @@
         ownedTracks.push(id);
       }
       saveUserProfile();
-      renderSongList();
       updateOwnedCount();
+      
+      // Just update the button for this specific song
+      const btn = document.querySelector(`[data-song-id="${id}"]`);
+      if (btn) {
+        const isOwned = ownedTracks.includes(id);
+        btn.className = `flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition`;
+        btn.textContent = isOwned ? '✓ Owned' : 'Mark Owned';
+        
+        // Update star
+        const star = btn.closest('.song-card').querySelector('.star-icon');
+        if (star) {
+          star.style.display = isOwned ? 'block' : 'none';
+        }
+      }
     }
 
     function formatDuration(seconds) {
@@ -360,11 +371,6 @@
       if (countEl) {
         countEl.textContent = `You own ${ownedTracks.length}/${songs.length} tracks`;
       }
-    }
-
-    function loadMore() {
-      displayCount += 50;
-      renderSongList();
     }
 
     function renderSongList() {
@@ -382,7 +388,6 @@
       if (!songListEl) return;
 
       const compatibleKeys = selectedSong ? getCompatibleKeys(selectedSong.camelot) : [];
-      const songsToShow = filteredSongs.slice(0, displayCount);
 
       songListEl.innerHTML = `
         ${selectedSong ? `
@@ -404,18 +409,22 @@
           </div>
         ` : ''}
 
+        <div class="mb-4 text-center text-cyan-300 font-bold">
+          Showing all ${filteredSongs.length} tracks - Scroll to browse!
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          ${songsToShow.map(song => {
+          ${filteredSongs.map(song => {
             const isOwned = ownedTracks.includes(song.id);
             const isMixableWithSelected = selectedSong && isMixable(selectedSong, song);
             
             return `
-              <div class="bg-black/40 backdrop-blur-sm border ${
+              <div class="song-card bg-black/40 backdrop-blur-sm border ${
                 selectedSong?.id === song.id ? 'border-pink-400 shadow-lg shadow-pink-500/50' : 
                 isMixableWithSelected ? 'border-green-400 shadow-lg shadow-green-500/30' : 
                 'border-gray-700'
               } rounded-xl p-4 relative hover:border-cyan-400 transition-all">
-                ${isOwned ? '<div class="absolute top-2 right-2 text-xl">⭐</div>' : ''}
+                <div class="star-icon absolute top-2 right-2 text-xl" style="display: ${isOwned ? 'block' : 'none'}">⭐</div>
                 ${isMixableWithSelected ? '<div class="absolute top-2 left-2 text-xl">🎧</div>' : ''}
                 <div class="flex gap-4 mb-3">
                   ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
@@ -431,7 +440,7 @@
                   </div>
                 </div>
                 <div class="flex gap-2">
-                  <button onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition">
+                  <button data-song-id="${song.id}" onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition">
                     ${isOwned ? '✓ Owned' : 'Mark Owned'}
                   </button>
                   <button onclick="addToSetlist('${song.id}')" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-sm font-medium transition">
@@ -442,18 +451,6 @@
             `;
           }).join('')}
         </div>
-        
-        ${displayCount < filteredSongs.length ? `
-          <div class="text-center mt-6">
-            <button onclick="loadMore()" class="px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 rounded-lg font-bold text-white transition shadow-lg">
-              Load More (${displayCount}/${filteredSongs.length})
-            </button>
-          </div>
-        ` : `
-          <div class="text-center mt-6 text-cyan-300 font-bold">
-            Showing all ${filteredSongs.length} tracks
-          </div>
-        `}
         
         ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
       `;
@@ -529,7 +526,7 @@
             </div>
           </div>
 
-          <div class="max-w-7xl mx-auto px-6 py-6">
+          <div class="max-w-7xl mx-auto px-6 py-6 pb-20">
             <div id="browserView" style="display: ${view === 'browser' ? 'block' : 'none'}">
               <div class="mb-6 space-y-4">
                 <input
@@ -575,7 +572,6 @@
       if (searchInput) {
         searchInput.addEventListener('input', (e) => {
           searchTerm = e.target.value;
-          displayCount = 50; // Reset to 50 when searching
           renderSongList();
         });
       }
@@ -596,7 +592,6 @@
         btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-gradient-to-r from-blue-500 to-cyan-500';
         btn.textContent = '🎧 Mixable Only';
       }
-      displayCount = 50; // Reset when selecting
       renderSongList();
     };
     
@@ -608,12 +603,10 @@
         btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20';
         btn.textContent = 'Show Mixable';
       }
-      displayCount = 50;
       renderSongList();
     };
     
     window.toggleOwned = toggleOwned;
-    window.loadMore = loadMore;
     
     window.markAllOwned = () => { 
       ownedTracks = songs.map(s => s.id); 
@@ -640,7 +633,6 @@
         btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`;
         btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable';
       }
-      displayCount = 50;
       renderSongList();
     };
     
@@ -651,7 +643,6 @@
         btn.className = `px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-white/10 hover:bg-white/20'}`;
         btn.textContent = showOwnedOnly ? '✓ Owned Only' : 'Show All';
       }
-      displayCount = 50;
       renderSongList();
     };
     
@@ -668,7 +659,7 @@
       setlist = setlist.filter(s => s.id !== id); 
       renderSetlist();
       const countEl = document.getElementById('setlistCount');
-      if (countEl) countEl.textContent = setlist.length;
+      if (countEl) countEl.textCount = setlist.length;
     };
     
     window.switchView = (newView) => { 
