@@ -74,6 +74,33 @@
     html {
       scroll-behavior: smooth;
     }
+
+    .context-menu {
+      position: fixed;
+      background: rgba(0, 0, 0, 0.95);
+      border: 1px solid rgba(0, 217, 255, 0.3);
+      border-radius: 8px;
+      padding: 8px;
+      z-index: 1000;
+      backdrop-filter: blur(10px);
+    }
+
+    .context-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
+      background: transparent;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .context-menu button:hover {
+      background: rgba(0, 217, 255, 0.2);
+    }
   </style>
 </head>
 <body class="dj-background">
@@ -111,60 +138,203 @@
       'F': '7B', 'Dm': '7A', 'D Minor': '7A', 'F Major': '7B'
     };
 
-    // Genre detection based on artist/song characteristics
+    // MASSIVELY IMPROVED Genre Detection
+    const genreMap = {
+      'Rock': [
+        'foo fighters', 'nirvana', 'pearl jam', 'soundgarden', 'alice in chains',
+        'red hot chili peppers', 'radiohead', 'muse', 'queens of the stone age',
+        'rage against the machine', 'audioslave', 'incubus', 'weezer',
+        'smashing pumpkins', 'stone temple pilots', 'live', 'bush', 'collective soul',
+        'matchbox twenty', 'third eye blind', 'goo goo dolls', 'vertical horizon',
+        'lifehouse', 'hoobastank', 'trapt', 'shinedown', 'breaking benjamin',
+        'three days grace', 'chevelle', 'seether', 'theory of a deadman',
+        'evanescence', 'flyleaf', 'paramore', 'tonight alive'
+      ],
+      
+      'Classic Rock': [
+        'beatles', 'rolling stones', 'led zeppelin', 'pink floyd', 'queen',
+        'the who', 'aerosmith', 'van halen', 'journey', 'boston', 'kansas',
+        'styx', 'foreigner', 'toto', 'asia', 'heart', 'cheap trick',
+        'the police', 'the cars', 'talking heads', 'blondie', 'fleetwood mac',
+        'stevie nicks', 'tom petty', 'bruce springsteen', 'billy joel',
+        'elton john', 'david bowie', 'rod stewart', 'eric clapton',
+        'santana', 'jimi hendrix', 'cream', 'jefferson airplane', 'the doors',
+        'janis joplin', 'creedence clearwater', 'eagles', 'lynyrd skynyrd',
+        'allman brothers', 'derek and the dominos', 'steely dan'
+      ],
+      
+      'Alternative': [
+        'green day', 'blink-182', 'sum 41', 'simple plan', 'good charlotte',
+        'my chemical romance', 'fall out boy', 'panic! at the disco',
+        'twenty one pilots', 'arctic monkeys', 'the strokes', 'the killers',
+        'franz ferdinand', 'interpol', 'bloc party', 'kaiser chiefs',
+        'maximo park', 'we are scientists', 'two door cinema club',
+        'foster the people', 'cage the elephant', 'the black keys',
+        'vampire weekend', 'phoenix', 'mgmt', 'passion pit', 'tame impala',
+        'glass animals', 'alt-j', 'portugal. the man', 'walk the moon'
+      ],
+      
+      'Punk': [
+        'ramones', 'sex pistols', 'the clash', 'dead kennedys', 'black flag',
+        'minor threat', 'bad religion', 'nofx', 'pennywise', 'offspring',
+        'rancid', 'operation ivy', 'social distortion', 'against me!',
+        'rise against', 'anti-flag', 'dropkick murphys', 'flogging molly',
+        'misfits', 'circle jerks', 'descendants', 'buzzcocks', 'wire'
+      ],
+      
+      'Metal': [
+        'metallica', 'megadeth', 'slayer', 'anthrax', 'testament',
+        'exodus', 'overkill', 'kreator', 'sodom', 'iron maiden',
+        'judas priest', 'black sabbath', 'ozzy osbourne', 'motorhead',
+        'pantera', 'sepultura', 'machine head', 'lamb of god',
+        'system of a down', 'disturbed', 'godsmack', 'korn', 'limp bizkit',
+        'linkin park', 'deftones', 'tool', 'a perfect circle',
+        'slipknot', 'mudvayne', 'drowning pool', 'static-x',
+        'avenged sevenfold', 'trivium', 'bullet for my valentine',
+        'killswitch engage', 'as i lay dying', 'all that remains'
+      ],
+      
+      'Pop': [
+        'taylor swift', 'ariana grande', 'billie eilish', 'olivia rodrigo',
+        'dua lipa', 'lady gaga', 'katy perry', 'miley cyrus', 'selena gomez',
+        'demi lovato', 'kesha', 'britney spears', 'christina aguilera',
+        'madonna', 'mariah carey', 'whitney houston', 'celine dion',
+        'backstreet boys', 'nsync', 'justin timberlake', 'justin bieber',
+        'shawn mendes', 'ed sheeran', 'charlie puth', 'sia', 'pink',
+        'kelly clarkson', 'avril lavigne', 'alanis morissette', 'sheryl crow',
+        'natalie imbruglia', 'robyn', 'carly rae jepsen', 'harry styles',
+        'one direction', 'jonas brothers', 'jonas blue'
+      ],
+      
+      'Hip-Hop': [
+        'eminem', 'dr. dre', 'snoop dogg', 'ice cube', '2pac', 'tupac',
+        'notorious b.i.g', 'biggie', 'jay-z', 'nas', 'wu-tang', 'method man',
+        'redman', 'busta rhymes', 'missy elliott', 'ludacris', 'nelly',
+        'outkast', 'andre 3000', 'big boi', 'kanye west', 'kendrick lamar',
+        'j. cole', 'drake', 'lil wayne', 'nicki minaj', 'cardi b',
+        'megan thee stallion', 'doja cat', 'travis scott', 'post malone',
+        'juice wrld', 'xxxtentacion', 'lil uzi vert', 'playboi carti',
+        'future', 'migos', 'offset', 'quavo', 'takeoff', '21 savage',
+        'lil baby', 'dababy', 'roddy ricch', 'pop smoke', '50 cent',
+        'the game', 'dmx', 'public enemy', 'run-dmc', 'beastie boys',
+        'cypress hill', 'bone thugs', 'three 6 mafia', 'ying yang twins'
+      ],
+      
+      'R&B': [
+        'the weeknd', 'bruno mars', 'john legend', 'usher', 'chris brown',
+        'ne-yo', 'trey songz', 'jeremih', 'miguel', 'frank ocean',
+        'khalid', 'h.e.r.', 'sza', 'jhene aiko', 'kehlani', 'summer walker',
+        'beyonce', 'rihanna', 'alicia keys', 'mary j. blige', 'mariah carey',
+        'janet jackson', 'tlc', 'destiny\'s child', 'en vogue', 'swv',
+        'blackstreet', 'jodeci', 'boyz ii men', 'ginuwine', 'r. kelly',
+        'jagged edge', 'joe', 'maxwell', 'd\'angelo', 'erykah badu',
+        'lauryn hill', 'jill scott', 'india.arie', 'musiq soulchild'
+      ],
+      
+      'Electronic': [
+        'daft punk', 'deadmau5', 'skrillex', 'diplo', 'major lazer',
+        'marshmello', 'zedd', 'kygo', 'avicii', 'calvin harris',
+        'david guetta', 'tiesto', 'armin van buuren', 'afrojack',
+        'hardwell', 'martin garrix', 'steve aoki', 'above & beyond',
+        'kaskade', 'porter robinson', 'madeon', 'odesza', 'flume',
+        'disclosure', 'caribou', 'four tet', 'bonobo', 'tycho',
+        'röyksopp', 'moby', 'the chemical brothers', 'the prodigy',
+        'fatboy slim', 'basement jaxx', 'justice', 'knife party',
+        'pendulum', 'nero', 'zeds dead', 'excision', 'illenium',
+        'seven lions', 'gryffin', 'said the sky', 'the chainsmokers'
+      ],
+      
+      'Indie': [
+        'vampire weekend', 'tame impala', 'mgmt', 'arctic monkeys',
+        'the strokes', 'interpol', 'yeah yeah yeahs', 'metric',
+        'bloc party', 'franz ferdinand', 'modest mouse', 'death cab',
+        'the postal service', 'bright eyes', 'belle and sebastian',
+        'the shins', 'iron & wine', 'bon iver', 'fleet foxes',
+        'grizzly bear', 'animal collective', 'panda bear', 'deerhunter',
+        'beach house', 'real estate', 'war on drugs', 'courtney barnett',
+        'sharon van etten', 'angel olsen', 'mitski', 'japanese breakfast',
+        'alvvays', 'soccer mommy', 'snail mail', 'phoebe bridgers',
+        'lucy dacus', 'julien baker', 'boygenius', 'big thief'
+      ],
+      
+      'Country': [
+        'johnny cash', 'willie nelson', 'waylon jennings', 'merle haggard',
+        'dolly parton', 'loretta lynn', 'tammy wynette', 'patsy cline',
+        'hank williams', 'george jones', 'conway twitty', 'kenny rogers',
+        'garth brooks', 'alan jackson', 'george strait', 'brooks & dunn',
+        'reba mcentire', 'shania twain', 'faith hill', 'tim mcgraw',
+        'keith urban', 'brad paisley', 'toby keith', 'kenny chesney',
+        'blake shelton', 'luke bryan', 'jason aldean', 'florida georgia line',
+        'sam hunt', 'thomas rhett', 'kane brown', 'luke combs',
+        'morgan wallen', 'hardy', 'chris stapleton', 'maren morris',
+        'kacey musgraves', 'carrie underwood', 'miranda lambert'
+      ],
+      
+      'Disco/Funk': [
+        'bee gees', 'donna summer', 'chic', 'earth wind & fire',
+        'kool & the gang', 'parliament', 'funkadelic', 'james brown',
+        'bootsy collins', 'sly and the family stone', 'ohio players',
+        'commodores', 'kc and the sunshine band', 'gloria gaynor',
+        'sister sledge', 'diana ross', 'village people', 'abba',
+        'daft punk', 'jamiroquai', 'bruno mars', 'anderson .paak'
+      ],
+      
+      'Blues': [
+        'b.b. king', 'muddy waters', 'howlin\' wolf', 'john lee hooker',
+        'buddy guy', 'albert king', 'freddie king', 'stevie ray vaughan',
+        'robert johnson', 'elmore james', 'lightnin\' hopkins',
+        'gary clark jr.', 'joe bonamassa', 'bonnie raitt', 'etta james'
+      ],
+      
+      'Jazz': [
+        'miles davis', 'john coltrane', 'dizzy gillespie', 'charlie parker',
+        'thelonious monk', 'duke ellington', 'count basie', 'louis armstrong',
+        'ella fitzgerald', 'billie holiday', 'sarah vaughan', 'nina simone',
+        'herbie hancock', 'chick corea', 'weather report', 'return to forever',
+        'mahavishnu orchestra', 'pat metheny', 'bill evans', 'oscar peterson'
+      ],
+      
+      'Reggae': [
+        'bob marley', 'peter tosh', 'bunny wailer', 'jimmy cliff',
+        'toots and the maytals', 'burning spear', 'gregory isaacs',
+        'dennis brown', 'steel pulse', 'ub40', 'black uhuru',
+        'third world', 'inner circle', 'damian marley', 'ziggy marley',
+        'chronixx', 'protoje', 'koffee', 'shaggy', 'sean paul'
+      ],
+      
+      'Latin': [
+        'shakira', 'ricky martin', 'enrique iglesias', 'luis fonsi',
+        'daddy yankee', 'ozuna', 'bad bunny', 'j balvin', 'maluma',
+        'nicky jam', 'don omar', 'wisin & yandel', 'pitbull', 'gloria estefan',
+        'celia cruz', 'tito puente', 'santana', 'marc anthony', 'selena'
+      ],
+      
+      'Soul': [
+        'aretha franklin', 'otis redding', 'sam cooke', 'marvin gaye',
+        'al green', 'curtis mayfield', 'isaac hayes', 'barry white',
+        'teddy pendergrass', 'the temptations', 'four tops', 'supremes',
+        'gladys knight', 'smokey robinson', 'stevie wonder', 'ray charles'
+      ]
+    };
+
     function detectGenre(artist, title) {
       artist = artist.toLowerCase();
       title = title.toLowerCase();
       
-      // Rock/Alternative
-      if (['foo fighters', 'nirvana', 'metallica', 'acdc', 'green day', 'linkin park', 'paramore', 'system of a down', 'smashing pumpkins', 'weezer', 'blink-182'].some(a => artist.includes(a))) {
-        return 'Rock';
+      // Check against comprehensive genre map
+      for (const [genre, artists] of Object.entries(genreMap)) {
+        if (artists.some(a => artist.includes(a) || a.includes(artist.split(',')[0]))) {
+          return genre;
+        }
       }
       
-      // Pop
-      if (['billie eilish', 'ariana grande', 'lady gaga', 'dua lipa', 'olivia rodrigo', 'taylor swift', 'miley cyrus', 'selena gomez'].some(a => artist.includes(a))) {
-        return 'Pop';
-      }
-      
-      // Hip-Hop/Rap
-      if (['eminem', 'snoop', 'dre', 'notorious', 'tupac', 'ice cube', 'kendrick', 'travis scott', 'post malone'].some(a => artist.includes(a))) {
-        return 'Hip-Hop';
-      }
-      
-      // Electronic/Dance
-      if (['daft punk', 'deadmau5', 'skrillex', 'marshmello', 'calvin harris', 'avicii', 'chainsmokers'].some(a => artist.includes(a))) {
-        return 'Electronic';
-      }
-      
-      // Classic Rock
-      if (['beatles', 'rolling stones', 'queen', 'led zeppelin', 'pink floyd', 'david bowie', 'elton john', 'fleetwood mac'].some(a => artist.includes(a))) {
-        return 'Classic Rock';
-      }
-      
-      // R&B/Soul
-      if (['weeknd', 'bruno mars', 'john legend', 'alicia keys', 'usher', 'beyonce', 'rihanna'].some(a => artist.includes(a))) {
-        return 'R&B';
-      }
-      
-      // Country
-      if (['johnny cash', 'dolly parton', 'willie nelson', 'luke combs'].some(a => artist.includes(a))) {
-        return 'Country';
-      }
-      
-      // Punk
-      if (['ramones', 'sex pistols', 'clash', 'dead kennedys', 'misfits'].some(a => artist.includes(a))) {
-        return 'Punk';
-      }
-      
-      // Metal
-      if (['slayer', 'megadeth', 'iron maiden', 'judas priest', 'black sabbath', 'ozzy'].some(a => artist.includes(a))) {
-        return 'Metal';
-      }
-      
-      // Indie/Alternative
-      if (['arctic monkeys', 'tame impala', 'mgmt', 'vampire weekend', 'strokes'].some(a => artist.includes(a))) {
-        return 'Indie';
-      }
+      // Keyword detection for titles as fallback
+      if (title.includes('rock') || title.includes('metal')) return 'Rock';
+      if (title.includes('funk') || title.includes('disco')) return 'Disco/Funk';
+      if (title.includes('blues')) return 'Blues';
+      if (title.includes('jazz')) return 'Jazz';
+      if (title.includes('country')) return 'Country';
+      if (title.includes('reggae')) return 'Reggae';
       
       return 'Other';
     }
@@ -181,6 +351,7 @@
     let selectedGenre = 'All';
     let bandMembers = [];
     let viewingMember = null;
+    let genreOverrides = {}; // User corrections
 
     function saveUserProfile() {
       if (!currentUser) return;
@@ -190,7 +361,8 @@
         djName: currentUser.djName,
         ownedTracks: ownedTracks,
         setlists: currentUser.setlists || [],
-        bandMembers: bandMembers
+        bandMembers: bandMembers,
+        genreOverrides: genreOverrides
       };
       localStorage.setItem('userProfiles', JSON.stringify(profiles));
     }
@@ -206,13 +378,15 @@
         currentUser = profile;
         ownedTracks = profile.ownedTracks || [];
         bandMembers = profile.bandMembers || [];
+        genreOverrides = profile.genreOverrides || {};
       } else {
         currentUser = {
           username: username,
           djName: djName,
           ownedTracks: [],
           setlists: [],
-          bandMembers: []
+          bandMembers: [],
+          genreOverrides: {}
         };
         saveUserProfile();
       }
@@ -226,6 +400,7 @@
       setlist = [];
       bandMembers = [];
       viewingMember = null;
+      genreOverrides = {};
       localStorage.removeItem('currentUser');
       showLoginScreen();
     }
@@ -278,6 +453,7 @@
         username: currentUser.username,
         djName: currentUser.djName,
         ownedTracks: ownedTracks,
+        genreOverrides: genreOverrides,
         exportDate: new Date().toISOString()
       };
       
@@ -302,7 +478,18 @@
             const data = JSON.parse(event.target.result);
             if (confirm(`Import ${data.ownedTracks.length} songs from ${data.djName}?`)) {
               ownedTracks = data.ownedTracks;
+              if (data.genreOverrides) {
+                genreOverrides = {...genreOverrides, ...data.genreOverrides};
+              }
               saveUserProfile();
+              
+              // Re-apply genre overrides to songs
+              songs.forEach(song => {
+                if (genreOverrides[song.id]) {
+                  song.genre = genreOverrides[song.id];
+                }
+              });
+              
               render();
               setupEventListeners();
               alert('Collection imported successfully!');
@@ -315,6 +502,60 @@
       };
       input.click();
     }
+
+    function showGenreEditMenu(songId, event) {
+      event.preventDefault();
+      
+      // Remove existing menu if any
+      const existing = document.getElementById('genreContextMenu');
+      if (existing) existing.remove();
+      
+      const menu = document.createElement('div');
+      menu.id = 'genreContextMenu';
+      menu.className = 'context-menu';
+      menu.style.left = event.pageX + 'px';
+      menu.style.top = event.pageY + 'px';
+      
+      const genres = ['Rock', 'Classic Rock', 'Alternative', 'Punk', 'Metal', 'Pop', 
+                      'Hip-Hop', 'R&B', 'Electronic', 'Indie', 'Country', 
+                      'Disco/Funk', 'Blues', 'Jazz', 'Reggae', 'Latin', 'Soul', 'Other'];
+      
+      menu.innerHTML = `
+        <div style="padding: 4px 12px; color: #00d9ff; font-weight: bold; font-size: 12px;">Change Genre:</div>
+        ${genres.map(g => `<button onclick="setGenreOverride('${songId}', '${g}')">${g}</button>`).join('')}
+      `;
+      
+      document.body.appendChild(menu);
+      
+      // Close menu when clicking elsewhere
+      setTimeout(() => {
+        document.addEventListener('click', function closeMenu() {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        });
+      }, 100);
+    }
+
+    window.setGenreOverride = (songId, newGenre) => {
+      genreOverrides[songId] = newGenre;
+      
+      // Update the song object
+      const song = songs.find(s => s.id === songId);
+      if (song) {
+        song.genre = newGenre;
+      }
+      
+      saveUserProfile();
+      renderSongList();
+      
+      // Show confirmation
+      const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
+      if (genreTag) {
+        genreTag.textContent = newGenre;
+        genreTag.classList.add('animate-pulse');
+        setTimeout(() => genreTag.classList.remove('animate-pulse'), 1000);
+      }
+    };
 
     function showLoginScreen() {
       document.getElementById('app').innerHTML = `
@@ -364,7 +605,10 @@
               
               <div class="mt-6 pt-6 border-t border-gray-700">
                 <p class="text-xs text-gray-400 text-center mb-3">
-                  💡 <strong>Note:</strong> Epic Games doesn't share inventory data, so you'll need to manually mark songs you own.
+                  💡 <strong>Tip:</strong> Right-click any song's genre tag to correct it!
+                </p>
+                <p class="text-xs text-gray-400 text-center mb-2">
+                  ⚠️ Epic Games doesn't share inventory data, so you'll need to manually mark songs you own.
                 </p>
                 <p class="text-xs text-gray-400 text-center">
                   Your profile is saved locally on this device
@@ -444,6 +688,10 @@
               const track = item?.track;
               if (!track?.tt) return null;
               
+              // Use genre override if exists, otherwise detect
+              const detectedGenre = detectGenre(track.an || '', track.tt);
+              const finalGenre = genreOverrides[id] || detectedGenre;
+              
               return {
                 id,
                 title: track.tt,
@@ -454,7 +702,7 @@
                 camelot: convertToCamelot(track.mk, track.mm),
                 duration: track.dn || 0,
                 albumArt: track.au || '',
-                genre: detectGenre(track.an || '', track.tt)
+                genre: finalGenre
               };
             })
             .filter(song => song && song.bpm > 0);
@@ -590,14 +838,16 @@
           `).join('')}
         </div>
 
-        <div class="mb-4 text-center text-cyan-300 font-bold">
-          Showing ${filteredSongs.length} tracks ${selectedGenre !== 'All' ? `(${selectedGenre})` : ''}
+        <div class="mb-4 text-center">
+          <div class="text-cyan-300 font-bold">Showing ${filteredSongs.length} tracks ${selectedGenre !== 'All' ? `(${selectedGenre})` : ''}</div>
+          <div class="text-xs text-purple-300 mt-1">💡 Right-click genre tags to correct them</div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           ${filteredSongs.map(song => {
             const isOwned = displayTracks.includes(song.id);
             const isMixableWithSelected = selectedSong && isMixable(selectedSong, song);
+            const hasOverride = genreOverrides[song.id];
             
             return `
               <div class="song-card bg-black/40 backdrop-blur-sm border ${
@@ -613,7 +863,12 @@
                     <div class="font-bold text-lg mb-1 text-white">${song.title}</div>
                     <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
                     <div class="flex items-center gap-2 text-sm flex-wrap">
-                      <span class="px-2 py-1 bg-orange-500/30 border border-orange-500/50 rounded text-xs text-orange-200">${song.genre}</span>
+                      <span 
+                        data-genre-tag="${song.id}"
+                        oncontextmenu="showGenreEditMenu('${song.id}', event)" 
+                        class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${hasOverride ? 'text-green-200' : 'text-orange-200'} cursor-context-menu"
+                        title="Right-click to change genre"
+                      >${song.genre}${hasOverride ? ' ✓' : ''}</span>
                       <span class="px-3 py-1 rounded-lg font-mono font-bold text-white shadow-lg" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
                       <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
                       <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
@@ -697,7 +952,7 @@
                   ` : `
                     <div class="text-right">
                       <div class="text-sm text-pink-300 font-bold">${currentUser.djName}</div>
-                      <div class="text-xs text-gray-400">@${currentUser.username}</div>
+                      <div class="text-xs text-gray-400">@${currentUser.username} • ${Object.keys(genreOverrides).length} corrections</div>
                     </div>
                     <button onclick="exportCollection()" class="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-300 text-sm">
                       Export
@@ -808,6 +1063,7 @@
       }
     }
 
+    window.showGenreEditMenu = showGenreEditMenu;
     window.selectSong = (id) => { 
       selectedSong = songs.find(s => s.id === id);
       showMixableOnly = true;
@@ -919,10 +1175,11 @@
         currentUser = profile;
         ownedTracks = profile.ownedTracks || [];
         bandMembers = profile.bandMembers || [];
+        genreOverrides = profile.genreOverrides || {};
         loadSongs();
       } else {
         showLoginScreen();
-      }
+      } 
     } else {
       showLoginScreen();
     }
