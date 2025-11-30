@@ -107,6 +107,7 @@
           if (songs.length > 0) {
             console.log(`✅ Successfully loaded ${songs.length} tracks!`);
             render();
+            setupEventListeners();
             return;
           }
           
@@ -148,7 +149,8 @@
         ownedTracks.push(id);
       }
       saveOwned();
-      render();
+      renderSongList();
+      updateOwnedCount();
     }
 
     function formatDuration(seconds) {
@@ -157,13 +159,110 @@
       return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
-    function render() {
+    function updateOwnedCount() {
+      const countEl = document.getElementById('ownedCount');
+      if (countEl) {
+        countEl.textContent = `You own ${ownedTracks.length}/${songs.length} tracks`;
+      }
+    }
+
+    function renderSongList() {
       const filteredSongs = songs.filter(s => 
         (s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         s.artist.toLowerCase().includes(searchTerm.toLowerCase())) &&
         (!showOwnedOnly || ownedTracks.includes(s.id))
       );
 
+      const songListEl = document.getElementById('songList');
+      if (!songListEl) return;
+
+      songListEl.innerHTML = `
+        ${selectedSong ? `
+          <div class="mb-6 bg-purple-500/20 border border-purple-500/30 rounded-xl p-4">
+            <div class="flex items-center gap-4 flex-wrap">
+              ${selectedSong.albumArt ? `<img src="${selectedSong.albumArt}" class="w-16 h-16 rounded-lg"/>` : ''}
+              <div class="flex-1">
+                <div class="text-sm text-purple-300">Now Mixing From:</div>
+                <div class="font-bold text-lg">${selectedSong.title}</div>
+                <div class="text-purple-200 text-sm">${selectedSong.artist}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-mono font-bold" style="color: ${camelotColors[selectedSong.camelot] || '#666'}">${selectedSong.camelot}</div>
+                <div class="text-xs text-purple-200">${selectedSong.key} ${selectedSong.mode}</div>
+              </div>
+              <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded">✕</button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          ${filteredSongs.slice(0, 100).map(song => {
+            const isOwned = ownedTracks.includes(song.id);
+            return `
+              <div class="bg-gray-800/60 border ${selectedSong?.id === song.id ? 'border-purple-400' : 'border-gray-700'} rounded-xl p-4 relative">
+                ${isOwned ? '<div class="absolute top-2 right-2 text-xl">⭐</div>' : ''}
+                <div class="flex gap-4 mb-3">
+                  ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-purple-500 rounded-lg"></div>`}
+                  <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
+                    <div class="font-bold text-lg mb-1">${song.title}</div>
+                    <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
+                    <div class="flex items-center gap-2 text-sm flex-wrap">
+                      <span class="px-3 py-1 rounded-lg font-mono font-bold text-white" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
+                      <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
+                      <span class="font-semibold">${song.bpm} BPM</span>
+                      <span class="text-gray-400">${formatDuration(song.duration)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex gap-2">
+                  <button onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500' : 'bg-gray-700'} rounded-lg text-sm font-medium">
+                    ${isOwned ? '✓ Owned' : 'Mark Owned'}
+                  </button>
+                  <button onclick="addToSetlist('${song.id}')" class="px-4 py-2 bg-purple-500 rounded-lg text-sm font-medium">
+                    + Set
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        ${filteredSongs.length > 100 ? `<div class="text-center mt-6 text-purple-300">Showing 100 of ${filteredSongs.length} tracks</div>` : ''}
+      `;
+    }
+
+    function renderSetlist() {
+      const setlistEl = document.getElementById('setlistContent');
+      if (!setlistEl) return;
+
+      if (setlist.length === 0) {
+        setlistEl.innerHTML = `
+          <div class="text-center py-12">
+            <div class="text-6xl mb-4">🎵</div>
+            <p class="text-xl mb-4">Your setlist is empty</p>
+            <button onclick="switchView('browser')" class="px-6 py-3 bg-purple-500 rounded-lg">Browse Tracks</button>
+          </div>
+        `;
+      } else {
+        setlistEl.innerHTML = `
+          <div class="space-y-4">
+            ${setlist.map((song, i) => `
+              <div class="bg-gray-800/60 border border-gray-700 rounded-xl p-4 flex items-center gap-4">
+                <div class="text-2xl font-bold text-purple-400">${i + 1}</div>
+                ${song.albumArt ? `<img src="${song.albumArt}" class="w-16 h-16 rounded-lg"/>` : ''}
+                <div class="flex-1">
+                  <div class="font-bold text-lg">${song.title}</div>
+                  <div class="text-gray-300">${song.artist}</div>
+                </div>
+                <div class="text-xl font-mono font-bold" style="color: ${camelotColors[song.camelot]}">${song.camelot}</div>
+                <button onclick="removeFromSetlist('${song.id}')" class="p-2 hover:bg-red-500/20 rounded text-red-400">✕</button>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+    }
+
+    function render() {
       const ownedCount = ownedTracks.length;
 
       document.getElementById('app').innerHTML = `
@@ -176,140 +275,148 @@
                 </div>
                 <div>
                   <h1 class="text-2xl font-bold">Festival Pro Mixer</h1>
-                  <p class="text-xs text-purple-300">You own ${ownedCount}/${songs.length} tracks</p>
+                  <p id="ownedCount" class="text-xs text-purple-300">You own ${ownedCount}/${songs.length} tracks</p>
                 </div>
               </div>
               <div class="flex gap-2">
-                <button onclick="switchView('browser')" class="px-4 py-2 rounded-lg font-medium transition ${view === 'browser' ? 'bg-purple-500' : 'bg-white/10'}">
+                <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view === 'browser' ? 'bg-purple-500' : 'bg-white/10'}">
                   Browse
                 </button>
-                <button onclick="switchView('setlist')" class="px-4 py-2 rounded-lg font-medium transition ${view === 'setlist' ? 'bg-purple-500' : 'bg-white/10'}">
-                  Setlist (${setlist.length})
+                <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view === 'setlist' ? 'bg-purple-500' : 'bg-white/10'}">
+                  Setlist (<span id="setlistCount">${setlist.length}</span>)
                 </button>
               </div>
             </div>
           </div>
 
           <div class="max-w-7xl mx-auto px-6 py-6">
-            ${view === 'browser' ? `
+            <div id="browserView" style="display: ${view === 'browser' ? 'block' : 'none'}">
               <div class="mb-6 space-y-4">
                 <input
                   type="text"
                   id="searchInput"
                   placeholder="Search tracks or artists..."
-                  value="${searchTerm}"
                   class="w-full px-4 py-3 bg-gray-800/80 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
                 <div class="flex flex-wrap gap-3">
-                  <button onclick="toggleOwnedFilter()" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-green-500' : 'bg-white/10'}">
+                  <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-green-500' : 'bg-white/10'}">
                     ${showOwnedOnly ? '✓ Owned Only' : 'Show All'}
                   </button>
-                  <button onclick="markAllOwned()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">
+                  <button id="markAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">
                     Mark All Owned
                   </button>
-                  <button onclick="clearAllOwned()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">
+                  <button id="clearAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">
                     Clear All
                   </button>
                 </div>
               </div>
+              <div id="songList"></div>
+            </div>
 
-              ${selectedSong ? `
-                <div class="mb-6 bg-purple-500/20 border border-purple-500/30 rounded-xl p-4">
-                  <div class="flex items-center gap-4 flex-wrap">
-                    ${selectedSong.albumArt ? `<img src="${selectedSong.albumArt}" class="w-16 h-16 rounded-lg"/>` : ''}
-                    <div class="flex-1">
-                      <div class="text-sm text-purple-300">Now Mixing From:</div>
-                      <div class="font-bold text-lg">${selectedSong.title}</div>
-                      <div class="text-purple-200 text-sm">${selectedSong.artist}</div>
-                    </div>
-                    <div class="text-right">
-                      <div class="text-2xl font-mono font-bold" style="color: ${camelotColors[selectedSong.camelot] || '#666'}">${selectedSong.camelot}</div>
-                      <div class="text-xs text-purple-200">${selectedSong.key} ${selectedSong.mode}</div>
-                    </div>
-                    <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded">✕</button>
-                  </div>
-                </div>
-              ` : ''}
-
-              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                ${filteredSongs.slice(0, 100).map(song => {
-                  const isOwned = ownedTracks.includes(song.id);
-                  return `
-                    <div class="bg-gray-800/60 border ${selectedSong?.id === song.id ? 'border-purple-400' : 'border-gray-700'} rounded-xl p-4 relative">
-                      ${isOwned ? '<div class="absolute top-2 right-2 text-xl">⭐</div>' : ''}
-                      <div class="flex gap-4 mb-3">
-                        ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-purple-500 rounded-lg"></div>`}
-                        <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
-                          <div class="font-bold text-lg mb-1">${song.title}</div>
-                          <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
-                          <div class="flex items-center gap-2 text-sm flex-wrap">
-                            <span class="px-3 py-1 rounded-lg font-mono font-bold text-white" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
-                            <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
-                            <span class="font-semibold">${song.bpm} BPM</span>
-                            <span class="text-gray-400">${formatDuration(song.duration)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div class="flex gap-2">
-                        <button onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500' : 'bg-gray-700'} rounded-lg text-sm font-medium">
-                          ${isOwned ? '✓ Owned' : 'Mark Owned'}
-                        </button>
-                        <button onclick="addToSetlist('${song.id}')" class="px-4 py-2 bg-purple-500 rounded-lg text-sm font-medium">
-                          + Set
-                        </button>
-                      </div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-              ${filteredSongs.length > 100 ? `<div class="text-center mt-6 text-purple-300">Showing 100 of ${filteredSongs.length} tracks</div>` : ''}
-            ` : `
-              ${setlist.length === 0 ? `
-                <div class="text-center py-12">
-                  <div class="text-6xl mb-4">🎵</div>
-                  <p class="text-xl mb-4">Your setlist is empty</p>
-                  <button onclick="switchView('browser')" class="px-6 py-3 bg-purple-500 rounded-lg">Browse Tracks</button>
-                </div>
-              ` : `
-                <div class="space-y-4">
-                  ${setlist.map((song, i) => `
-                    <div class="bg-gray-800/60 border border-gray-700 rounded-xl p-4 flex items-center gap-4">
-                      <div class="text-2xl font-bold text-purple-400">${i + 1}</div>
-                      ${song.albumArt ? `<img src="${song.albumArt}" class="w-16 h-16 rounded-lg"/>` : ''}
-                      <div class="flex-1">
-                        <div class="font-bold text-lg">${song.title}</div>
-                        <div class="text-gray-300">${song.artist}</div>
-                      </div>
-                      <div class="text-xl font-mono font-bold" style="color: ${camelotColors[song.camelot]}">${song.camelot}</div>
-                      <button onclick="removeFromSetlist('${song.id}')" class="p-2 hover:bg-red-500/20 rounded text-red-400">✕</button>
-                    </div>
-                  `).join('')}
-                </div>
-              `}
-            `}
+            <div id="setlistView" style="display: ${view === 'setlist' ? 'block' : 'none'}">
+              <div id="setlistContent"></div>
+            </div>
           </div>
         </div>
       `;
-      
-      // Add event listener after rendering
+
+      if (view === 'browser') {
+        renderSongList();
+      } else {
+        renderSetlist();
+      }
+    }
+
+    function setupEventListeners() {
+      // Search input
       const searchInput = document.getElementById('searchInput');
       if (searchInput) {
         searchInput.addEventListener('input', (e) => {
           searchTerm = e.target.value;
-          render();
+          renderSongList();
         });
       }
+
+      // View buttons
+      document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
+      document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
+
+      // Filter buttons
+      document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
+      document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned);
+      document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned);
     }
 
-    window.selectSong = (id) => { selectedSong = songs.find(s => s.id === id); render(); };
-    window.clearSelection = () => { selectedSong = null; render(); };
+    window.selectSong = (id) => { 
+      selectedSong = songs.find(s => s.id === id); 
+      renderSongList();
+    };
+    
+    window.clearSelection = () => { 
+      selectedSong = null; 
+      renderSongList();
+    };
+    
     window.toggleOwned = toggleOwned;
-    window.markAllOwned = () => { ownedTracks = songs.map(s => s.id); saveOwned(); render(); };
-    window.clearAllOwned = () => { ownedTracks = []; saveOwned(); render(); };
-    window.toggleOwnedFilter = () => { showOwnedOnly = !showOwnedOnly; render(); };
-    window.addToSetlist = (id) => { const song = songs.find(s => s.id === id); if (!setlist.find(s => s.id === id)) { setlist.push(song); render(); } };
-    window.removeFromSetlist = (id) => { setlist = setlist.filter(s => s.id !== id); render(); };
-    window.switchView = (newView) => { view = newView; render(); };
+    
+    window.markAllOwned = () => { 
+      ownedTracks = songs.map(s => s.id); 
+      saveOwned(); 
+      renderSongList();
+      updateOwnedCount();
+    };
+    
+    window.clearAllOwned = () => { 
+      ownedTracks = []; 
+      saveOwned(); 
+      renderSongList();
+      updateOwnedCount();
+    };
+    
+    window.toggleOwnedFilter = () => { 
+      showOwnedOnly = !showOwnedOnly;
+      const btn = document.getElementById('ownedFilterBtn');
+      if (btn) {
+        btn.className = `px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-green-500' : 'bg-white/10'}`;
+        btn.textContent = showOwnedOnly ? '✓ Owned Only' : 'Show All';
+      }
+      renderSongList();
+    };
+    
+    window.addToSetlist = (id) => { 
+      const song = songs.find(s => s.id === id); 
+      if (!setlist.find(s => s.id === id)) { 
+        setlist.push(song);
+        const countEl = document.getElementById('setlistCount');
+        if (countEl) countEl.textContent = setlist.length;
+      }
+    };
+    
+    window.removeFromSetlist = (id) => { 
+      setlist = setlist.filter(s => s.id !== id); 
+      renderSetlist();
+      const countEl = document.getElementById('setlistCount');
+      if (countEl) countEl.textContent = setlist.length;
+    };
+    
+    window.switchView = (newView) => { 
+      view = newView;
+      document.getElementById('browserView').style.display = view === 'browser' ? 'block' : 'none';
+      document.getElementById('setlistView').style.display = view === 'setlist' ? 'block' : 'none';
+      
+      // Update button styles
+      const browserBtn = document.getElementById('browserBtn');
+      const setlistBtn = document.getElementById('setlistBtn');
+      if (browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view === 'browser' ? 'bg-purple-500' : 'bg-white/10'}`;
+      if (setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view === 'setlist' ? 'bg-purple-500' : 'bg-white/10'}`;
+      
+      if (view === 'browser') {
+        renderSongList();
+        setupEventListeners();
+      } else {
+        renderSetlist();
+      }
+    };
 
     loadSongs();
   </script>
