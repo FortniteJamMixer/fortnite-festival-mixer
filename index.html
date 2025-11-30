@@ -53,11 +53,44 @@
     let searchTerm = '';
     let view = 'browser';
     let showOwnedOnly = false;
+    let showMixableOnly = false;
 
     function convertToCamelot(key, mode) {
       if (!key) return '?';
       const fullKey = `${key} ${mode}`;
       return keyToCamelot[fullKey] || keyToCamelot[key] || '?';
+    }
+
+    // Get compatible Camelot keys for harmonic mixing
+    function getCompatibleKeys(camelot) {
+      if (!camelot || camelot === '?') return [];
+      
+      const matches = camelot.match(/^(\d+)([AB])$/);
+      if (!matches) return [];
+      
+      const num = parseInt(matches[1]);
+      const letter = matches[2];
+      
+      const compatible = [
+        camelot, // Same key
+        `${num}${letter === 'A' ? 'B' : 'A'}`, // Switch A/B (relative major/minor)
+      ];
+      
+      // +1 (up on wheel)
+      const nextNum = num === 12 ? 1 : num + 1;
+      compatible.push(`${nextNum}${letter}`);
+      
+      // -1 (down on wheel)
+      const prevNum = num === 1 ? 12 : num - 1;
+      compatible.push(`${prevNum}${letter}`);
+      
+      return compatible;
+    }
+
+    function isMixable(song1, song2) {
+      if (!song1 || !song2) return false;
+      const compatible = getCompatibleKeys(song1.camelot);
+      return compatible.includes(song2.camelot);
     }
 
     async function loadSongs() {
@@ -167,14 +200,24 @@
     }
 
     function renderSongList() {
-      const filteredSongs = songs.filter(s => 
-        (s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.artist.toLowerCase().includes(searchTerm.toLowerCase())) &&
-        (!showOwnedOnly || ownedTracks.includes(s.id))
-      );
+      const filteredSongs = songs.filter(s => {
+        // Text search filter
+        const matchesSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                             s.artist.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        // Owned filter
+        const matchesOwned = !showOwnedOnly || ownedTracks.includes(s.id);
+        
+        // Mixable filter
+        const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+        
+        return matchesSearch && matchesOwned && matchesMixable;
+      });
 
       const songListEl = document.getElementById('songList');
       if (!songListEl) return;
+
+      const compatibleKeys = selectedSong ? getCompatibleKeys(selectedSong.camelot) : [];
 
       songListEl.innerHTML = `
         ${selectedSong ? `
@@ -189,6 +232,7 @@
               <div class="text-right">
                 <div class="text-2xl font-mono font-bold" style="color: ${camelotColors[selectedSong.camelot] || '#666'}">${selectedSong.camelot}</div>
                 <div class="text-xs text-purple-200">${selectedSong.key} ${selectedSong.mode}</div>
+                <div class="text-xs text-purple-300 mt-1">Mix with: ${compatibleKeys.join(', ')}</div>
               </div>
               <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded">✕</button>
             </div>
@@ -198,9 +242,16 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
           ${filteredSongs.slice(0, 100).map(song => {
             const isOwned = ownedTracks.includes(song.id);
+            const isMixableWithSelected = selectedSong && isMixable(selectedSong, song);
+            
             return `
-              <div class="bg-gray-800/60 border ${selectedSong?.id === song.id ? 'border-purple-400' : 'border-gray-700'} rounded-xl p-4 relative">
+              <div class="bg-gray-800/60 border ${
+                selectedSong?.id === song.id ? 'border-purple-400' : 
+                isMixableWithSelected ? 'border-green-400' : 
+                'border-gray-700'
+              } rounded-xl p-4 relative">
                 ${isOwned ? '<div class="absolute top-2 right-2 text-xl">⭐</div>' : ''}
+                ${isMixableWithSelected ? '<div class="absolute top-2 left-2 text-xl">🎧</div>' : ''}
                 <div class="flex gap-4 mb-3">
                   ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-purple-500 rounded-lg"></div>`}
                   <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
@@ -227,6 +278,7 @@
           }).join('')}
         </div>
         ${filteredSongs.length > 100 ? `<div class="text-center mt-6 text-purple-300">Showing 100 of ${filteredSongs.length} tracks</div>` : ''}
+        ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
       `;
     }
 
@@ -299,6 +351,9 @@
                   class="w-full px-4 py-3 bg-gray-800/80 border border-gray-700 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
                 <div class="flex flex-wrap gap-3">
+                  <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-blue-500' : 'bg-white/10'}">
+                    ${showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable'}
+                  </button>
                   <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-green-500' : 'bg-white/10'}">
                     ${showOwnedOnly ? '✓ Owned Only' : 'Show All'}
                   </button>
@@ -342,18 +397,31 @@
       document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
 
       // Filter buttons
+      document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
       document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
       document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned);
       document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned);
     }
 
     window.selectSong = (id) => { 
-      selectedSong = songs.find(s => s.id === id); 
+      selectedSong = songs.find(s => s.id === id);
+      showMixableOnly = true; // Auto-enable mixable filter
+      const btn = document.getElementById('mixableFilterBtn');
+      if (btn) {
+        btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-blue-500';
+        btn.textContent = '🎧 Mixable Only';
+      }
       renderSongList();
     };
     
     window.clearSelection = () => { 
-      selectedSong = null; 
+      selectedSong = null;
+      showMixableOnly = false;
+      const btn = document.getElementById('mixableFilterBtn');
+      if (btn) {
+        btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10';
+        btn.textContent = 'Show Mixable';
+      }
       renderSongList();
     };
     
@@ -371,6 +439,20 @@
       saveOwned(); 
       renderSongList();
       updateOwnedCount();
+    };
+    
+    window.toggleMixableFilter = () => {
+      if (!selectedSong) {
+        alert('Select a song first to see mixable tracks!');
+        return;
+      }
+      showMixableOnly = !showMixableOnly;
+      const btn = document.getElementById('mixableFilterBtn');
+      if (btn) {
+        btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-blue-500' : 'bg-white/10'}`;
+        btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable';
+      }
+      renderSongList();
     };
     
     window.toggleOwnedFilter = () => { 
