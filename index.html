@@ -16,7 +16,7 @@
       <div class="text-center">
         <div class="text-6xl mb-4 animate-pulse">🎵</div>
         <div class="text-2xl font-bold">Loading Fortnite Tracks...</div>
-        <div class="text-purple-300 text-sm mt-2">Fetching from Epic Games API</div>
+        <div class="text-purple-300 text-sm mt-2">Bypassing CORS restrictions...</div>
       </div>
     </div>
   </div>
@@ -61,24 +61,18 @@
     }
 
     async function loadSongs() {
-      console.log('🎵 Attempting to load Fortnite Festival tracks...');
+      console.log('🎵 Loading Fortnite Festival tracks...');
       
-      // Try multiple API endpoints
       const endpoints = [
-        'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
-        'https://fortnite-api.com/v1/playlists',
+        'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
+        'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
       ];
       
       for (let i = 0; i < endpoints.length; i++) {
         try {
           console.log(`📡 Trying endpoint ${i + 1}/${endpoints.length}...`);
           
-          const response = await fetch(endpoints[i], {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json',
-            }
-          });
+          const response = await fetch(endpoints[i]);
           
           console.log(`📊 Response status: ${response.status}`);
           
@@ -88,9 +82,8 @@
           }
           
           const data = await response.json();
-          console.log('📦 Received data:', data);
+          console.log('📦 Received data, processing...');
           
-          // Process the data
           songs = Object.entries(data)
             .filter(([key]) => !key.startsWith('_'))
             .map(([id, item]) => {
@@ -122,9 +115,8 @@
         }
       }
       
-      // If all endpoints fail, show error
       console.error('❌ All endpoints failed');
-      showError('All API endpoints failed. The Epic Games API may be temporarily unavailable or has changed.');
+      showError('Unable to load tracks. The API may be temporarily unavailable. Try refreshing in a few minutes.');
     }
 
     function showError(message) {
@@ -135,16 +127,11 @@
             <div class="text-2xl font-bold mb-4">Unable to Load Tracks</div>
             <div class="text-gray-300 mb-6 bg-black/30 p-4 rounded-lg">
               <p class="mb-2">${message}</p>
-              <p class="text-sm text-purple-300 mt-4">Technical details: Check browser console (F12) for more info</p>
+              <p class="text-sm text-purple-300 mt-4">The Fortnite API has CORS restrictions. We're using a proxy to bypass this.</p>
             </div>
-            <div class="space-y-3">
-              <button onclick="location.reload()" class="px-6 py-3 bg-purple-500 hover:bg-purple-600 rounded-lg block w-full">
-                🔄 Retry Loading
-              </button>
-              <a href="https://github.com/FortniteAPI/fortnitecontent-website" target="_blank" class="block px-6 py-3 bg-blue-500 hover:bg-blue-600 rounded-lg">
-                📚 Check API Status
-              </a>
-            </div>
+            <button onclick="location.reload()" class="px-6 py-3 bg-purple-500 hover:bg-purple-600 rounded-lg">
+              🔄 Retry Loading
+            </button>
           </div>
         </div>
       `;
