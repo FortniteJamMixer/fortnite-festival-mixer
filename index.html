@@ -103,6 +103,37 @@
     .context-menu button:hover {
       background: rgba(0, 217, 255, 0.3);
     }
+    .feature-card {
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(0, 217, 255, 0.3);
+    }
+
+    .camelot-wheel {
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: conic-gradient(
+        from 0deg,
+        #FF6B9D 0deg 30deg,
+        #FFA07A 30deg 60deg,
+        #FFD700 60deg 90deg,
+        #98D8C8 90deg 120deg,
+        #6BCB77 120deg 150deg,
+        #4D96FF 150deg 180deg,
+        #9D4EDD 180deg 210deg,
+        #E84A5F 210deg 240deg,
+        #00D9FF 240deg 270deg,
+        #FFA400 270deg 300deg,
+        #FE6D73 300deg 330deg,
+        #A8E6CF 330deg 360deg
+      );
+      animation: spin 20s linear infinite;
+      box-shadow: 0 0 40px rgba(0, 217, 255, 0.4);
+    }
   </style>
 </head>
 <body class="dj-background">
