@@ -147,6 +147,186 @@
   </div>
   
   <script>
+    // LANDING PAGE SYSTEM
+    function showLandingPage() {
+      document.getElementById('app').innerHTML = `
+        <div class="min-h-screen py-12 px-6">
+          <div class="max-w-6xl mx-auto">
+            
+            <div class="text-center mb-16">
+              <div class="flex justify-center mb-6">
+                <div class="w-32 h-32 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-6xl vinyl-spin">
+                  🎧
+                </div>
+              </div>
+              <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">FORTNITE FESTIVAL PRO MIXER</h1>
+              <p class="text-xl md:text-2xl text-cyan-300 mb-6">Create Epic Mashups & DJ Like a Pro on the Jam Stage!</p>
+              <p class="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto mb-8">
+                Anyone can DJ in Fortnite Festival! Use the Jam Stage to mix tracks live in front of thousands. 
+                We'll show you exactly which songs blend perfectly together using professional DJ techniques.
+              </p>
+              <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 hover:from-pink-600 hover:via-purple-600 hover:to-cyan-600 rounded-xl font-bold text-white text-xl md:text-2xl transition shadow-lg shadow-purple-500/50 bounce-icon">
+                🎵 START MIXING NOW
+              </button>
+            </div>
+
+            <div class="bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12 shadow-2xl shadow-pink-500/20">
+              <div class="flex flex-col lg:flex-row items-center gap-8">
+                <div class="flex-shrink-0">
+                  <div class="camelot-wheel mx-auto"></div>
+                  <p class="text-center text-xs text-cyan-300 mt-4">The Camelot Wheel in Action</p>
+                </div>
+                <div class="flex-1">
+                  <h2 class="text-2xl md:text-3xl font-bold text-white mb-4 graffiti-text">🎛️ The Secret: The Camelot Wheel</h2>
+                  <p class="text-gray-300 mb-4 text-base md:text-lg">
+                    Professional DJs use the <strong class="text-pink-400">Camelot Wheel</strong> to create seamless mashups. 
+                    It's a color-coded system that shows which songs are harmonically compatible.
+                  </p>
+                  <div class="space-y-3 text-gray-300 text-sm md:text-base">
+                    <div class="flex items-start gap-3">
+                      <span class="text-2xl flex-shrink-0">✅</span>
+                      <div>
+                        <strong class="text-cyan-300">Same Number = Perfect Match!</strong><br/>
+                        <span class="text-sm">Example: 8B → 8B (both in C Major)</span>
+                      </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                      <span class="text-2xl flex-shrink-0">✅</span>
+                      <div>
+                        <strong class="text-cyan-300">A/B Switch = Energy Shift</strong><br/>
+                        <span class="text-sm">Example: 8B → 8A (major to minor, same key)</span>
+                      </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                      <span class="text-2xl flex-shrink-0">✅</span>
+                      <div>
+                        <strong class="text-cyan-300">±1 Number = Smooth Blend</strong><br/>
+                        <span class="text-sm">Example: 8B → 9B or 7B (one step up or down)</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-6 p-4 bg-purple-500/20 border border-purple-500/50 rounded-lg">
+                    <p class="text-white font-bold">💡 Pro Tip:</p>
+                    <p class="text-sm text-gray-300">Click any song and we'll instantly show you ALL compatible tracks. No music theory needed!</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6 mb-12">
+              
+              <div class="feature-card bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-xl p-6 shadow-lg">
+                <div class="text-4xl mb-3">🎚️</div>
+                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Smart Harmonic Mixing</h3>
+                <p class="text-gray-300 text-sm md:text-base">
+                  Select any song and instantly see ONLY the tracks that will mix perfectly with it. 
+                  Our tool uses the Camelot Wheel to filter out clashing keys automatically.
+                </p>
+              </div>
+
+              <div class="feature-card bg-black/60 backdrop-blur-xl border border-orange-500/30 rounded-xl p-6 shadow-lg">
+                <div class="text-4xl mb-3">🎸</div>
+                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Genre Filtering</h3>
+                <p class="text-gray-300 text-sm md:text-base">
+                  Browse by Rock, Pop, Hip-Hop, Electronic, and more. Create genre-specific setlists or 
+                  wild cross-genre mashups that actually sound good together!
+                </p>
+              </div>
+
+              <div class="feature-card bg-black/60 backdrop-blur-xl border border-green-500/30 rounded-xl p-6 shadow-lg">
+                <div class="text-4xl mb-3">⭐</div>
+                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Track Your Collection</h3>
+                <p class="text-gray-300 text-sm md:text-base">
+                  Mark which songs you own in Fortnite Festival. Never waste time planning a set 
+                  with songs you don't have access to.
+                </p>
+              </div>
+
+              <div class="feature-card bg-black/60 backdrop-blur-xl border border-purple-500/30 rounded-xl p-6 shadow-lg">
+                <div class="text-4xl mb-3">🎤</div>
+                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Band Collaboration</h3>
+                <p class="text-gray-300 text-sm md:text-base">
+                  Add your bandmates and see their collections. Plan your Jam Stage sets together 
+                  and combine everyone's song libraries.
+                </p>
+              </div>
+
+              <div class="feature-card bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-xl p-6 shadow-lg">
+                <div class="text-4xl mb-3">📋</div>
+                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Setlist Builder</h3>
+                <p class="text-gray-300 text-sm md:text-base">
+                  Build songs into your setlist and see the harmonic flow. Create the perfect 
+                  DJ set from opening track to grand finale.
+                </p>
+              </div>
+
+              <div class="feature-card bg-black/60 backdrop-blur-xl border border-yellow-500/30 rounded-xl p-6 shadow-lg">
+                <div class="text-4xl mb-3">💾</div>
+                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Export & Share</h3>
+                <p class="text-gray-300 text-sm md:text-base">
+                  Export your collection and setlists. Share them with bandmates or 
+                  back them up for safekeeping.
+                </p>
+              </div>
+
+            </div>
+
+            <div class="bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-cyan-500/20 border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12">
+              <h2 class="text-2xl md:text-3xl font-bold text-white mb-6 text-center graffiti-text">🚀 HOW IT WORKS</h2>
+              <div class="grid md:grid-cols-3 gap-6">
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">1</div>
+                  <h3 class="text-lg md:text-xl font-bold text-white mb-2">Mark Your Songs</h3>
+                  <p class="text-gray-300 text-sm md:text-base">Check off which Fortnite Festival tracks you own</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-gradient-to-br from-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">2</div>
+                  <h3 class="text-lg md:text-xl font-bold text-white mb-2">Find Perfect Matches</h3>
+                  <p class="text-gray-300 text-sm md:text-base">Click any song to see compatible mashup options</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-16 h-16 bg-gradient-to-br from-cyan-500 to-pink-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">3</div>
+                  <h3 class="text-lg md:text-xl font-bold text-white mb-2">Build Your Set</h3>
+                  <p class="text-gray-300 text-sm md:text-base">Create setlists and dominate the Jam Stage!</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-center">
+              <h2 class="text-3xl md:text-4xl font-bold text-white mb-4 graffiti-text">READY TO BECOME A FORTNITE DJ?</h2>
+              <p class="text-lg md:text-xl text-gray-300 mb-8">Join thousands of players creating epic mashups on the Jam Stage</p>
+              <button onclick="hideLanding()" class="px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 hover:from-pink-600 hover:via-purple-600 hover:to-cyan-600 rounded-xl font-bold text-white text-2xl md:text-3xl transition shadow-2xl shadow-purple-500/50">
+                🎵 LET'S MIX!
+              </button>
+            </div>
+
+          </div>
+        </div>
+      `;
+    }
+
+    window.hideLanding = () => {
+      localStorage.setItem('hasSeenLanding', 'true');
+      checkAuth();
+    };
+
+    function checkAuth() {
+      const savedUsername = localStorage.getItem('currentUser');
+      if (savedUsername) {
+        const profile = loadUserProfile(savedUsername);
+        if (profile) {
+          currentUser = profile;
+          ownedTracks = profile.ownedTracks || [];
+          bandMembers = profile.bandMembers || [];
+          genreOverrides = profile.genreOverrides || {};
+          loadSongs();
+        } else {
+          showLoginScreen();
+        }
+      } else {
+        showLoginScreen();
+      }
+    }
     const camelotColors = {
       '1A': '#FF6B9D', '1B': '#FF8FAB', '2A': '#FFA07A', '2B': '#FFB699',
       '3A': '#FFD700', '3B': '#FFE55C', '4A': '#98D8C8', '4B': '#7FD8BE',
@@ -1214,20 +1394,11 @@
       }
     };
 
-    const savedUsername = localStorage.getItem('currentUser');
-    if (savedUsername) {
-      const profile = loadUserProfile(savedUsername);
-      if (profile) {
-        currentUser = profile;
-        ownedTracks = profile.ownedTracks || [];
-        bandMembers = profile.bandMembers || [];
-        genreOverrides = profile.genreOverrides || {};
-        loadSongs();
-      } else {
-        showLoginScreen();
-      } 
+    // Initialize - Show landing page first time, then login
+    if (!localStorage.getItem('hasSeenLanding')) {
+      showLandingPage();
     } else {
-      showLoginScreen();
+      checkAuth();
     }
   </script>
 </body>
