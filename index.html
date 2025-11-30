@@ -70,6 +70,11 @@
       position: relative;
       z-index: 1;
     }
+
+    /* Smooth scrolling */
+    html {
+      scroll-behavior: smooth;
+    }
   </style>
 </head>
 <body class="dj-background">
@@ -107,7 +112,6 @@
       'F': '7B', 'Dm': '7A', 'D Minor': '7A', 'F Major': '7B'
     };
 
-    // User Profile Management
     let currentUser = null;
     let songs = [];
     let ownedTracks = [];
@@ -117,6 +121,7 @@
     let view = 'browser';
     let showOwnedOnly = false;
     let showMixableOnly = false;
+    let displayCount = 50; // Show 50 at a time
 
     function saveUserProfile() {
       if (!currentUser) return;
@@ -298,6 +303,9 @@
             })
             .filter(song => song && song.bpm > 0);
           
+          // Sort alphabetically by title
+          songs.sort((a, b) => a.title.localeCompare(b.title));
+          
           if (songs.length > 0) {
             console.log(`✅ Successfully loaded ${songs.length} tracks!`);
             render();
@@ -354,12 +362,19 @@
       }
     }
 
+    function loadMore() {
+      displayCount += 50;
+      renderSongList();
+    }
+
     function renderSongList() {
       const filteredSongs = songs.filter(s => {
-        const matchesSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        const matchesSearch = searchTerm === '' || 
+                             s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              s.artist.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesOwned = !showOwnedOnly || ownedTracks.includes(s.id);
         const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+        
         return matchesSearch && matchesOwned && matchesMixable;
       });
 
@@ -367,6 +382,7 @@
       if (!songListEl) return;
 
       const compatibleKeys = selectedSong ? getCompatibleKeys(selectedSong.camelot) : [];
+      const songsToShow = filteredSongs.slice(0, displayCount);
 
       songListEl.innerHTML = `
         ${selectedSong ? `
@@ -389,7 +405,7 @@
         ` : ''}
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          ${filteredSongs.slice(0, 100).map(song => {
+          ${songsToShow.map(song => {
             const isOwned = ownedTracks.includes(song.id);
             const isMixableWithSelected = selectedSong && isMixable(selectedSong, song);
             
@@ -426,7 +442,19 @@
             `;
           }).join('')}
         </div>
-        ${filteredSongs.length > 100 ? `<div class="text-center mt-6 text-cyan-300 font-bold">Showing 100 of ${filteredSongs.length} tracks</div>` : ''}
+        
+        ${displayCount < filteredSongs.length ? `
+          <div class="text-center mt-6">
+            <button onclick="loadMore()" class="px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 rounded-lg font-bold text-white transition shadow-lg">
+              Load More (${displayCount}/${filteredSongs.length})
+            </button>
+          </div>
+        ` : `
+          <div class="text-center mt-6 text-cyan-300 font-bold">
+            Showing all ${filteredSongs.length} tracks
+          </div>
+        `}
+        
         ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
       `;
     }
@@ -507,7 +535,7 @@
                 <input
                   type="text"
                   id="searchInput"
-                  placeholder="Search tracks or artists..."
+                  placeholder="🔍 Quick search (optional)..."
                   class="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                 />
                 <div class="flex flex-wrap gap-3">
@@ -547,6 +575,7 @@
       if (searchInput) {
         searchInput.addEventListener('input', (e) => {
           searchTerm = e.target.value;
+          displayCount = 50; // Reset to 50 when searching
           renderSongList();
         });
       }
@@ -567,6 +596,7 @@
         btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-gradient-to-r from-blue-500 to-cyan-500';
         btn.textContent = '🎧 Mixable Only';
       }
+      displayCount = 50; // Reset when selecting
       renderSongList();
     };
     
@@ -578,10 +608,12 @@
         btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20';
         btn.textContent = 'Show Mixable';
       }
+      displayCount = 50;
       renderSongList();
     };
     
     window.toggleOwned = toggleOwned;
+    window.loadMore = loadMore;
     
     window.markAllOwned = () => { 
       ownedTracks = songs.map(s => s.id); 
@@ -608,6 +640,7 @@
         btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`;
         btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable';
       }
+      displayCount = 50;
       renderSongList();
     };
     
@@ -618,6 +651,7 @@
         btn.className = `px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-white/10 hover:bg-white/20'}`;
         btn.textContent = showOwnedOnly ? '✓ Owned Only' : 'Show All';
       }
+      displayCount = 50;
       renderSongList();
     };
     
@@ -655,7 +689,6 @@
       }
     };
 
-    // Check if user is already logged in
     const savedUsername = localStorage.getItem('currentUser');
     if (savedUsername) {
       const profile = loadUserProfile(savedUsername);
