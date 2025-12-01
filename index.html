@@ -1004,7 +1004,7 @@
     function renderSongList() {
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       
-      const filteredSongs = songs.filter(s => {
+    let filteredSongs = songs.filter(s => {
         if (selectedSong && showMixableOnly) {
   filteredSongs.sort((a, b) => {
     const bpmDiffA = Math.abs(a.bpm - selectedSong.bpm);
