@@ -1104,10 +1104,10 @@
         ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
       `;
 
-      document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-        1109    e.stopPropagation();
-    const songId = btn.getAttribute('data-song-id-genre');
+     document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+  const songId = btn.getAttribute('data-song-id-genre');
     showGenreMenu(songId, e);
   });
 });
