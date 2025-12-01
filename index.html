@@ -55,8 +55,17 @@
       to { transform: rotate(360deg); }
     }
     
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    
     .vinyl-spin {
       animation: spin 4s linear infinite;
+    }
+    
+    .bounce-icon {
+      animation: bounce 2s ease-in-out infinite;
     }
     
     .graffiti-text {
@@ -78,31 +87,53 @@
     .context-menu {
       position: fixed;
       background: rgba(0, 0, 0, 0.95);
-      border: 1px solid rgba(0, 217, 255, 0.5);
+      border: 2px solid rgba(0, 217, 255, 0.5);
       border-radius: 8px;
       padding: 8px;
       z-index: 1000;
       backdrop-filter: blur(10px);
       box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
-      min-width: 150px;
+      min-width: 180px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .context-menu::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .context-menu::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+    }
+
+    .context-menu::-webkit-scrollbar-thumb {
+      background: rgba(0, 217, 255, 0.5);
+      border-radius: 4px;
+    }
+
+    .context-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 217, 255, 0.7);
     }
 
     .context-menu button {
       display: block;
       width: 100%;
       text-align: left;
-      padding: 8px 12px;
+      padding: 10px 12px;
       background: transparent;
       color: white;
       border: none;
       cursor: pointer;
       border-radius: 4px;
       font-size: 14px;
+      transition: background 0.2s;
     }
 
     .context-menu button:hover {
       background: rgba(0, 217, 255, 0.3);
     }
+
     .feature-card {
       transition: transform 0.3s, box-shadow 0.3s;
     }
@@ -327,6 +358,7 @@
         showLoginScreen();
       }
     }
+
     const camelotColors = {
       '1A': '#FF6B9D', '1B': '#FF8FAB', '2A': '#FFA07A', '2B': '#FFB699',
       '3A': '#FFD700', '3B': '#FFE55C', '4A': '#98D8C8', '4B': '#7FD8BE',
@@ -564,7 +596,7 @@
     let selectedGenre = 'All';
     let bandMembers = [];
     let viewingMember = null;
-    let genreOverrides = {}; // User corrections
+    let genreOverrides = {};
 
     function saveUserProfile() {
       if (!currentUser) return;
@@ -619,34 +651,34 @@
     }
 
     function addBandMember() {
-  const username = prompt('Enter bandmate username:');
-  if (!username) return;
-  
-  console.log('Searching for username:', username);
-  
-  const memberProfile = loadUserProfile(username);
-  console.log('Found profile:', memberProfile);
-  
-  if (!memberProfile) {
-    alert(`❌ User "${username}" not found!\n\nMake sure they:\n1. Created an account\n2. Spelled their username exactly right (case-sensitive)`);
-    return;
-  }
-  
-  if (bandMembers.find(m => m.username === username)) {
-    alert('This person is already in your band!');
-    return;
-  }
-  
-  bandMembers.push({
-    username: memberProfile.username,
-    djName: memberProfile.djName
-  });
-  
-  saveUserProfile();
-  alert(`✅ Added ${memberProfile.djName} (@${username}) to your band!`);
-  render();
-  setupEventListeners();
-}
+      const username = prompt('Enter bandmate username:');
+      if (!username) return;
+      
+      console.log('Searching for username:', username);
+      
+      const memberProfile = loadUserProfile(username);
+      console.log('Found profile:', memberProfile);
+      
+      if (!memberProfile) {
+        alert(`❌ User "${username}" not found!\n\nMake sure they:\n1. Created an account\n2. Spelled their username exactly right (case-sensitive)`);
+        return;
+      }
+      
+      if (bandMembers.find(m => m.username === username)) {
+        alert('This person is already in your band!');
+        return;
+      }
+      
+      bandMembers.push({
+        username: memberProfile.username,
+        djName: memberProfile.djName
+      });
+      
+      saveUserProfile();
+      alert(`✅ Added ${memberProfile.djName} (@${username}) to your band!`);
+      render();
+      setupEventListeners();
+    }
 
     function viewBandMember(username) {
       const memberProfile = loadUserProfile(username);
@@ -701,7 +733,6 @@
               }
               saveUserProfile();
               
-              // Re-apply genre overrides to songs
               songs.forEach(song => {
                 if (genreOverrides[song.id]) {
                   song.genre = genreOverrides[song.id];
@@ -725,7 +756,6 @@
       console.log('Setting genre override:', songId, newGenre);
       genreOverrides[songId] = newGenre;
       
-      // Update the song object
       const song = songs.find(s => s.id === songId);
       if (song) {
         song.genre = newGenre;
@@ -734,7 +764,6 @@
       saveUserProfile();
       renderSongList();
       
-      // Show confirmation
       const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
       if (genreTag) {
         genreTag.textContent = newGenre + ' ✓';
@@ -874,7 +903,6 @@
               const track = item?.track;
               if (!track?.tt) return null;
               
-              // Use genre override if exists, otherwise detect
               const detectedGenre = detectGenre(track.an || '', track.tt);
               const finalGenre = genreOverrides[id] || detectedGenre;
               
@@ -1053,7 +1081,7 @@
                         data-genre-tag="${song.id}"
                         data-song-id-genre="${song.id}"
                         class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${hasOverride ? 'text-green-200' : 'text-orange-200'} ${currentUser.username === 'BattleNeBody' ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-75'} transition"
-title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin only)' : 'Genre (Only admin can edit)'}"
+                        title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin only)' : 'Genre (Only admin can edit)'}"
                       >${song.genre}${hasOverride ? ' ✓' : ''}</button>
                       <span class="px-3 py-1 rounded-lg font-mono font-bold text-white shadow-lg" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
                       <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
@@ -1078,7 +1106,6 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
         ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
       `;
 
-      // Add click listeners to genre tags
       document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1088,71 +1115,64 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
       });
     }
 
-   function showGenreMenu(songId, event) {
-  // ADMIN CHECK - Only BattleNeBody can edit genres
-  if (currentUser.username !== 'BattleNeBody') {
-    alert('🔒 Only the admin (BattleNeBody) can correct genre tags!');
-    return;
-  }
-  
-  const existing = document.getElementById('genreContextMenu');
-  if (existing) existing.remove();
-  
-  // ... rest of the function stays the same
-  const menu = document.createElement('div');
-  menu.id = 'genreContextMenu';
-  menu.className = 'context-menu';
-  
-  const rect = event.target.getBoundingClientRect();
-  
-  // Smart positioning - check if menu would go off screen
-  let left = rect.left;
-  let top = rect.bottom + 5;
-  
-  // If too far right, position to the left of the button
-  if (left + 180 > window.innerWidth) {
-    left = rect.right - 180;
-  }
-  
-  // If too far down, position above the button
-  if (top + 400 > window.innerHeight) {
-    top = rect.top - 405;
-  }
-  
-  menu.style.left = left + 'px';
-  menu.style.top = top + 'px';
-  
-  const genres = ['Rock', 'Classic Rock', 'Alternative', 'Punk', 'Metal', 'Pop', 
-                  'Hip-Hop', 'R&B', 'Electronic', 'Indie', 'Country', 
-                  'Disco/Funk', 'Blues', 'Jazz', 'Reggae', 'Latin', 'Soul', 'Other'];
-  
-  menu.innerHTML = `
-    <div style="padding: 8px 12px; color: #00d9ff; font-weight: bold; font-size: 13px; border-bottom: 1px solid rgba(0,217,255,0.3); margin-bottom: 4px;">Select Genre:</div>
-  `;
-  
-  // Create buttons with direct event listeners instead of onclick
-  genres.forEach(g => {
-    const btn = document.createElement('button');
-    btn.textContent = g;
-    btn.addEventListener('click', () => {
-      setGenreOverride(songId, g);
-    });
-    menu.appendChild(btn);
-  });
-  
-  document.body.appendChild(menu);
-  
-  // Close menu when clicking elsewhere
-  setTimeout(() => {
-    const closeMenu = (e) => {
-      if (!menu.contains(e.target)) {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
+    function showGenreMenu(songId, event) {
+      if (currentUser.username !== 'BattleNeBody') {
+        alert('🔒 Only the admin (BattleNeBody) can correct genre tags!');
+        return;
       }
-    };
-    document.addEventListener('click', closeMenu);
-  }, 100);
-}
+      
+      const existing = document.getElementById('genreContextMenu');
+      if (existing) existing.remove();
+      
+      const menu = document.createElement('div');
+      menu.id = 'genreContextMenu';
+      menu.className = 'context-menu';
+      
+      const rect = event.target.getBoundingClientRect();
+      
+      let left = rect.left;
+      let top = rect.bottom + 5;
+      
+      if (left + 180 > window.innerWidth) {
+        left = rect.right - 180;
+      }
+      
+      if (top + 400 > window.innerHeight) {
+        top = rect.top - 405;
+      }
+      
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+      
+      const genres = ['Rock', 'Classic Rock', 'Alternative', 'Punk', 'Metal', 'Pop', 
+                      'Hip-Hop', 'R&B', 'Electronic', 'Indie', 'Country', 
+                      'Disco/Funk', 'Blues', 'Jazz', 'Reggae', 'Latin', 'Soul', 'Other'];
+      
+      menu.innerHTML = `
+        <div style="padding: 8px 12px; color: #00d9ff; font-weight: bold; font-size: 13px; border-bottom: 1px solid rgba(0,217,255,0.3); margin-bottom: 4px;">Select Genre:</div>
+      `;
+      
+      genres.forEach(g => {
+        const btn = document.createElement('button');
+        btn.textContent = g;
+        btn.addEventListener('click', () => {
+          setGenreOverride(songId, g);
+        });
+        menu.appendChild(btn);
+      });
+      
+      document.body.appendChild(menu);
+      
+      setTimeout(() => {
+        const closeMenu = (e) => {
+          if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+          }
+        };
+        document.addEventListener('click', closeMenu);
+      }, 100);
+    }
 
     function renderSetlist() {
       const setlistEl = document.getElementById('setlistContent');
@@ -1265,19 +1285,18 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
             <div id="browserView" style="display: ${view === 'browser' ? 'block' : 'none'}">
               <div class="mb-6 space-y-4">
                 <div class="relative">
-  <input
-    type="text"
-    id="searchInput"
-    placeholder="🔍 Quick search (optional)..."
-    class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-  />
-  <button 
-    id="clearSearchBtn"
-    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl"
-    style="display: none;"
-    title="Clear search"
-  >✕</button>
-</div>
+                  <input
+                    type="text"
+                    id="searchInput"
+                    placeholder="🔍 Quick search (optional)..."
+                    class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                  />
+                  <button 
+                    id="clearSearchBtn"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl"
+                    style="display: none;"
+                    title="Clear search"
+                  >✕</button>
                 </div>
                 <div class="flex flex-wrap gap-3">
                   <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}">
@@ -1313,9 +1332,7 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
       }
     }
 
-  }  // end of render function (line 1315)
-
-    function setupEventListeners() {  // ADD THIS LINE
+    function setupEventListeners() {
       const searchInput = document.getElementById('searchInput');
       const clearSearchBtn = document.getElementById('clearSearchBtn');
 
@@ -1333,17 +1350,6 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
           renderSongList();
         });
       }
-
-      document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
-      document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
-      document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
-      document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
-      
-      if (!viewingMember) {
-        document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned);
-        document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned);
-      }
-    }  // MAKE SURE THIS CLOSES THE FUNCTION (should be at line 1343)
 
       document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
       document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
@@ -1386,30 +1392,30 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
     window.backToMyProfile = backToMyProfile;
     window.selectGenre = (genre) => { selectedGenre = genre; renderSongList(); };
     
-   window.markAllOwned = () => { 
-  if (viewingMember) return;
-  if (!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\n\nThis will override your current selection!`)) {
-    return;
-  }
-  ownedTracks = songs.map(s => s.id); 
-  saveUserProfile(); 
-  renderSongList();
-  updateOwnedCount();
-  alert(`✅ Marked all ${songs.length} songs as owned!`);
-};
+    window.markAllOwned = () => { 
+      if (viewingMember) return;
+      if (!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\n\nThis will override your current selection!`)) {
+        return;
+      }
+      ownedTracks = songs.map(s => s.id); 
+      saveUserProfile(); 
+      renderSongList();
+      updateOwnedCount();
+      alert(`✅ Marked all ${songs.length} songs as owned!`);
+    };
 
-window.clearAllOwned = () => { 
-  if (viewingMember) return;
-  if (!confirm(`⚠️ CLEAR ALL owned songs?\n\nYou currently own ${ownedTracks.length} songs.\nThis CANNOT be undone!`)) {
-    return;
-  }
-  const count = ownedTracks.length;
-  ownedTracks = []; 
-  saveUserProfile(); 
-  renderSongList();
-  updateOwnedCount();
-  alert(`🗑️ Cleared ${count} owned songs.`);
-};
+    window.clearAllOwned = () => { 
+      if (viewingMember) return;
+      if (!confirm(`⚠️ CLEAR ALL owned songs?\n\nYou currently own ${ownedTracks.length} songs.\nThis CANNOT be undone!`)) {
+        return;
+      }
+      const count = ownedTracks.length;
+      ownedTracks = []; 
+      saveUserProfile(); 
+      renderSongList();
+      updateOwnedCount();
+      alert(`🗑️ Cleared ${count} owned songs.`);
+    };
     
     window.toggleMixableFilter = () => {
       if (!selectedSong) {
@@ -1469,7 +1475,6 @@ window.clearAllOwned = () => {
       }
     };
 
-    // Initialize - Show landing page first time, then login
     if (!localStorage.getItem('hasSeenLanding')) {
       showLandingPage();
     } else {
