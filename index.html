@@ -1084,9 +1084,16 @@
     }
 
    function showGenreMenu(songId, event) {
+  // ADMIN CHECK - Only BattleNeBody can edit genres
+  if (currentUser.username !== 'BattleNeBody') {
+    alert('🔒 Only the admin (BattleNeBody) can correct genre tags!');
+    return;
+  }
+  
   const existing = document.getElementById('genreContextMenu');
   if (existing) existing.remove();
   
+  // ... rest of the function stays the same
   const menu = document.createElement('div');
   menu.id = 'genreContextMenu';
   menu.className = 'context-menu';
