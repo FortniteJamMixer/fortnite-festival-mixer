@@ -1313,23 +1313,37 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
       }
     }
 
-    const searchInput = document.getElementById('searchInput');
-const clearSearchBtn = document.getElementById('clearSearchBtn');
+  }  // end of render function (line 1315)
 
-if (searchInput && clearSearchBtn) {
-  searchInput.addEventListener('input', (e) => {
-    searchTerm = e.target.value;
-    clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
-    renderSongList();
-  });
-  
-  clearSearchBtn.addEventListener('click', () => {
-    searchInput.value = '';
-    searchTerm = '';
-    clearSearchBtn.style.display = 'none';
-    renderSongList();
-  });
-}
+    function setupEventListeners() {  // ADD THIS LINE
+      const searchInput = document.getElementById('searchInput');
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+      if (searchInput && clearSearchBtn) {
+        searchInput.addEventListener('input', (e) => {
+          searchTerm = e.target.value;
+          clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
+          renderSongList();
+        });
+        
+        clearSearchBtn.addEventListener('click', () => {
+          searchInput.value = '';
+          searchTerm = '';
+          clearSearchBtn.style.display = 'none';
+          renderSongList();
+        });
+      }
+
+      document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
+      document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
+      document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
+      document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
+      
+      if (!viewingMember) {
+        document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned);
+        document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned);
+      }
+    }  // MAKE SURE THIS CLOSES THE FUNCTION (should be at line 1343)
 
       document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
       document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
