@@ -1264,11 +1264,20 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
           <div class="max-w-7xl mx-auto px-6 py-6 pb-20">
             <div id="browserView" style="display: ${view === 'browser' ? 'block' : 'none'}">
               <div class="mb-6 space-y-4">
-                <input
-                  type="text"
-                  id="searchInput"
-                  placeholder="🔍 Quick search (optional)..."
-                  class="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                <div class="relative">
+  <input
+    type="text"
+    id="searchInput"
+    placeholder="🔍 Quick search (optional)..."
+    class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+  />
+  <button 
+    id="clearSearchBtn"
+    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl"
+    style="display: none;"
+    title="Clear search"
+  >✕</button>
+</div>
                 />
                 <div class="flex flex-wrap gap-3">
                   <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}">
