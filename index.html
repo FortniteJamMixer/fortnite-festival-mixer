@@ -619,29 +619,34 @@
     }
 
     function addBandMember() {
-      const username = prompt('Enter bandmate username:');
-      if (!username) return;
-      
-      const memberProfile = loadUserProfile(username);
-      if (!memberProfile) {
-        alert('User not found! They need to create an account first.');
-        return;
-      }
-      
-      if (bandMembers.find(m => m.username === username)) {
-        alert('This person is already in your band!');
-        return;
-      }
-      
-      bandMembers.push({
-        username: memberProfile.username,
-        djName: memberProfile.djName
-      });
-      
-      saveUserProfile();
-      render();
-      setupEventListeners();
-    }
+  const username = prompt('Enter bandmate username:');
+  if (!username) return;
+  
+  console.log('Searching for username:', username);
+  
+  const memberProfile = loadUserProfile(username);
+  console.log('Found profile:', memberProfile);
+  
+  if (!memberProfile) {
+    alert(`❌ User "${username}" not found!\n\nMake sure they:\n1. Created an account\n2. Spelled their username exactly right (case-sensitive)`);
+    return;
+  }
+  
+  if (bandMembers.find(m => m.username === username)) {
+    alert('This person is already in your band!');
+    return;
+  }
+  
+  bandMembers.push({
+    username: memberProfile.username,
+    djName: memberProfile.djName
+  });
+  
+  saveUserProfile();
+  alert(`✅ Added ${memberProfile.djName} (@${username}) to your band!`);
+  render();
+  setupEventListeners();
+}
 
     function viewBandMember(username) {
       const memberProfile = loadUserProfile(username);
@@ -1349,21 +1354,30 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
     window.backToMyProfile = backToMyProfile;
     window.selectGenre = (genre) => { selectedGenre = genre; renderSongList(); };
     
-    window.markAllOwned = () => { 
-      if (viewingMember) return;
-      ownedTracks = songs.map(s => s.id); 
-      saveUserProfile(); 
-      renderSongList();
-      updateOwnedCount();
-    };
-    
-    window.clearAllOwned = () => { 
-      if (viewingMember) return;
-      ownedTracks = []; 
-      saveUserProfile(); 
-      renderSongList();
-      updateOwnedCount();
-    };
+   window.markAllOwned = () => { 
+  if (viewingMember) return;
+  if (!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\n\nThis will override your current selection!`)) {
+    return;
+  }
+  ownedTracks = songs.map(s => s.id); 
+  saveUserProfile(); 
+  renderSongList();
+  updateOwnedCount();
+  alert(`✅ Marked all ${songs.length} songs as owned!`);
+};
+
+window.clearAllOwned = () => { 
+  if (viewingMember) return;
+  if (!confirm(`⚠️ CLEAR ALL owned songs?\n\nYou currently own ${ownedTracks.length} songs.\nThis CANNOT be undone!`)) {
+    return;
+  }
+  const count = ownedTracks.length;
+  ownedTracks = []; 
+  saveUserProfile(); 
+  renderSongList();
+  updateOwnedCount();
+  alert(`🗑️ Cleared ${count} owned songs.`);
+};
     
     window.toggleMixableFilter = () => {
       if (!selectedSong) {
