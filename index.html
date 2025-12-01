@@ -1024,104 +1024,128 @@ function renderSongList() {
     });
   }
 
+function renderSongList() {
+  const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
+  
+  let filteredSongs = songs.filter(s => {
+    const matchesSearch = searchTerm === '' || 
+                         s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         s.artist.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
+    const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+    const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
+    
+    return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
+  });
+
+  // ⭐ NEW IN V1.1: Sort by BPM proximity when showing mixable tracks
+  if (selectedSong && showMixableOnly) {
+    filteredSongs.sort((a, b) => {
+      const bpmDiffA = Math.abs(a.bpm - selectedSong.bpm);
+      const bpmDiffB = Math.abs(b.bpm - selectedSong.bpm);
+      return bpmDiffA - bpmDiffB;
+    });
+  }
+
   const songListEl = document.getElementById('songList');
   if (!songListEl) return;
 
-      const compatibleKeys = selectedSong ? getCompatibleKeys(selectedSong.camelot) : [];
-      const genres = getGenres();
+  const compatibleKeys = selectedSong ? getCompatibleKeys(selectedSong.camelot) : [];
+  const genres = getGenres();
 
-      songListEl.innerHTML = `
-        ${selectedSong ? `
-          <div class="mb-6 bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-blue-500/20 border border-pink-500/30 rounded-xl p-4 backdrop-blur-sm">
-            <div class="flex items-center gap-4 flex-wrap">
-              ${selectedSong.albumArt ? `<img src="${selectedSong.albumArt}" class="w-16 h-16 rounded-lg vinyl-spin"/>` : '<div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full vinyl-spin"></div>'}
-              <div class="flex-1">
-                <div class="text-sm text-pink-300 font-bold">NOW MIXING FROM:</div>
-                <div class="font-bold text-xl text-white graffiti-text">${selectedSong.title}</div>
-                <div class="text-purple-200 text-sm">${selectedSong.artist}</div>
+  songListEl.innerHTML = `
+    ${selectedSong ? `
+      <div class="mb-6 bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-blue-500/20 border border-pink-500/30 rounded-xl p-4 backdrop-blur-sm">
+        <div class="flex items-center gap-4 flex-wrap">
+          ${selectedSong.albumArt ? `<img src="${selectedSong.albumArt}" class="w-16 h-16 rounded-lg vinyl-spin"/>` : '<div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full vinyl-spin"></div>'}
+          <div class="flex-1">
+            <div class="text-sm text-pink-300 font-bold">NOW MIXING FROM:</div>
+            <div class="font-bold text-xl text-white graffiti-text">${selectedSong.title}</div>
+            <div class="text-purple-200 text-sm">${selectedSong.artist}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-3xl font-mono font-bold" style="color: ${camelotColors[selectedSong.camelot] || '#666'}">${selectedSong.camelot}</div>
+            <div class="text-xs text-purple-200">${selectedSong.key} ${selectedSong.mode}</div>
+            <div class="text-xs text-cyan-300 mt-1 font-bold">MIX WITH: ${compatibleKeys.join(', ')}</div>
+          </div>
+          <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded text-2xl">✕</button>
+        </div>
+      </div>
+    ` : ''}
+
+    <div class="mb-6 flex flex-wrap gap-2">
+      ${genres.map(genre => `
+        <button 
+          onclick="selectGenre('${genre}')" 
+          class="px-4 py-2 rounded-lg font-medium transition ${selectedGenre === genre ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-white/10 hover:bg-white/20'}"
+        >
+          ${genre === 'All' ? '🎵 All' : genre}
+        </button>
+      `).join('')}
+    </div>
+
+    <div class="mb-4 text-center">
+      <div class="text-cyan-300 font-bold">Showing ${filteredSongs.length} tracks ${selectedGenre !== 'All' ? `(${selectedGenre})` : ''}</div>
+      <div class="text-xs text-purple-300 mt-1">💡 Right-click genre tags to correct them</div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      ${filteredSongs.map(song => {
+        const isOwned = displayTracks.includes(song.id);
+        const isMixableWithSelected = selectedSong && isMixable(selectedSong, song);
+        const hasOverride = genreOverrides[song.id];
+        
+        return `
+          <div class="song-card bg-black/40 backdrop-blur-sm border ${
+            selectedSong?.id === song.id ? 'border-pink-400 shadow-lg shadow-pink-500/50' : 
+            isMixableWithSelected ? 'border-green-400 shadow-lg shadow-green-500/30' : 
+            'border-gray-700'
+          } rounded-xl p-4 relative hover:border-cyan-400 transition-all">
+            <div class="star-icon absolute top-2 right-2 text-xl" style="display: ${isOwned ? 'block' : 'none'}">⭐</div>
+            ${isMixableWithSelected ? '<div class="absolute top-2 left-2 text-xl">🎧</div>' : ''}
+            <div class="flex gap-4 mb-3">
+              ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
+              <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
+                <div class="font-bold text-lg mb-1 text-white">${song.title}</div>
+                <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
+                <div class="flex items-center gap-2 text-sm flex-wrap">
+                  <button 
+                    data-genre-tag="${song.id}"
+                    data-song-id-genre="${song.id}"
+                    class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${hasOverride ? 'text-green-200' : 'text-orange-200'} ${currentUser.username === 'BattleNeBody' ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-75'} transition"
+                    title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin only)' : 'Genre (Only admin can edit)'}"
+                  >${song.genre}${hasOverride ? ' ✓' : ''}</button>
+                  <span class="px-3 py-1 rounded-lg font-mono font-bold text-white shadow-lg" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
+                  <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
+                  <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
+                  <span class="text-gray-400">${formatDuration(song.duration)}</span>
+                </div>
               </div>
-              <div class="text-right">
-                <div class="text-3xl font-mono font-bold" style="color: ${camelotColors[selectedSong.camelot] || '#666'}">${selectedSong.camelot}</div>
-                <div class="text-xs text-purple-200">${selectedSong.key} ${selectedSong.mode}</div>
-                <div class="text-xs text-cyan-300 mt-1 font-bold">MIX WITH: ${compatibleKeys.join(', ')}</div>
-              </div>
-              <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded text-2xl">✕</button>
+            </div>
+            <div class="flex gap-2">
+              <button data-song-id="${song.id}" onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
+                ${isOwned ? '✓ Owned' : 'Mark Owned'}
+              </button>
+              <button onclick="addToSetlist('${song.id}')" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-sm font-medium transition">
+                + Set
+              </button>
             </div>
           </div>
-        ` : ''}
+        `;
+      }).join('')}
+    </div>
+    
+    ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
+  `;
 
-        <div class="mb-6 flex flex-wrap gap-2">
-          ${genres.map(genre => `
-            <button 
-              onclick="selectGenre('${genre}')" 
-              class="px-4 py-2 rounded-lg font-medium transition ${selectedGenre === genre ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-white/10 hover:bg-white/20'}"
-            >
-              ${genre === 'All' ? '🎵 All' : genre}
-            </button>
-          `).join('')}
-        </div>
-
-        <div class="mb-4 text-center">
-          <div class="text-cyan-300 font-bold">Showing ${filteredSongs.length} tracks ${selectedGenre !== 'All' ? `(${selectedGenre})` : ''}</div>
-          <div class="text-xs text-purple-300 mt-1">💡 Right-click genre tags to correct them</div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          ${filteredSongs.map(song => {
-            const isOwned = displayTracks.includes(song.id);
-            const isMixableWithSelected = selectedSong && isMixable(selectedSong, song);
-            const hasOverride = genreOverrides[song.id];
-            
-            return `
-              <div class="song-card bg-black/40 backdrop-blur-sm border ${
-                selectedSong?.id === song.id ? 'border-pink-400 shadow-lg shadow-pink-500/50' : 
-                isMixableWithSelected ? 'border-green-400 shadow-lg shadow-green-500/30' : 
-                'border-gray-700'
-              } rounded-xl p-4 relative hover:border-cyan-400 transition-all">
-                <div class="star-icon absolute top-2 right-2 text-xl" style="display: ${isOwned ? 'block' : 'none'}">⭐</div>
-                ${isMixableWithSelected ? '<div class="absolute top-2 left-2 text-xl">🎧</div>' : ''}
-                <div class="flex gap-4 mb-3">
-                  ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
-                  <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
-                    <div class="font-bold text-lg mb-1 text-white">${song.title}</div>
-                    <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
-                    <div class="flex items-center gap-2 text-sm flex-wrap">
-                      <button 
-                        data-genre-tag="${song.id}"
-                        data-song-id-genre="${song.id}"
-                        class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${hasOverride ? 'text-green-200' : 'text-orange-200'} ${currentUser.username === 'BattleNeBody' ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-75'} transition"
-                        title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin only)' : 'Genre (Only admin can edit)'}"
-                      >${song.genre}${hasOverride ? ' ✓' : ''}</button>
-                      <span class="px-3 py-1 rounded-lg font-mono font-bold text-white shadow-lg" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
-                      <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
-                      <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
-                      <span class="text-gray-400">${formatDuration(song.duration)}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="flex gap-2">
-                  <button data-song-id="${song.id}" onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
-                    ${isOwned ? '✓ Owned' : 'Mark Owned'}
-                  </button>
-                  <button onclick="addToSetlist('${song.id}')" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-sm font-medium transition">
-                    + Set
-                  </button>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-        
-        ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
-      `;
-
-     document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
+  document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
     btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-  const songId = btn.getAttribute('data-song-id-genre');
-    showGenreMenu(songId, e);
+      e.stopPropagation();
+      const songId = btn.getAttribute('data-song-id-genre');
+      showGenreMenu(songId, e);
+    });
   });
-});
+}
 
     function showGenreMenu(songId, event) {
       if (currentUser.username !== 'BattleNeBody') {
