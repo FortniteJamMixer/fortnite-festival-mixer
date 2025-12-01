@@ -1047,8 +1047,8 @@
                       <button 
                         data-genre-tag="${song.id}"
                         data-song-id-genre="${song.id}"
-                        class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${hasOverride ? 'text-green-200' : 'text-orange-200'} hover:opacity-80 transition"
-                        title="Click to change genre"
+                        class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${hasOverride ? 'text-green-200' : 'text-orange-200'} ${currentUser.username === 'BattleNeBody' ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-75'} transition"
+title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin only)' : 'Genre (Only admin can edit)'}"
                       >${song.genre}${hasOverride ? ' ✓' : ''}</button>
                       <span class="px-3 py-1 rounded-lg font-mono font-bold text-white shadow-lg" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
                       <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
