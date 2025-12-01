@@ -1005,15 +1005,13 @@
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       
       const filteredSongs = songs.filter(s => {
-        const matchesSearch = searchTerm === '' || 
-                             s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             s.artist.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
-        const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
-        const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
-        
-        return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
-      });
+        if (selectedSong && showMixableOnly) {
+  filteredSongs.sort((a, b) => {
+    const bpmDiffA = Math.abs(a.bpm - selectedSong.bpm);
+    const bpmDiffB = Math.abs(b.bpm - selectedSong.bpm);
+    return bpmDiffA - bpmDiffB;
+  });
+}
 
       const songListEl = document.getElementById('songList');
       if (!songListEl) return;
