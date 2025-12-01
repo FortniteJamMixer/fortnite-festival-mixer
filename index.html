@@ -1313,14 +1313,23 @@ title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin
       }
     }
 
-    function setupEventListeners() {
-      const searchInput = document.getElementById('searchInput');
-      if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-          searchTerm = e.target.value;
-          renderSongList();
-        });
-      }
+    const searchInput = document.getElementById('searchInput');
+const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+if (searchInput && clearSearchBtn) {
+  searchInput.addEventListener('input', (e) => {
+    searchTerm = e.target.value;
+    clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
+    renderSongList();
+  });
+  
+  clearSearchBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    searchTerm = '';
+    clearSearchBtn.style.display = 'none';
+    renderSongList();
+  });
+}
 
       document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
       document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
