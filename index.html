@@ -1001,20 +1001,31 @@
       return ['All', ...Array.from(genres).sort()];
     }
 
-    function renderSongList() {
-      const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
-      
-    let filteredSongs = songs.filter(s => {
-        if (selectedSong && showMixableOnly) {
-  filteredSongs.sort((a, b) => {
-    const bpmDiffA = Math.abs(a.bpm - selectedSong.bpm);
-    const bpmDiffB = Math.abs(b.bpm - selectedSong.bpm);
-    return bpmDiffA - bpmDiffB;
+function renderSongList() {
+  const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
+  
+  let filteredSongs = songs.filter(s => {
+    const matchesSearch = searchTerm === '' || 
+                         s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         s.artist.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
+    const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+    const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
+    
+    return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
   });
-}
 
-      const songListEl = document.getElementById('songList');
-      if (!songListEl) return;
+  // ⭐ NEW: Sort by BPM proximity when showing mixable tracks
+  if (selectedSong && showMixableOnly) {
+    filteredSongs.sort((a, b) => {
+      const bpmDiffA = Math.abs(a.bpm - selectedSong.bpm);
+      const bpmDiffB = Math.abs(b.bpm - selectedSong.bpm);
+      return bpmDiffA - bpmDiffB;
+    });
+  }
+
+  const songListEl = document.getElementById('songList');
+  if (!songListEl) return;
 
       const compatibleKeys = selectedSong ? getCompatibleKeys(selectedSong.camelot) : [];
       const genres = getGenres();
