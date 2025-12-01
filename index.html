@@ -1106,12 +1106,11 @@
 
       document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
         btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const songId = btn.getAttribute('data-song-id-genre');
-          showGenreMenu(songId, e);
-        });
-      });
-    })
+        1109    e.stopPropagation();
+    const songId = btn.getAttribute('data-song-id-genre');
+    showGenreMenu(songId, e);
+  });
+});
 
     function showGenreMenu(songId, event) {
       if (currentUser.username !== 'BattleNeBody') {
