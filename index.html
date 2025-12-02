@@ -1015,6 +1015,16 @@
         return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
       });
 
+// 🔥 Auto-sort mixable tracks by BPM proximity
+if (selectedSong) {
+  filteredSongs.sort((a, b) => {
+    const diffA = Math.abs(a.bpm - selectedSong.bpm);
+    const diffB = Math.abs(b.bpm - selectedSong.bpm);
+    return diffA - diffB;
+  });
+}
+
+
       const songListEl = document.getElementById('songList');
       if (!songListEl) return;
 
@@ -1086,6 +1096,11 @@
                       <span class="px-3 py-1 rounded-lg font-mono font-bold text-white shadow-lg" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
                       <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
                       <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
+    ${selectedSong && isMixable(selectedSong, song) ? `
+      <span class="px-2 py-1 bg-purple-600/40 border border-purple-400/40 rounded text-xs text-purple-200 font-bold">
+        ±${Math.abs(song.bpm - selectedSong.bpm)} BPM
+      </span>
+    ` : ''}
                       <span class="text-gray-400">${formatDuration(song.duration)}</span>
                     </div>
                   </div>
