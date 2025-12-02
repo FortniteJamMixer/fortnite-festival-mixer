@@ -1015,6 +1015,27 @@
         return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
       });
 
+      // V1.1: Sort by BPM proximity when showing mixable tracks
+  if (selectedSong && showMixableOnly) {
+    filteredSongs.sort((a, b) => {
+      const bpmDiffA = Math.abs(a.bpm - selectedSong.bpm);
+      const bpmDiffB = Math.abs(b.bpm - selectedSong.bpm);
+      return bpmDiffA - bpmDiffB;
+    });
+  }
+```
+
+So it should look like:
+```
+1016    });
+1017
+1018    // V1.1: Sort by BPM proximity when showing mixable tracks
+1019    if (selectedSong && showMixableOnly) {
+        ... etc
+1026    }
+1027
+1028    const songListEl = document.getElementById('songList');
+
       const songListEl = document.getElementById('songList');
       if (!songListEl) return;
 
