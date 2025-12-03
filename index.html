@@ -1,1500 +1,655 @@
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fortnite Festival Pro Mixer</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fortnite Festival Pro Mixer — Mashup Mode</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
     .dj-background {
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-      position: relative;
-      overflow-y: auto;
+      background: linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
+      min-height: 100vh; color: #e6f7ff;
     }
-    
-    .dj-background::before {
-      content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-image: 
-        url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800"><text x="50" y="100" font-family="Impact" font-size="120" fill="%23ff6b9d" opacity="0.05" transform="rotate(-15 100 100)">FESTIVAL</text><text x="600" y="400" font-family="Impact" font-size="150" fill="%2300d9ff" opacity="0.05" transform="rotate(10 700 400)">DJ</text><text x="200" y="600" font-family="Impact" font-size="100" fill="%23ffd700" opacity="0.05" transform="rotate(-20 300 600)">MIX</text><circle cx="900" cy="150" r="80" fill="none" stroke="%23ff6b9d" stroke-width="3" opacity="0.1"/><circle cx="300" cy="300" r="60" fill="none" stroke="%2300d9ff" stroke-width="3" opacity="0.1"/><line x1="100" y1="700" x2="1100" y2="700" stroke="%23ffd700" stroke-width="2" opacity="0.1"/></svg>');
-      background-size: cover;
-      pointer-events: none;
-      z-index: 0;
-    }
-    
-    .dj-background::after {
-      content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: 
-        radial-gradient(circle at 20% 30%, rgba(255, 107, 157, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 80% 70%, rgba(0, 217, 255, 0.1) 0%, transparent 50%),
-        radial-gradient(circle at 50% 50%, rgba(255, 215, 0, 0.05) 0%, transparent 50%);
-      pointer-events: none;
-      z-index: 0;
-      animation: pulse 8s ease-in-out infinite;
-    }
-    
-    @keyframes pulse {
-      0%, 100% { opacity: 0.5; }
-      50% { opacity: 0.8; }
-    }
-    
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-    
-    @keyframes bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-10px); }
-    }
-    
-    .vinyl-spin {
-      animation: spin 4s linear infinite;
-    }
-    
-    .bounce-icon {
-      animation: bounce 2s ease-in-out infinite;
-    }
-    
-    .graffiti-text {
-      text-shadow: 
-        3px 3px 0px #ff6b9d,
-        6px 6px 0px rgba(255, 107, 157, 0.3);
-      letter-spacing: 2px;
-    }
-    
-    .content-wrapper {
-      position: relative;
-      z-index: 1;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    .context-menu {
-      position: fixed;
-      background: rgba(0, 0, 0, 0.95);
-      border: 2px solid rgba(0, 217, 255, 0.5);
-      border-radius: 8px;
-      padding: 8px;
-      z-index: 1000;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 4px 20px rgba(0, 217, 255, 0.3);
-      min-width: 180px;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-
-    .context-menu::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    .context-menu::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 4px;
-    }
-
-    .context-menu::-webkit-scrollbar-thumb {
-      background: rgba(0, 217, 255, 0.5);
-      border-radius: 4px;
-    }
-
-    .context-menu::-webkit-scrollbar-thumb:hover {
-      background: rgba(0, 217, 255, 0.7);
-    }
-
-    .context-menu button {
-      display: block;
-      width: 100%;
-      text-align: left;
-      padding: 10px 12px;
-      background: transparent;
-      color: white;
-      border: none;
-      cursor: pointer;
-      border-radius: 4px;
-      font-size: 14px;
-      transition: background 0.2s;
-    }
-
-    .context-menu button:hover {
-      background: rgba(0, 217, 255, 0.3);
-    }
-
-    .feature-card {
-      transition: transform 0.3s, box-shadow 0.3s;
-    }
-
-    .feature-card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 10px 30px rgba(0, 217, 255, 0.3);
-    }
-
-    .camelot-wheel {
-      width: 280px;
-      height: 280px;
-      border-radius: 50%;
-      background: conic-gradient(
-        from 0deg,
-        #FF6B9D 0deg 30deg,
-        #FFA07A 30deg 60deg,
-        #FFD700 60deg 90deg,
-        #98D8C8 90deg 120deg,
-        #6BCB77 120deg 150deg,
-        #4D96FF 150deg 180deg,
-        #9D4EDD 180deg 210deg,
-        #E84A5F 210deg 240deg,
-        #00D9FF 240deg 270deg,
-        #FFA400 270deg 300deg,
-        #FE6D73 300deg 330deg,
-        #A8E6CF 330deg 360deg
-      );
-      animation: spin 20s linear infinite;
-      box-shadow: 0 0 40px rgba(0, 217, 255, 0.4);
-    }
+    .vinyl-spin { animation: spin 4s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+    .glow-perfect { box-shadow: 0 0 14px rgba(57, 255, 20, 0.9), 0 0 40px rgba(57,255,20,0.15); }
+    .glow-good { box-shadow: 0 0 10px rgba(255, 230, 65, 0.9), 0 0 30px rgba(255,230,65,0.12); }
+    .glow-bad { box-shadow: 0 0 10px rgba(255, 63, 63, 0.9), 0 0 30px rgba(255,63,63,0.12); }
+    .score-badge { font-weight:800; letter-spacing:0.6px; }
+    .drag-hint { opacity:.9; font-size:12px }
+    .energy-bar { height:14px; border-radius:6px; background: rgba(255,255,255,0.08); overflow:hidden }
+    .energy-fill { height:100%; border-radius:6px; }
+    .sandbox-drop { min-height:120px; border:2px dashed rgba(255,255,255,0.06); border-radius:12px; padding:12px; }
+    .small-muted { font-size:12px; color: #cbd5e1 }
+    .panel { background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.04); border-radius:12px }
+    .camelot-pill { padding:4px 8px; border-radius:8px; font-weight:700; }
+    .transition-tip { font-size:13px; color:#e6f7ff; }
+    /* responsive */
+    @media (max-width:900px){ .two-col { flex-direction:column } .camelot-wheel { margin:0 auto } }
   </style>
 </head>
 <body class="dj-background">
-  <div id="app" class="content-wrapper">
-    <div class="min-h-screen flex items-center justify-center">
-      <div class="text-center">
-        <div class="text-6xl mb-4 animate-pulse">🎵</div>
-        <div class="text-2xl font-bold text-white">Loading Festival Mixer...</div>
+  <div id="app" class="max-w-7xl mx-auto p-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-3">
+        <div class="w-14 h-14 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎧</div>
+        <div>
+          <div class="text-xl font-bold">FESTIVAL PRO MIXER</div>
+          <div id="ownedCount" class="text-xs small-muted">Loading...</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <label class="small-muted mr-2">Mash-up Mode</label>
+        <button id="mashupToggle" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20">Off</button>
+        <button id="exportBtn" class="px-3 py-2 rounded-lg bg-blue-600/60 hover:bg-blue-600/80">Export</button>
+      </div>
+    </div>
+
+    <!-- Main layout -->
+    <div class="flex gap-6 two-col">
+      <!-- Left: Browser & Sandbox -->
+      <div style="flex:1; min-width:320px">
+        <div class="mb-4 panel p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <input id="searchInput" placeholder="🔍 search tracks / artist..." class="w-full px-3 py-2 rounded-lg bg-white/5 text-white" />
+            </div>
+          </div>
+
+          <div id="songList" class="grid grid-cols-1 gap-3"></div>
+        </div>
+
+        <div class="panel p-4 mt-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-bold">Mash-up Sandbox</div>
+            <div class="small-muted">Drag 2–4 tracks here to plan</div>
+          </div>
+          <div id="sandbox" class="sandbox-drop mt-2"></div>
+          <div id="sandboxInfo" class="mt-3 small-muted"></div>
+          <div class="mt-3 flex gap-2">
+            <button id="clearSandbox" class="px-3 py-2 rounded bg-red-600/40">Clear</button>
+            <button id="autoOrder" class="px-3 py-2 rounded bg-green-600/40">Suggest Order</button>
+            <button id="generateName" class="px-3 py-2 rounded bg-purple-600/40">Generate Name</button>
+          </div>
+          <div id="generatedNames" class="mt-3"></div>
+        </div>
+      </div>
+
+      <!-- Right: Selected / Two-track / Recipe -->
+      <div style="width:480px; min-width:320px" class="space-y-4">
+        <div class="panel p-4">
+          <div class="flex items-start gap-3">
+            <div id="selectedArt" class="w-20 h-20 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">🎵</div>
+            <div style="flex:1">
+              <div id="selectedTitle" class="font-bold text-lg">Select a track</div>
+              <div id="selectedArtist" class="small-muted">Click a song to start</div>
+              <div class="mt-2 flex gap-2 items-center">
+                <div id="selectedCamelot" class="camelot-pill" style="background:#444">--</div>
+                <div id="selectedBpm" class="small-muted">-- BPM</div>
+                <div id="selectedGenre" class="small-muted">--</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div id="compatTopBadge" class="score-badge text-2xl">—</div>
+              <div class="small-muted">Compatible</div>
+            </div>
+          </div>
+
+          <div id="twoTrackPreview" class="mt-4 hidden">
+            <hr class="my-3 border-white/6" />
+            <div class="flex gap-3 items-center">
+              <div style="flex:1">
+                <div class="text-xs small-muted">Track A</div>
+                <div id="previewA" class="font-semibold">—</div>
+                <div id="previewAInfo" class="small-muted text-xs">—</div>
+              </div>
+              <div class="text-center small-muted">→</div>
+              <div style="flex:1">
+                <div class="text-xs small-muted">Track B</div>
+                <div id="previewB" class="font-semibold">—</div>
+                <div id="previewBInfo" class="small-muted text-xs">—</div>
+              </div>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-2">
+              <div class="panel p-3">
+                <div class="small-muted text-xs">BPM diff</div>
+                <div id="previewBpmDiff" class="font-bold">—</div>
+                <div id="bpmShiftHint" class="small-muted text-xs">—</div>
+              </div>
+              <div class="panel p-3">
+                <div class="small-muted text-xs">Energy</div>
+                <div id="previewEnergy" class="font-bold">—</div>
+                <div class="small-muted text-xs mt-1">1–5</div>
+              </div>
+            </div>
+
+            <div id="transitionSuggestions" class="mt-3">
+              <div class="font-bold mb-1">Transition Tips</div>
+              <ul id="transitionList" class="list-disc ml-5 small-muted"></ul>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="panel p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="font-bold">Mash-up Recipe</div>
+            <div class="small-muted">Auto-suggested</div>
+          </div>
+
+          <div id="recipeArea" class="text-sm small-muted">
+            Select two tracks in the list (click first, then click "Preview" on another) to get a generated recipe.
+          </div>
+
+          <div id="recipeOutput" class="mt-3"></div>
+        </div>
+
+        <div class="panel p-4">
+          <div class="font-bold mb-2">Energy Level Graph (Sandbox / Set)</div>
+          <div id="energyGraph" class="space-y-2"></div>
+        </div>
+
       </div>
     </div>
   </div>
-  
+
   <script>
-    // LANDING PAGE SYSTEM
-    function showLandingPage() {
-      document.getElementById('app').innerHTML = `
-        <div class="min-h-screen py-12 px-6">
-          <div class="max-w-6xl mx-auto">
-            
-            <div class="text-center mb-16">
-              <div class="flex justify-center mb-6">
-                <div class="w-32 h-32 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-6xl vinyl-spin">
-                  🎧
-                </div>
-              </div>
-              <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">FORTNITE FESTIVAL PRO MIXER</h1>
-              <p class="text-xl md:text-2xl text-cyan-300 mb-6">Create Epic Mashups & DJ Like a Pro on the Jam Stage!</p>
-              <p class="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto mb-8">
-                Anyone can DJ in Fortnite Festival! Use the Jam Stage to mix tracks live in front of thousands. 
-                We'll show you exactly which songs blend perfectly together using professional DJ techniques.
-              </p>
-              <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 hover:from-pink-600 hover:via-purple-600 hover:to-cyan-600 rounded-xl font-bold text-white text-xl md:text-2xl transition shadow-lg shadow-purple-500/50 bounce-icon">
-                🎵 START MIXING NOW
-              </button>
-            </div>
+/* --------------
+  Full JS: loads songs (remote/fallback), calculates compatibility score,
+  shows BPM suggestions, two-track preview, transition tips, recipe generator,
+  sandbox drag/drop, AI name generator, camelot glow, mash-up mode filter,
+  energy graph.
+  -------------- */
 
-            <div class="bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12 shadow-2xl shadow-pink-500/20">
-              <div class="flex flex-col lg:flex-row items-center gap-8">
-                <div class="flex-shrink-0">
-                  <div class="camelot-wheel mx-auto"></div>
-                  <p class="text-center text-xs text-cyan-300 mt-4">The Camelot Wheel in Action</p>
-                </div>
-                <div class="flex-1">
-                  <h2 class="text-2xl md:text-3xl font-bold text-white mb-4 graffiti-text">🎛️ The Secret: The Camelot Wheel</h2>
-                  <p class="text-gray-300 mb-4 text-base md:text-lg">
-                    Professional DJs use the <strong class="text-pink-400">Camelot Wheel</strong> to create seamless mashups. 
-                    It's a color-coded system that shows which songs are harmonically compatible.
-                  </p>
-                  <div class="space-y-3 text-gray-300 text-sm md:text-base">
-                    <div class="flex items-start gap-3">
-                      <span class="text-2xl flex-shrink-0">✅</span>
-                      <div>
-                        <strong class="text-cyan-300">Same Number = Perfect Match!</strong><br/>
-                        <span class="text-sm">Example: 8B → 8B (both in C Major)</span>
-                      </div>
-                    </div>
-                    <div class="flex items-start gap-3">
-                      <span class="text-2xl flex-shrink-0">✅</span>
-                      <div>
-                        <strong class="text-cyan-300">A/B Switch = Energy Shift</strong><br/>
-                        <span class="text-sm">Example: 8B → 8A (major to minor, same key)</span>
-                      </div>
-                    </div>
-                    <div class="flex items-start gap-3">
-                      <span class="text-2xl flex-shrink-0">✅</span>
-                      <div>
-                        <strong class="text-cyan-300">±1 Number = Smooth Blend</strong><br/>
-                        <span class="text-sm">Example: 8B → 9B or 7B (one step up or down)</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="mt-6 p-4 bg-purple-500/20 border border-purple-500/50 rounded-lg">
-                    <p class="text-white font-bold">💡 Pro Tip:</p>
-                    <p class="text-sm text-gray-300">Click any song and we'll instantly show you ALL compatible tracks. No music theory needed!</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+const camelotColors = {
+  '1A':'#FF6B9D','1B':'#FF8FAB','2A':'#FFA07A','2B':'#FFB699','3A':'#FFD700','3B':'#FFE55C',
+  '4A':'#98D8C8','4B':'#7FD8BE','5A':'#6BCB77','5B':'#8FD89F','6A':'#4D96FF','6B':'#6FB1FF',
+  '7A':'#9D4EDD','7B':'#B877FF','8A':'#E84A5F','8B':'#FF6B81','9A':'#00D9FF','9B':'#4DFFFF',
+  '10A':'#FFA400','10B':'#FFBB5C','11A':'#FE6D73','11B':'#FF8C94','12A':'#A8E6CF','12B':'#C1F0DD'
+};
 
-            <div class="grid md:grid-cols-2 gap-6 mb-12">
-              
-              <div class="feature-card bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-xl p-6 shadow-lg">
-                <div class="text-4xl mb-3">🎚️</div>
-                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Smart Harmonic Mixing</h3>
-                <p class="text-gray-300 text-sm md:text-base">
-                  Select any song and instantly see ONLY the tracks that will mix perfectly with it. 
-                  Our tool uses the Camelot Wheel to filter out clashing keys automatically.
-                </p>
-              </div>
+const keyToCamelot = {
+  'C':'8B','Am':'8A','G':'9B','Em':'9A','D':'10B','Bm':'10A','A':'11B','F#m':'11A',
+  'E':'12B','C#m':'12A','B':'1B','G#m':'1A','F#':'2B','D#m':'2A','Db':'3B','Bbm':'3A',
+  'Ab':'4B','Fm':'4A','Eb':'5B','Cm':'5A','Bb':'6B','Gm':'6A','F':'7B','Dm':'7A'
+};
 
-              <div class="feature-card bg-black/60 backdrop-blur-xl border border-orange-500/30 rounded-xl p-6 shadow-lg">
-                <div class="text-4xl mb-3">🎸</div>
-                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Genre Filtering</h3>
-                <p class="text-gray-300 text-sm md:text-base">
-                  Browse by Rock, Pop, Hip-Hop, Electronic, and more. Create genre-specific setlists or 
-                  wild cross-genre mashups that actually sound good together!
-                </p>
-              </div>
+// SMALL genre map (keeps file shorter); you can replace with your full map
+const genreMap = {
+  'Rock': ['nirvana','foo fighters','radiohead'],
+  'Pop': ['taylor swift','dua lipa','billie eilish','justin bieber'],
+  'Electronic': ['daft punk','deadmau5','zedd','calvin harris'],
+  'Hip-Hop': ['eminem','drake','kanye'],
+  'Indie': ['vampire weekend','tame impala','arctic monkeys']
+};
 
-              <div class="feature-card bg-black/60 backdrop-blur-xl border border-green-500/30 rounded-xl p-6 shadow-lg">
-                <div class="text-4xl mb-3">⭐</div>
-                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Track Your Collection</h3>
-                <p class="text-gray-300 text-sm md:text-base">
-                  Mark which songs you own in Fortnite Festival. Never waste time planning a set 
-                  with songs you don't have access to.
-                </p>
-              </div>
+let songs = [];          // loaded songs
+let ownedTracks = [];    // local ownership
+let selectedSong = null; // the main chosen A-track
+let previewSong = null;  // track B for two-track preview
+let sandboxTracks = [];  // drag-drop sandbox
+let mashupMode = false;
 
-              <div class="feature-card bg-black/60 backdrop-blur-xl border border-purple-500/30 rounded-xl p-6 shadow-lg">
-                <div class="text-4xl mb-3">🎤</div>
-                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Band Collaboration</h3>
-                <p class="text-gray-300 text-sm md:text-base">
-                  Add your bandmates and see their collections. Plan your Jam Stage sets together 
-                  and combine everyone's song libraries.
-                </p>
-              </div>
-
-              <div class="feature-card bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-xl p-6 shadow-lg">
-                <div class="text-4xl mb-3">📋</div>
-                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Setlist Builder</h3>
-                <p class="text-gray-300 text-sm md:text-base">
-                  Build songs into your setlist and see the harmonic flow. Create the perfect 
-                  DJ set from opening track to grand finale.
-                </p>
-              </div>
-
-              <div class="feature-card bg-black/60 backdrop-blur-xl border border-yellow-500/30 rounded-xl p-6 shadow-lg">
-                <div class="text-4xl mb-3">💾</div>
-                <h3 class="text-xl md:text-2xl font-bold text-white mb-3">Export & Share</h3>
-                <p class="text-gray-300 text-sm md:text-base">
-                  Export your collection and setlists. Share them with bandmates or 
-                  back them up for safekeeping.
-                </p>
-              </div>
-
-            </div>
-
-            <div class="bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-cyan-500/20 border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12">
-              <h2 class="text-2xl md:text-3xl font-bold text-white mb-6 text-center graffiti-text">🚀 HOW IT WORKS</h2>
-              <div class="grid md:grid-cols-3 gap-6">
-                <div class="text-center">
-                  <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">1</div>
-                  <h3 class="text-lg md:text-xl font-bold text-white mb-2">Mark Your Songs</h3>
-                  <p class="text-gray-300 text-sm md:text-base">Check off which Fortnite Festival tracks you own</p>
-                </div>
-                <div class="text-center">
-                  <div class="w-16 h-16 bg-gradient-to-br from-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">2</div>
-                  <h3 class="text-lg md:text-xl font-bold text-white mb-2">Find Perfect Matches</h3>
-                  <p class="text-gray-300 text-sm md:text-base">Click any song to see compatible mashup options</p>
-                </div>
-                <div class="text-center">
-                  <div class="w-16 h-16 bg-gradient-to-br from-cyan-500 to-pink-500 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">3</div>
-                  <h3 class="text-lg md:text-xl font-bold text-white mb-2">Build Your Set</h3>
-                  <p class="text-gray-300 text-sm md:text-base">Create setlists and dominate the Jam Stage!</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="text-center">
-              <h2 class="text-3xl md:text-4xl font-bold text-white mb-4 graffiti-text">READY TO BECOME A FORTNITE DJ?</h2>
-              <p class="text-lg md:text-xl text-gray-300 mb-8">Join thousands of players creating epic mashups on the Jam Stage</p>
-              <button onclick="hideLanding()" class="px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 hover:from-pink-600 hover:via-purple-600 hover:to-cyan-600 rounded-xl font-bold text-white text-2xl md:text-3xl transition shadow-2xl shadow-purple-500/50">
-                🎵 LET'S MIX!
-              </button>
-            </div>
-
-          </div>
-        </div>
-      `;
+// ---------- Utilities ----------
+function detectGenre(artist='', title='') {
+  const a = (artist||'').toLowerCase();
+  for (const [g, list] of Object.entries(genreMap)) {
+    for (const name of list) {
+      if (a.includes(name)) return g;
     }
-
-    window.hideLanding = () => {
-      localStorage.setItem('hasSeenLanding', 'true');
-      checkAuth();
-    };
-
-    function checkAuth() {
-      const savedUsername = localStorage.getItem('currentUser');
-      if (savedUsername) {
-        const profile = loadUserProfile(savedUsername);
-        if (profile) {
-          currentUser = profile;
-          ownedTracks = profile.ownedTracks || [];
-          bandMembers = profile.bandMembers || [];
-          genreOverrides = profile.genreOverrides || {};
-          loadSongs();
-        } else {
-          showLoginScreen();
-        }
-      } else {
-        showLoginScreen();
-      }
-    }
-
-    const camelotColors = {
-      '1A': '#FF6B9D', '1B': '#FF8FAB', '2A': '#FFA07A', '2B': '#FFB699',
-      '3A': '#FFD700', '3B': '#FFE55C', '4A': '#98D8C8', '4B': '#7FD8BE',
-      '5A': '#6BCB77', '5B': '#8FD89F', '6A': '#4D96FF', '6B': '#6FB1FF',
-      '7A': '#9D4EDD', '7B': '#B877FF', '8A': '#E84A5F', '8B': '#FF6B81',
-      '9A': '#00D9FF', '9B': '#4DFFFF', '10A': '#FFA400', '10B': '#FFBB5C',
-      '11A': '#FE6D73', '11B': '#FF8C94', '12A': '#A8E6CF', '12B': '#C1F0DD'
-    };
-
-    const keyToCamelot = {
-      'C': '8B', 'Am': '8A', 'A Minor': '8A', 'C Major': '8B',
-      'G': '9B', 'Em': '9A', 'E Minor': '9A', 'G Major': '9B',
-      'D': '10B', 'Bm': '10A', 'B Minor': '10A', 'D Major': '10B',
-      'A': '11B', 'F#m': '11A', 'F# Minor': '11A', 'A Major': '11B',
-      'E': '12B', 'C#m': '12A', 'C# Minor': '12A', 'E Major': '12B',
-      'B': '1B', 'G#m': '1A', 'G# Minor': '1A', 'B Major': '1B',
-      'F#': '2B', 'D#m': '2A', 'D# Minor': '2A', 'F# Major': '2B',
-      'Db': '3B', 'Bbm': '3A', 'Bb Minor': '3A', 'Db Major': '3B',
-      'Ab': '4B', 'Fm': '4A', 'F Minor': '4A', 'Ab Major': '4B',
-      'Eb': '5B', 'Cm': '5A', 'C Minor': '5A', 'Eb Major': '5B',
-      'Bb': '6B', 'Gm': '6A', 'G Minor': '6A', 'Bb Major': '6B',
-      'F': '7B', 'Dm': '7A', 'D Minor': '7A', 'F Major': '7B'
-    };
-
-    // MASSIVELY IMPROVED Genre Detection
-    const genreMap = {
-      'Rock': [
-        'foo fighters', 'nirvana', 'pearl jam', 'soundgarden', 'alice in chains',
-        'red hot chili peppers', 'radiohead', 'muse', 'queens of the stone age',
-        'rage against the machine', 'audioslave', 'incubus', 'weezer',
-        'smashing pumpkins', 'stone temple pilots', 'live', 'bush', 'collective soul',
-        'matchbox twenty', 'third eye blind', 'goo goo dolls', 'vertical horizon',
-        'lifehouse', 'hoobastank', 'trapt', 'shinedown', 'breaking benjamin',
-        'three days grace', 'chevelle', 'seether', 'theory of a deadman',
-        'evanescence', 'flyleaf', 'paramore', 'tonight alive'
-      ],
-      
-      'Classic Rock': [
-        'beatles', 'rolling stones', 'led zeppelin', 'pink floyd', 'queen',
-        'the who', 'aerosmith', 'van halen', 'journey', 'boston', 'kansas',
-        'styx', 'foreigner', 'toto', 'asia', 'heart', 'cheap trick',
-        'the police', 'the cars', 'talking heads', 'blondie', 'fleetwood mac',
-        'stevie nicks', 'tom petty', 'bruce springsteen', 'billy joel',
-        'elton john', 'david bowie', 'rod stewart', 'eric clapton',
-        'santana', 'jimi hendrix', 'cream', 'jefferson airplane', 'the doors',
-        'janis joplin', 'creedence clearwater', 'eagles', 'lynyrd skynyrd',
-        'allman brothers', 'derek and the dominos', 'steely dan'
-      ],
-      
-      'Alternative': [
-        'green day', 'blink-182', 'sum 41', 'simple plan', 'good charlotte',
-        'my chemical romance', 'fall out boy', 'panic! at the disco',
-        'twenty one pilots', 'arctic monkeys', 'the strokes', 'the killers',
-        'franz ferdinand', 'interpol', 'bloc party', 'kaiser chiefs',
-        'maximo park', 'we are scientists', 'two door cinema club',
-        'foster the people', 'cage the elephant', 'the black keys',
-        'vampire weekend', 'phoenix', 'mgmt', 'passion pit', 'tame impala',
-        'glass animals', 'alt-j', 'portugal. the man', 'walk the moon'
-      ],
-      
-      'Punk': [
-        'ramones', 'sex pistols', 'the clash', 'dead kennedys', 'black flag',
-        'minor threat', 'bad religion', 'nofx', 'pennywise', 'offspring',
-        'rancid', 'operation ivy', 'social distortion', 'against me!',
-        'rise against', 'anti-flag', 'dropkick murphys', 'flogging molly',
-        'misfits', 'circle jerks', 'descendants', 'buzzcocks', 'wire'
-      ],
-      
-      'Metal': [
-        'metallica', 'megadeth', 'slayer', 'anthrax', 'testament',
-        'exodus', 'overkill', 'kreator', 'sodom', 'iron maiden',
-        'judas priest', 'black sabbath', 'ozzy osbourne', 'motorhead',
-        'pantera', 'sepultura', 'machine head', 'lamb of god',
-        'system of a down', 'disturbed', 'godsmack', 'korn', 'limp bizkit',
-        'linkin park', 'deftones', 'tool', 'a perfect circle',
-        'slipknot', 'mudvayne', 'drowning pool', 'static-x',
-        'avenged sevenfold', 'trivium', 'bullet for my valentine',
-        'killswitch engage', 'as i lay dying', 'all that remains'
-      ],
-      
-      'Pop': [
-        'taylor swift', 'ariana grande', 'billie eilish', 'olivia rodrigo',
-        'dua lipa', 'lady gaga', 'katy perry', 'miley cyrus', 'selena gomez',
-        'demi lovato', 'kesha', 'britney spears', 'christina aguilera',
-        'madonna', 'mariah carey', 'whitney houston', 'celine dion',
-        'backstreet boys', 'nsync', 'justin timberlake', 'justin bieber',
-        'shawn mendes', 'ed sheeran', 'charlie puth', 'sia', 'pink',
-        'kelly clarkson', 'avril lavigne', 'alanis morissette', 'sheryl crow',
-        'natalie imbruglia', 'robyn', 'carly rae jepsen', 'harry styles',
-        'one direction', 'jonas brothers', 'jonas blue'
-      ],
-      
-      'Hip-Hop': [
-        'eminem', 'dr. dre', 'snoop dogg', 'ice cube', '2pac', 'tupac',
-        'notorious b.i.g', 'biggie', 'jay-z', 'nas', 'wu-tang', 'method man',
-        'redman', 'busta rhymes', 'missy elliott', 'ludacris', 'nelly',
-        'outkast', 'andre 3000', 'big boi', 'kanye west', 'kendrick lamar',
-        'j. cole', 'drake', 'lil wayne', 'nicki minaj', 'cardi b',
-        'megan thee stallion', 'doja cat', 'travis scott', 'post malone',
-        'juice wrld', 'xxxtentacion', 'lil uzi vert', 'playboi carti',
-        'future', 'migos', 'offset', 'quavo', 'takeoff', '21 savage',
-        'lil baby', 'dababy', 'roddy ricch', 'pop smoke', '50 cent',
-        'the game', 'dmx', 'public enemy', 'run-dmc', 'beastie boys',
-        'cypress hill', 'bone thugs', 'three 6 mafia', 'ying yang twins'
-      ],
-      
-      'R&B': [
-        'the weeknd', 'bruno mars', 'john legend', 'usher', 'chris brown',
-        'ne-yo', 'trey songz', 'jeremih', 'miguel', 'frank ocean',
-        'khalid', 'h.e.r.', 'sza', 'jhene aiko', 'kehlani', 'summer walker',
-        'beyonce', 'rihanna', 'alicia keys', 'mary j. blige', 'mariah carey',
-        'janet jackson', 'tlc', 'destiny\'s child', 'en vogue', 'swv',
-        'blackstreet', 'jodeci', 'boyz ii men', 'ginuwine', 'r. kelly',
-        'jagged edge', 'joe', 'maxwell', 'd\'angelo', 'erykah badu',
-        'lauryn hill', 'jill scott', 'india.arie', 'musiq soulchild'
-      ],
-      
-      'Electronic': [
-        'daft punk', 'deadmau5', 'skrillex', 'diplo', 'major lazer',
-        'marshmello', 'zedd', 'kygo', 'avicii', 'calvin harris',
-        'david guetta', 'tiesto', 'armin van buuren', 'afrojack',
-        'hardwell', 'martin garrix', 'steve aoki', 'above & beyond',
-        'kaskade', 'porter robinson', 'madeon', 'odesza', 'flume',
-        'disclosure', 'caribou', 'four tet', 'bonobo', 'tycho',
-        'röyksopp', 'moby', 'the chemical brothers', 'the prodigy',
-        'fatboy slim', 'basement jaxx', 'justice', 'knife party',
-        'pendulum', 'nero', 'zeds dead', 'excision', 'illenium',
-        'seven lions', 'gryffin', 'said the sky', 'the chainsmokers'
-      ],
-      
-      'Indie': [
-        'vampire weekend', 'tame impala', 'mgmt', 'arctic monkeys',
-        'the strokes', 'interpol', 'yeah yeah yeahs', 'metric',
-        'bloc party', 'franz ferdinand', 'modest mouse', 'death cab',
-        'the postal service', 'bright eyes', 'belle and sebastian',
-        'the shins', 'iron & wine', 'bon iver', 'fleet foxes',
-        'grizzly bear', 'animal collective', 'panda bear', 'deerhunter',
-        'beach house', 'real estate', 'war on drugs', 'courtney barnett',
-        'sharon van etten', 'angel olsen', 'mitski', 'japanese breakfast',
-        'alvvays', 'soccer mommy', 'snail mail', 'phoebe bridgers',
-        'lucy dacus', 'julien baker', 'boygenius', 'big thief'
-      ],
-      
-      'Country': [
-        'johnny cash', 'willie nelson', 'waylon jennings', 'merle haggard',
-        'dolly parton', 'loretta lynn', 'tammy wynette', 'patsy cline',
-        'hank williams', 'george jones', 'conway twitty', 'kenny rogers',
-        'garth brooks', 'alan jackson', 'george strait', 'brooks & dunn',
-        'reba mcentire', 'shania twain', 'faith hill', 'tim mcgraw',
-        'keith urban', 'brad paisley', 'toby keith', 'kenny chesney',
-        'blake shelton', 'luke bryan', 'jason aldean', 'florida georgia line',
-        'sam hunt', 'thomas rhett', 'kane brown', 'luke combs',
-        'morgan wallen', 'hardy', 'chris stapleton', 'maren morris',
-        'kacey musgraves', 'carrie underwood', 'miranda lambert'
-      ],
-      
-      'Disco/Funk': [
-        'bee gees', 'donna summer', 'chic', 'earth wind & fire',
-        'kool & the gang', 'parliament', 'funkadelic', 'james brown',
-        'bootsy collins', 'sly and the family stone', 'ohio players',
-        'commodores', 'kc and the sunshine band', 'gloria gaynor',
-        'sister sledge', 'diana ross', 'village people', 'abba',
-        'daft punk', 'jamiroquai', 'bruno mars', 'anderson .paak'
-      ],
-      
-      'Blues': [
-        'b.b. king', 'muddy waters', 'howlin\' wolf', 'john lee hooker',
-        'buddy guy', 'albert king', 'freddie king', 'stevie ray vaughan',
-        'robert johnson', 'elmore james', 'lightnin\' hopkins',
-        'gary clark jr.', 'joe bonamassa', 'bonnie raitt', 'etta james'
-      ],
-      
-      'Jazz': [
-        'miles davis', 'john coltrane', 'dizzy gillespie', 'charlie parker',
-        'thelonious monk', 'duke ellington', 'count basie', 'louis armstrong',
-        'ella fitzgerald', 'billie holiday', 'sarah vaughan', 'nina simone',
-        'herbie hancock', 'chick corea', 'weather report', 'return to forever',
-        'mahavishnu orchestra', 'pat metheny', 'bill evans', 'oscar peterson'
-      ],
-      
-      'Reggae': [
-        'bob marley', 'peter tosh', 'bunny wailer', 'jimmy cliff',
-        'toots and the maytals', 'burning spear', 'gregory isaacs',
-        'dennis brown', 'steel pulse', 'ub40', 'black uhuru',
-        'third world', 'inner circle', 'damian marley', 'ziggy marley',
-        'chronixx', 'protoje', 'koffee', 'shaggy', 'sean paul'
-      ],
-      
-      'Latin': [
-        'shakira', 'ricky martin', 'enrique iglesias', 'luis fonsi',
-        'daddy yankee', 'ozuna', 'bad bunny', 'j balvin', 'maluma',
-        'nicky jam', 'don omar', 'wisin & yandel', 'pitbull', 'gloria estefan',
-        'celia cruz', 'tito puente', 'santana', 'marc anthony', 'selena'
-      ],
-      
-      'Soul': [
-        'aretha franklin', 'otis redding', 'sam cooke', 'marvin gaye',
-        'al green', 'curtis mayfield', 'isaac hayes', 'barry white',
-        'teddy pendergrass', 'the temptations', 'four tops', 'supremes',
-        'gladys knight', 'smokey robinson', 'stevie wonder', 'ray charles'
-      ]
-    };
-
-    function detectGenre(artist, title) {
-      artist = artist.toLowerCase();
-      title = title.toLowerCase();
-      
-      // Check against comprehensive genre map
-      for (const [genre, artists] of Object.entries(genreMap)) {
-        if (artists.some(a => artist.includes(a) || a.includes(artist.split(',')[0]))) {
-          return genre;
-        }
-      }
-      
-      // Keyword detection for titles as fallback
-      if (title.includes('rock') || title.includes('metal')) return 'Rock';
-      if (title.includes('funk') || title.includes('disco')) return 'Disco/Funk';
-      if (title.includes('blues')) return 'Blues';
-      if (title.includes('jazz')) return 'Jazz';
-      if (title.includes('country')) return 'Country';
-      if (title.includes('reggae')) return 'Reggae';
-      
-      return 'Other';
-    }
-
-    let currentUser = null;
-    let songs = [];
-    let ownedTracks = [];
-    let selectedSong = null;
-    let setlist = [];
-    let searchTerm = '';
-    let view = 'browser';
-    let showOwnedOnly = false;
-    let showMixableOnly = false;
-    let selectedGenre = 'All';
-    let bandMembers = [];
-    let viewingMember = null;
-    let genreOverrides = {};
-
-    function saveUserProfile() {
-      if (!currentUser) return;
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      profiles[currentUser.username] = {
-        username: currentUser.username,
-        djName: currentUser.djName,
-        ownedTracks: ownedTracks,
-        setlists: currentUser.setlists || [],
-        bandMembers: bandMembers,
-        genreOverrides: genreOverrides
-      };
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
-    }
-
-    function loadUserProfile(username) {
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      return profiles[username];
-    }
-
-    function loginUser(username, djName) {
-      const profile = loadUserProfile(username);
-      if (profile) {
-        currentUser = profile;
-        ownedTracks = profile.ownedTracks || [];
-        bandMembers = profile.bandMembers || [];
-        genreOverrides = profile.genreOverrides || {};
-      } else {
-        currentUser = {
-          username: username,
-          djName: djName,
-          ownedTracks: [],
-          setlists: [],
-          bandMembers: [],
-          genreOverrides: {}
-        };
-        saveUserProfile();
-      }
-      localStorage.setItem('currentUser', username);
-    }
-
-    function logoutUser() {
-      saveUserProfile();
-      currentUser = null;
-      ownedTracks = [];
-      setlist = [];
-      bandMembers = [];
-      viewingMember = null;
-      genreOverrides = {};
-      localStorage.removeItem('currentUser');
-      showLoginScreen();
-    }
-
-    function addBandMember() {
-      const username = prompt('Enter bandmate username:');
-      if (!username) return;
-      
-      console.log('Searching for username:', username);
-      
-      const memberProfile = loadUserProfile(username);
-      console.log('Found profile:', memberProfile);
-      
-      if (!memberProfile) {
-        alert(`❌ User "${username}" not found!\n\nMake sure they:\n1. Created an account\n2. Spelled their username exactly right (case-sensitive)`);
-        return;
-      }
-      
-      if (bandMembers.find(m => m.username === username)) {
-        alert('This person is already in your band!');
-        return;
-      }
-      
-      bandMembers.push({
-        username: memberProfile.username,
-        djName: memberProfile.djName
-      });
-      
-      saveUserProfile();
-      alert(`✅ Added ${memberProfile.djName} (@${username}) to your band!`);
-      render();
-      setupEventListeners();
-    }
-
-    function viewBandMember(username) {
-      const memberProfile = loadUserProfile(username);
-      if (!memberProfile) {
-        alert('Could not load member profile');
-        return;
-      }
-      
-      viewingMember = memberProfile;
-      render();
-      setupEventListeners();
-    }
-
-    function backToMyProfile() {
-      viewingMember = null;
-      render();
-      setupEventListeners();
-    }
-
-    function exportCollection() {
-      const data = {
-        username: currentUser.username,
-        djName: currentUser.djName,
-        ownedTracks: ownedTracks,
-        genreOverrides: genreOverrides,
-        exportDate: new Date().toISOString()
-      };
-      
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `festival-mixer-${currentUser.username}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    function importCollection() {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.json';
-      input.onchange = (e) => {
-        const file = e.target.files[0];
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const data = JSON.parse(event.target.result);
-            if (confirm(`Import ${data.ownedTracks.length} songs from ${data.djName}?`)) {
-              ownedTracks = data.ownedTracks;
-              if (data.genreOverrides) {
-                genreOverrides = {...genreOverrides, ...data.genreOverrides};
-              }
-              saveUserProfile();
-              
-              songs.forEach(song => {
-                if (genreOverrides[song.id]) {
-                  song.genre = genreOverrides[song.id];
-                }
-              });
-              
-              render();
-              setupEventListeners();
-              alert('Collection imported successfully!');
-            }
-          } catch (error) {
-            alert('Invalid file format');
-          }
-        };
-        reader.readAsText(file);
-      };
-      input.click();
-    }
-
-    window.setGenreOverride = (songId, newGenre) => {
-      console.log('Setting genre override:', songId, newGenre);
-      genreOverrides[songId] = newGenre;
-      
-      const song = songs.find(s => s.id === songId);
-      if (song) {
-        song.genre = newGenre;
-      }
-      
-      saveUserProfile();
-      renderSongList();
-      
-      const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
-      if (genreTag) {
-        genreTag.textContent = newGenre + ' ✓';
-        genreTag.classList.add('animate-pulse');
-        setTimeout(() => genreTag.classList.remove('animate-pulse'), 1000);
-      }
-    };
-
-    function showLoginScreen() {
-      document.getElementById('app').innerHTML = `
-        <div class="min-h-screen flex items-center justify-center p-6">
-          <div class="max-w-md w-full">
-            <div class="text-center mb-8">
-              <div class="w-24 h-24 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 vinyl-spin">
-                🎧
-              </div>
-              <h1 class="text-4xl font-bold text-white graffiti-text mb-2">FESTIVAL PRO MIXER</h1>
-              <p class="text-cyan-300">Your Personal DJ Profile</p>
-            </div>
-            
-            <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl shadow-cyan-500/20">
-              <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
-              
-              <form onsubmit="handleLogin(event)" class="space-y-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
-                  <input
-                    type="text"
-                    id="username"
-                    required
-                    minlength="3"
-                    placeholder="Enter your username"
-                    class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                  />
-                </div>
-                
-                <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2">DJ Name (optional)</label>
-                  <input
-                    type="text"
-                    id="djName"
-                    placeholder="e.g., DJ Spinner, Beat Master"
-                    class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                  />
-                </div>
-                
-                <button
-                  type="submit"
-                  class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 hover:from-pink-600 hover:via-purple-600 hover:to-cyan-600 rounded-lg font-bold text-white text-lg transition shadow-lg shadow-purple-500/50"
-                >
-                  🎵 Enter the Mix
-                </button>
-              </form>
-              
-              <div class="mt-6 pt-6 border-t border-gray-700">
-                <p class="text-xs text-gray-400 text-center mb-3">
-                  💡 <strong>Tip:</strong> Right-click any song's genre tag to correct it!
-                </p>
-                <p class="text-xs text-gray-400 text-center mb-2">
-                  ⚠️ Epic Games doesn't share inventory data, so you'll need to manually mark songs you own.
-                </p>
-                <p class="text-xs text-gray-400 text-center">
-                  Your profile is saved locally on this device
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
-
-    window.handleLogin = (event) => {
-      event.preventDefault();
-      const username = document.getElementById('username').value.trim();
-      const djName = document.getElementById('djName').value.trim() || username;
-      
-      if (username.length < 3) {
-        alert('Username must be at least 3 characters');
-        return;
-      }
-      
-      loginUser(username, djName);
-      loadSongs();
-    };
-
-    function convertToCamelot(key, mode) {
-      if (!key) return '?';
-      const fullKey = `${key} ${mode}`;
-      return keyToCamelot[fullKey] || keyToCamelot[key] || '?';
-    }
-
-    function getCompatibleKeys(camelot) {
-      if (!camelot || camelot === '?') return [];
-      const matches = camelot.match(/^(\d+)([AB])$/);
-      if (!matches) return [];
-      const num = parseInt(matches[1]);
-      const letter = matches[2];
-      const compatible = [camelot, `${num}${letter === 'A' ? 'B' : 'A'}`];
-      const nextNum = num === 12 ? 1 : num + 1;
-      compatible.push(`${nextNum}${letter}`);
-      const prevNum = num === 1 ? 12 : num - 1;
-      compatible.push(`${prevNum}${letter}`);
-      return compatible;
-    }
-
-    function isMixable(song1, song2) {
-      if (!song1 || !song2) return false;
-      const compatible = getCompatibleKeys(song1.camelot);
-      return compatible.includes(song2.camelot);
-    }
-
-    async function loadSongs() {
-      console.log('🎵 Loading Fortnite Festival tracks...');
-      
-      const endpoints = [
-        'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
-        'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
-      ];
-      
-      for (let i = 0; i < endpoints.length; i++) {
-        try {
-          console.log(`📡 Trying endpoint ${i + 1}/${endpoints.length}...`);
-          const response = await fetch(endpoints[i]);
-          console.log(`📊 Response status: ${response.status}`);
-          
-          if (!response.ok) {
-            console.warn(`⚠️ Endpoint ${i + 1} failed with status ${response.status}`);
-            continue;
-          }
-          
-          const data = await response.json();
-          console.log('📦 Received data, processing...');
-          
-          songs = Object.entries(data)
-            .filter(([key]) => !key.startsWith('_'))
-            .map(([id, item]) => {
-              const track = item?.track;
-              if (!track?.tt) return null;
-              
-              const detectedGenre = detectGenre(track.an || '', track.tt);
-              const finalGenre = genreOverrides[id] || detectedGenre;
-              
-              return {
-                id,
-                title: track.tt,
-                artist: track.an || 'Unknown',
-                bpm: track.mt || 0,
-                key: track.mk || '?',
-                mode: track.mm || '',
-                camelot: convertToCamelot(track.mk, track.mm),
-                duration: track.dn || 0,
-                albumArt: track.au || '',
-                genre: finalGenre
-              };
-            })
-            .filter(song => song && song.bpm > 0);
-          
-          songs.sort((a, b) => a.title.localeCompare(b.title));
-          
-          if (songs.length > 0) {
-            console.log(`✅ Successfully loaded ${songs.length} tracks!`);
-            render();
-            setupEventListeners();
-            return;
-          }
-        } catch (error) {
-          console.error(`❌ Endpoint ${i + 1} error:`, error);
-        }
-      }
-      
-      console.error('❌ All endpoints failed');
-      showError('Unable to load tracks. The API may be temporarily unavailable. Try refreshing in a few minutes.');
-    }
-
-    function showError(message) {
-      document.getElementById('app').innerHTML = `
-        <div class="min-h-screen flex items-center justify-center p-6">
-          <div class="text-center max-w-2xl">
-            <div class="text-6xl mb-4">⚠️</div>
-            <div class="text-2xl font-bold mb-4 text-white">Unable to Load Tracks</div>
-            <div class="text-gray-300 mb-6 bg-black/30 p-4 rounded-lg backdrop-blur-sm">
-              <p class="mb-2">${message}</p>
-            </div>
-            <button onclick="location.reload()" class="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 rounded-lg font-bold">
-              🔄 Retry Loading
-            </button>
-          </div>
-        </div>
-      `;
-    }
-
-    function toggleOwned(id) {
-      if (viewingMember) {
-        alert("You can't edit other people's collections!");
-        return;
-      }
-      
-      if (ownedTracks.includes(id)) {
-        ownedTracks = ownedTracks.filter(t => t !== id);
-      } else {
-        ownedTracks.push(id);
-      }
-      saveUserProfile();
-      updateOwnedCount();
-      
-      const btn = document.querySelector(`[data-song-id="${id}"]`);
-      if (btn) {
-        const isOwned = ownedTracks.includes(id);
-        btn.className = `flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition`;
-        btn.textContent = isOwned ? '✓ Owned' : 'Mark Owned';
-        
-        const star = btn.closest('.song-card').querySelector('.star-icon');
-        if (star) {
-          star.style.display = isOwned ? 'block' : 'none';
-        }
-      }
-    }
-
-    function formatDuration(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-
-    function updateOwnedCount() {
-      const countEl = document.getElementById('ownedCount');
-      if (countEl) {
-        const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
-        countEl.textContent = `${viewingMember ? viewingMember.djName : 'You'} own ${displayTracks.length}/${songs.length} tracks`;
-      }
-    }
-
-    function getGenres() {
-      const genres = new Set(songs.map(s => s.genre));
-      return ['All', ...Array.from(genres).sort()];
-    }
-
-    function renderSongList() {
-      const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
-      
-      const filteredSongs = songs.filter(s => {
-        const matchesSearch = searchTerm === '' || 
-                             s.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             s.artist.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
-        const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
-        const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
-        
-        return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
-      });
-
-// 🔥 Auto-sort mixable tracks by BPM proximity
-if (selectedSong) {
-  filteredSongs.sort((a, b) => {
-    const diffA = Math.abs(a.bpm - selectedSong.bpm);
-    const diffB = Math.abs(b.bpm - selectedSong.bpm);
-    return diffA - diffB;
-  });
+  }
+  return 'Other';
+}
+function convertToCamelot(key, mode='') {
+  if (!key) return '?';
+  if (keyToCamelot[key]) return keyToCamelot[key];
+  return '?';
+}
+function formatDuration(sec) {
+  const m = Math.floor(sec/60), s = sec%60;
+  return `${m}:${String(s).padStart(2,'0')}`;
 }
 
+// Compatibility scoring rules (simple, transparent)
+function scoreKeyMatch(aCamelot, bCamelot) {
+  if (!aCamelot || !bCamelot || aCamelot==='?' || bCamelot==='?') return 0;
+  if (aCamelot === bCamelot) return 40;             // perfect
+  // A/B switch (same number different letter)
+  const numA = aCamelot.match(/^(\d+)[AB]$/)?.[1];
+  const numB = bCamelot.match(/^(\d+)[AB]$/)?.[1];
+  const letterA = aCamelot.slice(-1), letterB = bCamelot.slice(-1);
+  if (numA === numB && letterA !== letterB) return 30; // same number, A/B
+  // ±1 step same letter
+  const nA = parseInt(numA), nB = parseInt(numB);
+  if (letterA === letterB && (Math.abs(nA - nB) === 1 || Math.abs(nA - nB) === 11)) return 30;
+  // adjacent via A/B +/-1
+  if (Math.abs(nA - nB) === 1 && letterA !== letterB) return 20;
+  return 0;
+}
+function scoreBpmMatch(aBpm, bBpm) {
+  const diff = Math.abs(aBpm - bBpm);
+  if (diff <= 1) return 40;
+  if (diff <= 3) return 35;
+  if (diff <= 6) return 25;
+  if (diff <= 10) return 15;
+  return 0;
+}
+function scoreGenreMatch(aGenre, bGenre) {
+  if (!aGenre || !bGenre) return 0;
+  return aGenre === bGenre ? 20 : 0;
+}
+function mashupCompatibility(a, b) {
+  // returns percentage and breakdown
+  const key = scoreKeyMatch(a.camelot, b.camelot);
+  const bpm = scoreBpmMatch(a.bpm, b.bpm);
+  const genre = scoreGenreMatch(a.genre, b.genre);
+  const total = key + bpm + genre; // max 100
+  return { total, breakdown:{ key, bpm, genre } };
+}
+function bpmShiftSuggestion(aBpm, bBpm) {
+  const shift = Math.round(bBpm - aBpm);
+  if (shift === 0) return 'No change';
+  return (shift > 0 ? '+' : '') + shift + ' BPM = Perfect Match';
+}
+function computeEnergy(track) {
+  // light heuristic: energy 1–5 based on BPM and genre
+  if (!track || !track.bpm) return 3;
+  let e = 1;
+  const bpm = track.bpm;
+  if (bpm < 90) e = 1;
+  else if (bpm < 110) e = 2;
+  else if (bpm < 125) e = 3;
+  else if (bpm < 140) e = 4;
+  else e = 5;
+  // small genre boost
+  if (track.genre === 'Electronic') e = Math.min(5, e+1);
+  if (track.genre === 'Rock') e = Math.min(5, e+1);
+  return e;
+}
 
-      const songListEl = document.getElementById('songList');
-      if (!songListEl) return;
+// auto transition suggestions based on simple heuristics
+function suggestTransitions(a, b) {
+  const tips = [];
+  const diff = b.bpm - a.bpm;
+  const keyScore = scoreKeyMatch(a.camelot, b.camelot);
+  // bpm-based suggestions
+  if (Math.abs(diff) > 6) tips.push('Consider a slow tempo ramp (warp) before mixing; large BPM change.');
+  if (Math.abs(diff) <= 3) tips.push('Minimal warp — you can beatmatch without time-stretching.');
+  if (diff > 0) tips.push('Try speeding track A gradually (+pitch) into B.');
+  if (diff < 0) tips.push('Try a short pitch-down / echo into the slower track.');
+  // key-based
+  if (keyScore >= 40) tips.push('Perfect harmonic match — consider a clean beatmix.');
+  else if (keyScore >= 30) tips.push('Good harmonic relation — try a filter + reverb tail into chorus.');
+  else tips.push('Keys might clash — use filter sweep + reverb tail, or move to mash-up mode for key transposition.');
+  // genre-based
+  if (a.genre !== b.genre) tips.push('Cross-genre blend: consider keeping drums and adding FX to glue textures.');
+  // structural tips
+  tips.push('Try mixing at phrase boundary (16 bars) or on the chorus drop for maximum impact.');
+  // example transitions
+  const examples = [
+    'Spinback from chorus into beat drop',
+    'Filter sweep + reverb tail → chorus entry',
+    'Keep drums playing for first 4 bars, then drop synth',
+    'Use vocal stutter to bridge into second track'
+  ];
+  // pick 2 examples based on energy
+  const ea = computeEnergy(a), eb = computeEnergy(b);
+  const pick = examples.slice(0, Math.min(2, examples.length));
+  return [...tips, 'Examples: ' + pick.join(' • ')];
+}
 
-      const compatibleKeys = selectedSong ? getCompatibleKeys(selectedSong.camelot) : [];
-      const genres = getGenres();
+// recipe generator (simple)
+function generateRecipe(a, b) {
+  const bpm = Math.round((a.bpm + b.bpm)/2);
+  const keyChange = (a.camelot === b.camelot) ? 'No key change' : `Consider ${a.camelot} → ${b.camelot} (use +/- semitone transpose)`;
+  const bars = 'Mix at 16 bars into verse (or 8 bars if energetic)';
+  const techniques = [];
+  if (a.genre === b.genre) techniques.push('Simple beatmix, minimal FX');
+  else techniques.push('Filter glue + reverb tails to blend textures');
+  if (Math.abs(a.bpm - b.bpm) > 6) techniques.push('Tempo ramp or resampling for smoother transition');
+  const name = aiNameGenerator(a,b);
+  return { bpm, keyChange, bars, techniques, name };
+}
 
-      songListEl.innerHTML = `
-        ${selectedSong ? `
-          <div class="mb-6 bg-gradient-to-r from-pink-500/20 via-purple-500/20 to-blue-500/20 border border-pink-500/30 rounded-xl p-4 backdrop-blur-sm">
-            <div class="flex items-center gap-4 flex-wrap">
-              ${selectedSong.albumArt ? `<img src="${selectedSong.albumArt}" class="w-16 h-16 rounded-lg vinyl-spin"/>` : '<div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full vinyl-spin"></div>'}
-              <div class="flex-1">
-                <div class="text-sm text-pink-300 font-bold">NOW MIXING FROM:</div>
-                <div class="font-bold text-xl text-white graffiti-text">${selectedSong.title}</div>
-                <div class="text-purple-200 text-sm">${selectedSong.artist}</div>
-              </div>
-              <div class="text-right">
-                <div class="text-3xl font-mono font-bold" style="color: ${camelotColors[selectedSong.camelot] || '#666'}">${selectedSong.camelot}</div>
-                <div class="text-xs text-purple-200">${selectedSong.key} ${selectedSong.mode}</div>
-                <div class="text-xs text-cyan-300 mt-1 font-bold">MIX WITH: ${compatibleKeys.join(', ')}</div>
-              </div>
-              <button onclick="clearSelection()" class="p-2 hover:bg-white/10 rounded text-2xl">✕</button>
-            </div>
-          </div>
-        ` : ''}
+// simple AI mash-up name generator (safe, deterministic-ish)
+function aiNameGenerator(a,b) {
+  const toksA = a.title.split(' ').slice(0,2).map(t => t.replace(/[^a-zA-Z0-9]/g,''));
+  const toksB = b.title.split(' ').slice(0,2).map(t => t.replace(/[^a-zA-Z0-9]/g,''));
+  const combos = [
+    `${toksA[0] || a.artist} ${toksB[0] || b.artist}`,
+    `${toksB[0] || b.artist} vs ${toksA[0] || a.artist}`,
+    `${toksA.join(' ')} ${toksB.join(' ')} Remix`,
+    `${toksA[0] || 'Mix'} of ${toksB[0] || 'Tracks'}`
+  ];
+  return combos[Math.floor(Math.random() * combos.length)];
+}
 
-        <div class="mb-6 flex flex-wrap gap-2">
-          ${genres.map(genre => `
-            <button 
-              onclick="selectGenre('${genre}')" 
-              class="px-4 py-2 rounded-lg font-medium transition ${selectedGenre === genre ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-white/10 hover:bg-white/20'}"
-            >
-              ${genre === 'All' ? '🎵 All' : genre}
-            </button>
-          `).join('')}
+// ---------- Rendering & UI ----------
+const songListEl = () => document.getElementById('songList');
+const ownedCountEl = () => document.getElementById('ownedCount');
+const selectedTitleEl = () => document.getElementById('selectedTitle');
+const selectedArtistEl = () => document.getElementById('selectedArtist');
+const selectedCamelotEl = () => document.getElementById('selectedCamelot');
+const selectedBpmEl = () => document.getElementById('selectedBpm');
+const selectedGenreEl = () => document.getElementById('selectedGenre');
+const compatTopBadgeEl = () => document.getElementById('compatTopBadge');
+
+function renderSongCard(song) {
+  const comp = selectedSong ? mashupCompatibility(selectedSong, song) : null;
+  const pct = comp ? Math.round(comp.total) : null;
+  const bpmDiff = selectedSong ? Math.abs(song.bpm - selectedSong.bpm) : null;
+  const glowClass = pct >= 80 ? 'glow-perfect' : (pct >= 60 ? 'glow-good' : (pct !== null ? 'glow-bad':''));
+  // if mash-up mode is on, filter to ±4 BPM and compatible keys
+  if (mashupMode && selectedSong) {
+    const bpmOk = Math.abs(song.bpm - selectedSong.bpm) <= 4;
+    const keyOk = getCompatibleKeys(selectedSong.camelot).includes(song.camelot);
+    if (!bpmOk || !keyOk) return ''; // skip card
+  }
+  return `
+    <div class="panel p-3 flex gap-3 items-center song-card" draggable="true" data-id="${song.id}">
+      <div class="w-16 h-16 rounded-lg overflow-hidden" style="background:${song.albumArt ? 'transparent' : 'linear-gradient(135deg,#7c3aed,#ef4444)'}">
+        ${song.albumArt ? `<img src="${song.albumArt}" alt="art" class="w-full h-full object-cover"/>` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center">🎵</div>'}
+      </div>
+      <div style="flex:1; min-width:0">
+        <div class="font-semibold">${song.title}</div>
+        <div class="small-muted text-xs">${song.artist} • ${song.genre}</div>
+        <div class="mt-2 flex items-center gap-2">
+          <div class="camelot-pill" style="background:${camelotColors[song.camelot] || '#666'}">${song.camelot}</div>
+          <div class="small-muted text-xs">${song.key} ${song.mode} • ${song.bpm} BPM</div>
+          ${selectedSong && comp ? `<div class="ml-2 px-2 py-1 rounded text-sm ${glowClass} score-badge">${pct}%</div>` : ''}
+          ${selectedSong ? `<div class="small-muted text-xs ml-2">±${bpmDiff || 0} BPM</div>` : ''}
         </div>
+      </div>
+      <div class="flex flex-col gap-2">
+        <button class="px-2 py-1 rounded bg-white/10 previewBtn" data-id="${song.id}">Preview</button>
+        <button class="px-2 py-1 rounded bg-green-600/40 addSetBtn" data-id="${song.id}">+ Set</button>
+      </div>
+    </div>
+  `;
+}
 
-        <div class="mb-4 text-center">
-          <div class="text-cyan-300 font-bold">Showing ${filteredSongs.length} tracks ${selectedGenre !== 'All' ? `(${selectedGenre})` : ''}</div>
-          <div class="text-xs text-purple-300 mt-1">💡 Right-click genre tags to correct them</div>
-        </div>
+function renderSongList() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const list = songs.filter(s => {
+    if (q && !(s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  songListEl().innerHTML = list.map(renderSongCard).join('') || `<div class="small-muted p-3">No tracks found</div>`;
+  // attach listeners (delegation)
+  document.querySelectorAll('.previewBtn').forEach(b => b.onclick = () => onPreviewClick(b.dataset.id));
+  document.querySelectorAll('.addSetBtn').forEach(b => b.onclick = () => addToSetlist(b.dataset.id));
+  // drag sources
+  document.querySelectorAll('.song-card').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', card.dataset.id);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+  });
+  updateOwnedCount();
+}
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          ${filteredSongs.map(song => {
-            const isOwned = displayTracks.includes(song.id);
-            const isMixableWithSelected = selectedSong && isMixable(selectedSong, song);
-            const hasOverride = genreOverrides[song.id];
-            
-            return `
-              <div class="song-card bg-black/40 backdrop-blur-sm border ${
-                selectedSong?.id === song.id ? 'border-pink-400 shadow-lg shadow-pink-500/50' : 
-                isMixableWithSelected ? 'border-green-400 shadow-lg shadow-green-500/30' : 
-                'border-gray-700'
-              } rounded-xl p-4 relative hover:border-cyan-400 transition-all">
-                <div class="star-icon absolute top-2 right-2 text-xl" style="display: ${isOwned ? 'block' : 'none'}">⭐</div>
-                ${isMixableWithSelected ? '<div class="absolute top-2 left-2 text-xl">🎧</div>' : ''}
-                <div class="flex gap-4 mb-3">
-                  ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
-                  <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
-                    <div class="font-bold text-lg mb-1 text-white">${song.title}</div>
-                    <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
-                    <div class="flex items-center gap-2 text-sm flex-wrap">
-                      <button 
-                        data-genre-tag="${song.id}"
-                        data-song-id-genre="${song.id}"
-                        class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${hasOverride ? 'text-green-200' : 'text-orange-200'} ${currentUser.username === 'BattleNeBody' ? 'hover:opacity-80 cursor-pointer' : 'cursor-default opacity-75'} transition"
-                        title="${currentUser.username === 'BattleNeBody' ? 'Click to change genre (Admin only)' : 'Genre (Only admin can edit)'}"
-                      >${song.genre}${hasOverride ? ' ✓' : ''}</button>
-                      <span class="px-3 py-1 rounded-lg font-mono font-bold text-white shadow-lg" style="background: ${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
-                      <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
-                      <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
-    ${selectedSong && isMixable(selectedSong, song) ? `
-      <span class="px-2 py-1 bg-purple-600/40 border border-purple-400/40 rounded text-xs text-purple-200 font-bold">
-        ±${Math.abs(song.bpm - selectedSong.bpm)} BPM
-      </span>
-    ` : ''}
-                      <span class="text-gray-400">${formatDuration(song.duration)}</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="flex gap-2">
-                  <button data-song-id="${song.id}" onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
-                    ${isOwned ? '✓ Owned' : 'Mark Owned'}
-                  </button>
-                  <button onclick="addToSetlist('${song.id}')" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-lg text-sm font-medium transition">
-                    + Set
-                  </button>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-        
-        ${filteredSongs.length === 0 ? `<div class="text-center py-12 text-gray-400">No tracks found matching your filters</div>` : ''}
-      `;
+function updateOwnedCount() {
+  ownedCountEl().textContent = `You own ${ownedTracks.length}/${songs.length} tracks`;
+}
 
-      document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const songId = btn.getAttribute('data-song-id-genre');
-          showGenreMenu(songId, e);
-        });
-      });
-    }
+function showSelected(track) {
+  selectedSong = track;
+  selectedTitleEl().textContent = track.title;
+  selectedArtistEl().textContent = track.artist;
+  selectedCamelotEl().textContent = track.camelot;
+  selectedCamelotEl().style.background = camelotColors[track.camelot] || '#444';
+  selectedBpmEl().textContent = `${track.bpm} BPM`;
+  selectedGenreEl().textContent = track.genre;
+  compatTopBadgeEl().textContent = '—';
+  // clear preview selection
+  previewSong = null;
+  document.getElementById('twoTrackPreview').classList.add('hidden');
+  // refresh song list to show new scores
+  renderSongList();
+  // scroll to top of right panel
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
-    function showGenreMenu(songId, event) {
-      if (currentUser.username !== 'BattleNeBody') {
-        alert('🔒 Only the admin (BattleNeBody) can correct genre tags!');
-        return;
-      }
-      
-      const existing = document.getElementById('genreContextMenu');
-      if (existing) existing.remove();
-      
-      const menu = document.createElement('div');
-      menu.id = 'genreContextMenu';
-      menu.className = 'context-menu';
-      
-      const rect = event.target.getBoundingClientRect();
-      
-      let left = rect.left;
-      let top = rect.bottom + 5;
-      
-      if (left + 180 > window.innerWidth) {
-        left = rect.right - 180;
-      }
-      
-      if (top + 400 > window.innerHeight) {
-        top = rect.top - 405;
-      }
-      
-      menu.style.left = left + 'px';
-      menu.style.top = top + 'px';
-      
-      const genres = ['Rock', 'Classic Rock', 'Alternative', 'Punk', 'Metal', 'Pop', 
-                      'Hip-Hop', 'R&B', 'Electronic', 'Indie', 'Country', 
-                      'Disco/Funk', 'Blues', 'Jazz', 'Reggae', 'Latin', 'Soul', 'Other'];
-      
-      menu.innerHTML = `
-        <div style="padding: 8px 12px; color: #00d9ff; font-weight: bold; font-size: 13px; border-bottom: 1px solid rgba(0,217,255,0.3); margin-bottom: 4px;">Select Genre:</div>
-      `;
-      
-      genres.forEach(g => {
-        const btn = document.createElement('button');
-        btn.textContent = g;
-        btn.addEventListener('click', () => {
-          setGenreOverride(songId, g);
-        });
-        menu.appendChild(btn);
-      });
-      
-      document.body.appendChild(menu);
-      
-      setTimeout(() => {
-        const closeMenu = (e) => {
-          if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
-          }
+// When user clicks Preview on a candidate track
+function onPreviewClick(id) {
+  const b = songs.find(s => s.id === id);
+  if (!selectedSong) {
+    // if first click sets selectedSong
+    showSelected(b);
+    alert('Main track selected. Click Preview on another track to compare.');
+    return;
+  }
+  previewSong = b;
+  displayTwoTrackPreview(selectedSong, previewSong);
+}
+
+function displayTwoTrackPreview(A, B) {
+  document.getElementById('twoTrackPreview').classList.remove('hidden');
+  document.getElementById('previewA').textContent = `${A.title} — ${A.artist}`;
+  document.getElementById('previewB').textContent = `${B.title} — ${B.artist}`;
+  document.getElementById('previewAInfo').textContent = `${A.camelot} • ${A.bpm} BPM • ${A.genre}`;
+  document.getElementById('previewBInfo').textContent = `${B.camelot} • ${B.bpm} BPM • ${B.genre}`;
+  const comp = mashupCompatibility(A,B);
+  const pct = Math.round(comp.total);
+  compatTopBadgeEl().textContent = pct + '%';
+  // BPM diff & shift
+  document.getElementById('previewBpmDiff').textContent = Math.abs(A.bpm - B.bpm) + ' BPM';
+  document.getElementById('bpmShiftHint').textContent = bpmShiftSuggestion(A.bpm, B.bpm);
+  // energy
+  const eA = computeEnergy(A), eB = computeEnergy(B);
+  document.getElementById('previewEnergy').textContent = `${eA} → ${eB}`;
+  // transitions
+  const tips = suggestTransitions(A,B);
+  const ul = document.getElementById('transitionList');
+  ul.innerHTML = '';
+  tips.forEach(t => {
+    const li = document.createElement('li'); li.textContent = t; ul.appendChild(li);
+  });
+  // recipe
+  const recipe = generateRecipe(A,B);
+  renderRecipe(recipe);
+  // highlight top score color
+  const badge = compatTopBadgeEl();
+  badge.className = `score-badge text-2xl ${pct>=80 ? 'text-green-300' : pct>=60 ? 'text-yellow-300' : 'text-red-300'}`;
+}
+
+function renderRecipe(recipe) {
+  const out = document.getElementById('recipeOutput');
+  out.innerHTML = `
+    <div class="font-semibold">${recipe.name}</div>
+    <div class="small-muted mt-1">Recommended starting BPM: <strong>${recipe.bpm}</strong></div>
+    <div class="small-muted mt-1">${recipe.keyChange}</div>
+    <div class="small-muted mt-1">Bars to mix: <strong>${recipe.bars}</strong></div>
+    <div class="small-muted mt-1">Techniques: <ul class="ml-5 small-muted">${recipe.techniques.map(t => `<li>${t}</li>`).join('')}</ul></div>
+  `;
+}
+
+// ---------- Sandbox (drag/drop) ----------
+const sandboxEl = () => document.getElementById('sandbox');
+sandboxEl().addEventListener('dragover', (e) => { e.preventDefault(); });
+sandboxEl().addEventListener('drop', (e) => {
+  e.preventDefault();
+  const id = e.dataTransfer.getData('text/plain');
+  const track = songs.find(s => s.id === id);
+  if (!track) return;
+  if (sandboxTracks.find(t=>t.id===id)) return;
+  if (sandboxTracks.length >= 4) { alert('Sandbox limit: 4 tracks'); return; }
+  sandboxTracks.push(track);
+  renderSandbox();
+});
+document.getElementById('clearSandbox').onclick = () => { sandboxTracks=[]; renderSandbox(); };
+document.getElementById('autoOrder').onclick = () => { sandboxTracks = suggestSandboxOrder(sandboxTracks); renderSandbox(); };
+document.getElementById('generateName').onclick = () => {
+  if (sandboxTracks.length < 2) return alert('Add two tracks first');
+  const name = aiNameGenerator(sandboxTracks[0], sandboxTracks[1]);
+  document.getElementById('generatedNames').innerHTML = `<div class="mt-2 font-semibold">Suggestions:</div><div class="small-muted">${[name, name+' Remix', 'Festival '+name].join(' • ')}</div>`;
+};
+
+function renderSandbox() {
+  sandboxEl().innerHTML = sandboxTracks.map((t,i) => `
+    <div class="flex items-center gap-3 panel p-2 mb-2">
+      <div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div>
+      <div style="flex:1">
+        <div class="font-semibold">${t.title}</div>
+        <div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM</div>
+      </div>
+      <div class="small-muted">${computeEnergy(t)}</div>
+      <button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button>
+    </div>
+  `).join('') || `<div class="small-muted p-2">Drop tracks here</div>`;
+  // update sandbox info: BPM diffs, compatible keys, suggested timeline
+  const info = document.getElementById('sandboxInfo');
+  if (sandboxTracks.length === 0) { info.textContent = ''; renderEnergyGraph([]); return; }
+  const bpms = sandboxTracks.map(s=>s.bpm);
+  const keys = sandboxTracks.map(s=>s.camelot);
+  const bpmDiffs = bpms.length>1 ? Math.abs(bpms[0]-bpms[bpms.length-1]) : 0;
+  const genreBlend = getGenreBlendScore(sandboxTracks);
+  info.innerHTML = `BPM range: ${Math.min(...bpms)}–${Math.max(...bpms)} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`;
+  renderEnergyGraph(sandboxTracks);
+}
+
+function removeSandbox(id) { sandboxTracks = sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
+
+function getGenreBlendScore(list) {
+  if (!list.length) return 0;
+  const counts = {};
+  list.forEach(s=>counts[s.genre] = (counts[s.genre]||0)+1);
+  const max = Math.max(...Object.values(counts));
+  return max / list.length; // 1.0 = same genre, lower = more blended
+}
+
+function suggestSandboxOrder(list) {
+  // naive suggestion: sort by bpm ascending then by energy
+  return [...list].sort((a,b)=>a.bpm - b.bpm);
+}
+
+// ---------- Energy Graph ----------
+function renderEnergyGraph(list) {
+  const container = document.getElementById('energyGraph');
+  if (!list || list.length===0) { container.innerHTML = '<div class="small-muted">No tracks selected</div>'; return; }
+  container.innerHTML = list.map((t,i) => {
+    const e = computeEnergy(t);
+    const pct = (e/5)*100;
+    const color = e>=4 ? 'linear-gradient(90deg,#f97316,#ef4444)' : e>=3 ? 'linear-gradient(90deg,#f59e0b,#f97316)' : 'linear-gradient(90deg,#34d399,#10b981)';
+    return `<div class="flex items-center gap-3">
+      <div style="width:40px" class="small-muted">${i+1}</div>
+      <div style="flex:1">
+        <div class="small-muted text-xs">${t.title} — <span style="color:${camelotColors[t.camelot]||'#fff'}">${t.camelot}</span></div>
+        <div class="energy-bar mt-1"><div class="energy-fill" style="width:${pct}%; background:${color}"></div></div>
+      </div>
+      <div style="width:36px" class="text-center font-bold">${e}</div>
+    </div>`;
+  }).join('<div style="height:6px"></div>');
+}
+
+// ---------- Setlist helpers (simple) ----------
+let setlist = [];
+function addToSetlist(id) {
+  const t = songs.find(s=>s.id===id);
+  if (!t) return;
+  if (!setlist.find(s=>s.id===id)) setlist.push(t);
+  alert(`Added to setlist: ${t.title}`);
+}
+
+// ---------- Key compatibility helpers ----------
+function getCompatibleKeys(camelot) {
+  if (!camelot || camelot==='?') return [];
+  const m = camelot.match(/^(\d+)([AB])$/);
+  if (!m) return [];
+  const num = Number(m[1]), letter = m[2];
+  const comp = [camelot, `${num}${letter==='A'?'B':'A'}`];
+  const next = num===12?1:num+1, prev = num===1?12:num-1;
+  comp.push(`${next}${letter}`, `${prev}${letter}`);
+  return comp;
+}
+
+// ---------- Load songs from API or fallback ----------
+async function loadSongs() {
+  // attempt to fetch; if fails use fallback sample
+  const endpoint = 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks';
+  try {
+    const res = await fetch(endpoint, {cache:'no-store'});
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    songs = Object.entries(data)
+      .filter(([k]) => !k.startsWith('_'))
+      .map(([id, item]) => {
+        const t = item.track || {};
+        const genre = detectGenre(t.an||'', t.tt||'');
+        return {
+          id,
+          title: t.tt || 'Unknown Title',
+          artist: t.an || 'Unknown Artist',
+          bpm: Number(t.mt) || Math.floor(90 + Math.random()*60),
+          key: t.mk || '?', mode: t.mm || '',
+          camelot: convertToCamelot(t.mk||'', t.mm||''),
+          duration: Number(t.dn) || 120,
+          albumArt: t.au || '',
+          genre
         };
-        document.addEventListener('click', closeMenu);
-      }, 100);
-    }
+      })
+      .filter(s => s && s.bpm > 0);
+  } catch (err) {
+    // fallback sample set
+    songs = [
+      { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, key:'C', mode:'major', camelot:'8B', duration:180, albumArt:'', genre:'Pop' },
+      { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, key:'C', mode:'minor', camelot:'8A', duration:210, albumArt:'', genre:'Rock' },
+      { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, key:'D', mode:'major', camelot:'10B', duration:200, albumArt:'', genre:'Electronic' },
+      { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, key:'G', mode:'minor', camelot:'9A', duration:190, albumArt:'', genre:'Indie' },
+      { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, key:'A', mode:'minor', camelot:'11A', duration:160, albumArt:'', genre:'Electronic' }
+    ];
+  }
+  renderSongList();
+  updateOwnedCount();
+}
 
-    function renderSetlist() {
-      const setlistEl = document.getElementById('setlistContent');
-      if (!setlistEl) return;
+// ---------- Mash-up Mode toggle ----------
+document.getElementById('mashupToggle').onclick = () => {
+  mashupMode = !mashupMode;
+  document.getElementById('mashupToggle').textContent = mashupMode ? 'On' : 'Off';
+  renderSongList();
+};
 
-      if (setlist.length === 0) {
-        setlistEl.innerHTML = `
-          <div class="text-center py-12">
-            <div class="text-6xl mb-4">🎵</div>
-            <p class="text-xl mb-4 text-white">Your setlist is empty</p>
-            <button onclick="switchView('browser')" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button>
-          </div>
-        `;
-      } else {
-        setlistEl.innerHTML = `
-          <div class="space-y-4">
-            ${setlist.map((song, i) => `
-              <div class="bg-black/40 backdrop-blur-sm border border-gray-700 rounded-xl p-4 flex items-center gap-4 hover:border-cyan-400 transition">
-                <div class="text-2xl font-bold text-pink-400">${i + 1}</div>
-                ${song.albumArt ? `<img src="${song.albumArt}" class="w-16 h-16 rounded-lg"/>` : ''}
-                <div class="flex-1">
-                  <div class="font-bold text-lg text-white">${song.title}</div>
-                  <div class="text-gray-300">${song.artist}</div>
-                  <div class="text-xs text-orange-300">${song.genre}</div>
-                </div>
-                <div class="text-xl font-mono font-bold" style="color: ${camelotColors[song.camelot]}">${song.camelot}</div>
-                <button onclick="removeFromSetlist('${song.id}')" class="p-2 hover:bg-red-500/20 rounded text-red-400 text-xl">✕</button>
-              </div>
-            `).join('')}
-          </div>
-        `;
-      }
-    }
+// ---------- Simple persistence for ownedTracks ----------
+function saveOwned() { localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks)); }
+function loadOwned() { const v = localStorage.getItem('ownedTracks'); if (v) ownedTracks = JSON.parse(v); }
+loadOwned();
 
-    function render() {
-      const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
-      const ownedCount = displayTracks.length;
+// ---------- Event wiring ----------
+document.getElementById('searchInput').addEventListener('input', () => renderSongList());
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const data = { songs, sandboxTracks, setlist };
+  const blob = new Blob([JSON.stringify(data, null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'festival-mixer-export.json'; a.click();
+  URL.revokeObjectURL(url);
+});
 
-      document.getElementById('app').innerHTML = `
-        <div class="min-h-screen">
-          <div class="bg-black/60 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg shadow-cyan-500/20">
-            <div class="max-w-7xl mx-auto px-6 py-4">
-              <div class="flex items-center justify-between flex-wrap gap-4 mb-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">
-                    🎵
-                  </div>
-                  <div>
-                    <h1 class="text-2xl font-bold text-white graffiti-text">FESTIVAL PRO MIXER</h1>
-                    <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">${viewingMember ? viewingMember.djName : 'You'} own ${ownedCount}/${songs.length} tracks</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  ${viewingMember ? `
-                    <button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm">
-                      ← Back to My Profile
-                    </button>
-                  ` : `
-                    <div class="text-right">
-                      <div class="text-sm text-pink-300 font-bold">${currentUser.djName}</div>
-                      <div class="text-xs text-gray-400">@${currentUser.username}${Object.keys(genreOverrides).length > 0 ? ` • ${Object.keys(genreOverrides).length} corrections` : ''}</div>
-                    </div>
-                    <button onclick="exportCollection()" class="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-300 text-sm">
-                      Export
-                    </button>
-                    <button onclick="importCollection()" class="px-3 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 rounded-lg text-green-300 text-sm">
-                      Import
-                    </button>
-                    <button onclick="logoutUser()" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">
-                      Logout
-                    </button>
-                  `}
-                </div>
-              </div>
-              
-              ${!viewingMember && bandMembers.length > 0 ? `
-                <div class="mb-4">
-                  <div class="text-sm text-purple-300 mb-2 font-bold">🎸 Band Members:</div>
-                  <div class="flex gap-2 flex-wrap">
-                    ${bandMembers.map(member => `
-                      <button onclick="viewBandMember('${member.username}')" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">
-                        ${member.djName}
-                      </button>
-                    `).join('')}
-                    <button onclick="addBandMember()" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm">
-                      + Add Member
-                    </button>
-                  </div>
-                </div>
-              ` : !viewingMember ? `
-                <div class="mb-4">
-                  <button onclick="addBandMember()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">
-                    🎸 + Add Band Member
-                  </button>
-                </div>
-              ` : ''}
-              
-              <div class="flex gap-2">
-                <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view === 'browser' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/10 hover:bg-white/20'}">
-                  Browse
-                </button>
-                <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view === 'setlist' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/10 hover:bg-white/20'}">
-                  Setlist (<span id="setlistCount">${setlist.length}</span>)
-                </button>
-              </div>
-            </div>
-          </div>
+// initialize
+loadSongs();
+renderSandbox();
+renderEnergyGraph([]);
 
-          <div class="max-w-7xl mx-auto px-6 py-6 pb-20">
-            <div id="browserView" style="display: ${view === 'browser' ? 'block' : 'none'}">
-              <div class="mb-6 space-y-4">
-                <div class="relative">
-                  <input
-                    type="text"
-                    id="searchInput"
-                    placeholder="🔍 Quick search (optional)..."
-                    class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                  />
-                  <button 
-                    id="clearSearchBtn"
-                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl"
-                    style="display: none;"
-                    title="Clear search"
-                  >✕</button>
-                </div>
-                <div class="flex flex-wrap gap-3">
-                  <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}">
-                    ${showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable'}
-                  </button>
-                  <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-white/10 hover:bg-white/20'}">
-                    ${showOwnedOnly ? '✓ Owned Only' : 'Show All'}
-                  </button>
-                  ${!viewingMember ? `
-                    <button id="markAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition">
-                      Mark All Owned
-                    </button>
-                    <button id="clearAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition">
-                      Clear All
-                    </button>
-                  ` : ''}
-                </div>
-              </div>
-              <div id="songList"></div>
-            </div>
+// small helper: if user clicks a song card (title), show as selected
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('.song-card');
+  if (card && !e.target.classList.contains('previewBtn') && !e.target.classList.contains('addSetBtn')) {
+    const id = card.dataset.id;
+    const t = songs.find(s=>s.id===id);
+    if (t) showSelected(t);
+  }
+});
 
-            <div id="setlistView" style="display: ${view === 'setlist' ? 'block' : 'none'}">
-              <div id="setlistContent"></div>
-            </div>
-          </div>
-        </div>
-      `;
+// expose a global function to remove sandbox item (used in markup)
+window.removeSandbox = removeSandbox;
 
-      if (view === 'browser') {
-        renderSongList();
-      } else {
-        renderSetlist();
-      }
-    }
-
-    function setupEventListeners() {
-      const searchInput = document.getElementById('searchInput');
-      const clearSearchBtn = document.getElementById('clearSearchBtn');
-
-      if (searchInput && clearSearchBtn) {
-        searchInput.addEventListener('input', (e) => {
-          searchTerm = e.target.value;
-          clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
-          renderSongList();
-        });
-        
-        clearSearchBtn.addEventListener('click', () => {
-          searchInput.value = '';
-          searchTerm = '';
-          clearSearchBtn.style.display = 'none';
-          renderSongList();
-        });
-      }
-
-      document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
-      document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
-      document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
-      document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
-      
-      if (!viewingMember) {
-        document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned);
-        document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned);
-      }
-    }
-
-    window.selectSong = (id) => { 
-      selectedSong = songs.find(s => s.id === id);
-      showMixableOnly = true;
-      const btn = document.getElementById('mixableFilterBtn');
-      if (btn) {
-        btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-gradient-to-r from-blue-500 to-cyan-500';
-        btn.textContent = '🎧 Mixable Only';
-      }
-      renderSongList();
-    };
-    
-    window.clearSelection = () => { 
-      selectedSong = null;
-      showMixableOnly = false;
-      const btn = document.getElementById('mixableFilterBtn');
-      if (btn) {
-        btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20';
-        btn.textContent = 'Show Mixable';
-      }
-      renderSongList();
-    };
-    
-    window.toggleOwned = toggleOwned;
-    window.exportCollection = exportCollection;
-    window.importCollection = importCollection;
-    window.addBandMember = addBandMember;
-    window.viewBandMember = viewBandMember;
-    window.backToMyProfile = backToMyProfile;
-    window.selectGenre = (genre) => { selectedGenre = genre; renderSongList(); };
-    
-    window.markAllOwned = () => { 
-      if (viewingMember) return;
-      if (!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\n\nThis will override your current selection!`)) {
-        return;
-      }
-      ownedTracks = songs.map(s => s.id); 
-      saveUserProfile(); 
-      renderSongList();
-      updateOwnedCount();
-      alert(`✅ Marked all ${songs.length} songs as owned!`);
-    };
-
-    window.clearAllOwned = () => { 
-      if (viewingMember) return;
-      if (!confirm(`⚠️ CLEAR ALL owned songs?\n\nYou currently own ${ownedTracks.length} songs.\nThis CANNOT be undone!`)) {
-        return;
-      }
-      const count = ownedTracks.length;
-      ownedTracks = []; 
-      saveUserProfile(); 
-      renderSongList();
-      updateOwnedCount();
-      alert(`🗑️ Cleared ${count} owned songs.`);
-    };
-    
-    window.toggleMixableFilter = () => {
-      if (!selectedSong) {
-        alert('Select a song first to see mixable tracks!');
-        return;
-      }
-      showMixableOnly = !showMixableOnly;
-      const btn = document.getElementById('mixableFilterBtn');
-      if (btn) {
-        btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`;
-        btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable';
-      }
-      renderSongList();
-    };
-    
-    window.toggleOwnedFilter = () => { 
-      showOwnedOnly = !showOwnedOnly;
-      const btn = document.getElementById('ownedFilterBtn');
-      if (btn) {
-        btn.className = `px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-white/10 hover:bg-white/20'}`;
-        btn.textContent = showOwnedOnly ? '✓ Owned Only' : 'Show All';
-      }
-      renderSongList();
-    };
-    
-    window.addToSetlist = (id) => { 
-      const song = songs.find(s => s.id === id); 
-      if (!setlist.find(s => s.id === id)) { 
-        setlist.push(song);
-        const countEl = document.getElementById('setlistCount');
-        if (countEl) countEl.textContent = setlist.length;
-      }
-    };
-    
-    window.removeFromSetlist = (id) => { 
-      setlist = setlist.filter(s => s.id !== id); 
-      renderSetlist();
-      const countEl = document.getElementById('setlistCount');
-      if (countEl) countEl.textContent = setlist.length;
-    };
-    
-    window.switchView = (newView) => { 
-      view = newView;
-      document.getElementById('browserView').style.display = view === 'browser' ? 'block' : 'none';
-      document.getElementById('setlistView').style.display = view === 'setlist' ? 'block' : 'none';
-      
-      const browserBtn = document.getElementById('browserBtn');
-      const setlistBtn = document.getElementById('setlistBtn');
-      if (browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view === 'browser' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/10 hover:bg-white/20'}`;
-      if (setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view === 'setlist' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/10 hover:bg-white/20'}`;
-      
-      if (view === 'browser') {
-        renderSongList();
-        setupEventListeners();
-      } else {
-        renderSetlist();
-      }
-    };
-
-    if (!localStorage.getItem('hasSeenLanding')) {
-      showLandingPage();
-    } else {
-      checkAuth();
-    }
   </script>
 </body>
 </html>
