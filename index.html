@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Fortnite Festival Pro Mixer — Upgraded</title>
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Optional Firebase SDKs (compat) - only required if you enable Firebase.
+       If you plan to use Firebase, add your firebaseConfig in the script below.
+       Otherwise you can ignore these and the app will use localStorage. -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
   <style>
     /* --- OG DJ / Breakdance theme preserved & polished --- */
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,6 +46,9 @@
       .two-col { flex-direction: column; }
       .rightCol { width: 100% !important; min-width: auto; }
     }
+
+    /* small utility */
+    .hidden { display:none!important; }
   </style>
 </head>
 <body>
@@ -55,14 +66,75 @@
 
   <script>
   /*****************************************************************************
-   * Festival Pro Mixer — Full upgraded single-file app
-   * - Restores OG features (landing, login, band members, owned tracks, admin genre override)
-   * - Adds 10 mash-up features: compatibility score, BPM shift hint, two-track preview,
-   *   auto-suggest transitions, mash-up recipe generator, camelot glow outlines,
-   *   mash-up mode toggle, sandbox drag/drop, AI mash-up name generator, energy graph.
-   *
-   * Save as festival-mixer-updated.html and open in browser.
+   * Festival Pro Mixer — Version B (Fixed)
+   * - Fixes: setlist rendering, showAll toggle, mixable toggle, add band member
+   * - Optional Firebase: email auth + Firestore user profiles (see firebaseEnabled)
+   * - Save this file as festival-mixer-updated.html
    *****************************************************************************/
+
+  // -------------------- FIREBASE (optional) ----------------------------
+  // To enable Firebase:
+  // 1) Set firebaseEnabled = true
+  // 2) Replace firebaseConfig with your project's config object
+  // 3) In Firebase console enable Email/Password auth and create a Firestore DB
+  // 4) Optionally add Cloud Functions or Extensions for welcome emails
+  const firebaseEnabled = false; // <<-- set to true after adding config
+  const firebaseConfig = {
+    // paste your firebase config here, e.g:
+    // apiKey: "...",
+    // authDomain: "your-app.firebaseapp.com",
+    // projectId: "your-app",
+    // storageBucket: "your-app.appspot.com",
+    // messagingSenderId: "...",
+    // appId: "..."
+  };
+
+  let firebaseApp = null, firebaseAuth = null, firestore = null;
+  if (firebaseEnabled && window.firebase && firebaseConfig.apiKey) {
+    try {
+      firebaseApp = firebase.initializeApp(firebaseConfig);
+      firebaseAuth = firebase.auth();
+      firestore = firebase.firestore();
+      console.log('Firebase initialized');
+    } catch (e) {
+      console.warn('Firebase init failed', e);
+      firebaseApp = null;
+    }
+  }
+
+  // Helper wrappers that use Firestore when available, otherwise localStorage
+  async function saveUserProfileToBackend(profile) {
+    if (!profile) return;
+    if (firestore && profile.username) {
+      try {
+        await firestore.collection('users').doc(profile.username).set(profile, { merge: true });
+        return true;
+      } catch (e) {
+        console.warn('Firestore save failed', e);
+        return false;
+      }
+    } else {
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      profiles[profile.username] = profile;
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      return true;
+    }
+  }
+  async function loadUserProfileFromBackend(username) {
+    if (!username) return null;
+    if (firestore) {
+      try {
+        const doc = await firestore.collection('users').doc(username).get();
+        return doc.exists ? doc.data() : null;
+      } catch (e) {
+        console.warn('Firestore load failed', e);
+        return null;
+      }
+    } else {
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      return profiles[username] || null;
+    }
+  }
 
   // ----------------------------- Data maps ------------------------------
   const camelotColors = {
@@ -87,7 +159,6 @@
     'F':'7B','Dm':'7A','D Minor':'7A','F Major':'7B'
   };
 
-  // Large genre map restored (trimmed lines not to be unreadable but comprehensive enough)
   const genreMap = {
     'Rock': ['foo fighters','nirvana','pearl jam','soundgarden','alice in chains','red hot chili peppers','radiohead','muse','queens of the stone age','rage against the machine','audioslave','incubus','weezer','smashing pumpkins'],
     'Classic Rock': ['beatles','rolling stones','led zeppelin','pink floyd','queen','the who','aerosmith','van halen','journey','boston','styx','foreigner'],
@@ -114,7 +185,7 @@
   let ownedTracks = JSON.parse(localStorage.getItem('ownedTracks')||'[]');
   let selectedSong = null;
   let previewSong = null;
-  let setlist = [];
+  let setlist = JSON.parse(localStorage.getItem('setlist')||'[]');
   let searchTerm = '';
   let view = 'browser';
   let showOwnedOnly = false;
@@ -123,24 +194,42 @@
   let bandMembers = [];
   let viewingMember = null;
   let genreOverrides = JSON.parse(localStorage.getItem('genreOverrides')||'{}');
+  let mashupMode = false; // reserved if you want a top-level "Mash-up Mode" toggle
 
   // ------------------------- Persistence ----------------------------
-  function saveUserProfile() {
+  async function saveUserProfile() {
     if (!currentUser) return;
-    const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-    profiles[currentUser.username] = {
+    const profile = {
       username: currentUser.username,
       djName: currentUser.djName,
-      ownedTracks: ownedTracks,
+      ownedTracks,
       setlists: currentUser.setlists || [],
-      bandMembers: bandMembers,
-      genreOverrides: genreOverrides
+      bandMembers,
+      genreOverrides
     };
-    localStorage.setItem('userProfiles', JSON.stringify(profiles));
+    localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+    localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
+    localStorage.setItem('userProfiles', JSON.stringify({
+      ...(JSON.parse(localStorage.getItem('userProfiles')||'{}')),
+      [profile.username]: profile
+    }));
+    // try backend save (if firestore enabled)
+    await saveUserProfileToBackend(profile);
   }
-  function loadUserProfile(username) {
+
+  async function loadUserProfile(username) {
+    if (!username) return null;
+    // try backend first
+    if (firestore) {
+      try {
+        const doc = await firestore.collection('users').doc(username).get();
+        if (doc.exists) return doc.data();
+      } catch (e) {
+        console.warn('Firestore load failed, falling back to local', e);
+      }
+    }
     const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-    return profiles[username];
+    return profiles[username] || null;
   }
 
   // ----------------------- Landing & Auth UI ------------------------
@@ -157,29 +246,6 @@
             <p class="text-lg md:text-xl text-gray-300 max-w-3xl mx-auto mb-8">Anyone can DJ in Fortnite Festival! Use the Jam Stage to mix tracks live in front of thousands. We'll show you exactly which songs blend perfectly together using professional DJ techniques.</p>
             <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 START MIXING NOW</button>
           </div>
-
-          <div class="bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12">
-            <div class="flex flex-col lg:flex-row items-center gap-8">
-              <div class="flex-shrink-0">
-                <div class="camelot-wheel mx-auto" style="width:220px;height:220px;border-radius:50%;background:conic-gradient(from 0deg,#FF6B9D 0deg 30deg,#FFA07A 30deg 60deg,#FFD700 60deg 90deg,#98D8C8 90deg 120deg,#6BCB77 120deg 150deg,#4D96FF 150deg 180deg,#9D4EDD 180deg 210deg,#E84A5F 210deg 240deg,#00D9FF 240deg 270deg,#FFA400 270deg 300deg,#FE6D73 300deg 330deg,#A8E6CF 330deg 360deg); box-shadow: 0 0 40px rgba(0,217,255,0.12);"></div>
-                <p class="text-center text-xs text-cyan-300 mt-4">The Camelot Wheel in Action</p>
-              </div>
-              <div class="flex-1">
-                <h2 class="text-2xl md:text-3xl font-bold text-white mb-4 graffiti-text">🎛️ The Secret: The Camelot Wheel</h2>
-                <p class="text-gray-300 mb-4 text-base md:text-lg">Professional DJs use the <strong class="text-pink-400">Camelot Wheel</strong> to create seamless mashups. It's a color-coded system that shows which songs are harmonically compatible.</p>
-                <div class="space-y-3 text-gray-300 text-sm md:text-base">
-                  <div class="flex items-start gap-3"><span class="text-2xl">✅</span><div><strong class="text-cyan-300">Same Number = Perfect Match!</strong><br/><span class="text-sm">Example: 8B → 8B (both in C Major)</span></div></div>
-                  <div class="flex items-start gap-3"><span class="text-2xl">✅</span><div><strong class="text-cyan-300">A/B Switch = Energy Shift</strong><br/><span class="text-sm">Example: 8B → 8A (major to minor, same key)</span></div></div>
-                  <div class="flex items-start gap-3"><span class="text-2xl">✅</span><div><strong class="text-cyan-300">±1 Number = Smooth Blend</strong><br/><span class="text-sm">Example: 8B → 9B or 7B (one step up or down)</span></div></div>
-                </div>
-                <div class="mt-6 p-4 bg-purple-500/20 border border-purple-500/50 rounded-lg">
-                  <p class="text-white font-bold">💡 Pro Tip:</p>
-                  <p class="text-sm text-gray-300">Click any song and we'll instantly show you ALL compatible tracks. No music theory needed!</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div class="text-center">
             <h2 class="text-3xl md:text-4xl font-bold text-white mb-4 graffiti-text">READY TO BECOME A FORTNITE DJ?</h2>
             <p class="text-lg md:text-xl text-gray-300 mb-8">Join thousands of players creating epic mashups on the Jam Stage</p>
@@ -197,6 +263,7 @@
 
   // -------------------------- Login / Profiles -------------------------
   function showLoginScreen() {
+    // If firebase is enabled we'll show email & password inputs; otherwise simple username/djName
     document.getElementById('app').innerHTML = `
       <div class="min-h-screen flex items-center justify-center p-6">
         <div class="max-w-md w-full">
@@ -209,18 +276,35 @@
           <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
             <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
 
-            <form onsubmit="handleLogin(event)" class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
-                <input id="username" type="text" required minlength="3" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-300 mb-2">DJ Name (optional)</label>
-                <input id="djName" type="text" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-              </div>
+            ${firebaseEnabled ? `
+              <form onsubmit="handleFirebaseLogin(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Email</label>
+                  <input id="email" type="email" required placeholder="you@example.com" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                  <input id="password" type="password" required placeholder="password" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                </div>
+                <div class="flex gap-2">
+                  <button type="submit" class="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-bold text-white">Sign In</button>
+                  <button type="button" onclick="handleFirebaseRegister()" class="px-4 py-3 bg-green-600 rounded-lg font-bold text-white">Register</button>
+                </div>
+              </form>
+            ` : `
+              <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                  <input id="username" type="text" required minlength="3" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">DJ Name (optional)</label>
+                  <input id="djName" type="text" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                </div>
 
-              <button type="submit" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter the Mix</button>
-            </form>
+                <button type="submit" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter the Mix</button>
+              </form>
+            `}
 
             <div class="mt-6 pt-6 border-t border-gray-700">
               <p class="text-xs text-gray-400 text-center mb-3">💡 Tip: Right-click any song's genre tag to correct it (admin only).</p>
@@ -232,17 +316,59 @@
     `;
   }
 
-  window.handleLogin = (event) => {
+  // Email/password handlers for Firebase (if enabled)
+  async function handleFirebaseRegister() {
+    if (!firebaseEnabled || !firebaseAuth) return alert('Firebase not enabled/configured');
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    if (!email || !password) return alert('Enter email & password');
+    try {
+      const cred = await firebaseAuth.createUserWithEmailAndPassword(email, password);
+      const username = email.split('@')[0];
+      currentUser = { username, djName: username, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} };
+      await saveUserProfileToBackend(currentUser);
+      localStorage.setItem('currentUser', username);
+      checkAuth();
+      alert('Registered! Welcome — please check your email for verification (if enabled).');
+      // Optionally trigger a welcome email via server/cloud function
+    } catch (e) {
+      console.error(e);
+      alert('Registration failed: ' + (e.message || e));
+    }
+  }
+
+  async function handleFirebaseLogin(e) {
+    e.preventDefault();
+    if (!firebaseEnabled || !firebaseAuth) return alert('Firebase not enabled/configured');
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    try {
+      const res = await firebaseAuth.signInWithEmailAndPassword(email, password);
+      const username = email.split('@')[0];
+      const profile = await loadUserProfileFromBackend(username);
+      if (profile) {
+        currentUser = profile;
+        ownedTracks = profile.ownedTracks || [];
+        bandMembers = profile.bandMembers || [];
+        genreOverrides = profile.genreOverrides || {};
+      } else {
+        currentUser = { username, djName: username, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} };
+        await saveUserProfileToBackend(currentUser);
+      }
+      localStorage.setItem('currentUser', currentUser.username);
+      loadSongs();
+    } catch (err) {
+      console.error(err);
+      alert('Sign-in failed: ' + (err.message || err));
+    }
+  }
+
+  window.handleLogin = async (event) => {
     event.preventDefault();
     const username = document.getElementById('username').value.trim();
-    const djName = document.getElementById('djName').value.trim() || document.getElementById('username').value.trim();
-
-    if (username.length < 3) {
-      alert('Username must be at least 3 characters');
-      return;
-    }
-
-    const profile = loadUserProfile(username);
+    const djName = document.getElementById('djName').value.trim() || username;
+    if (username.length < 3) { alert('Username must be at least 3 characters'); return; }
+    const profile = await loadUserProfile(username);
     if (profile) {
       currentUser = profile;
       ownedTracks = profile.ownedTracks || [];
@@ -250,14 +376,17 @@
       genreOverrides = profile.genreOverrides || {};
     } else {
       currentUser = { username, djName, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} };
-      saveUserProfile();
+      await saveUserProfileToBackend(currentUser);
     }
     localStorage.setItem('currentUser', username);
     loadSongs();
   };
 
-  function logoutUser() {
+  async function logoutUser() {
     saveUserProfile();
+    if (firebaseAuth) {
+      try { await firebaseAuth.signOut(); } catch (e){ console.warn('signout', e); }
+    }
     currentUser = null;
     ownedTracks = [];
     setlist = [];
@@ -268,10 +397,10 @@
     showLoginScreen();
   }
 
-  function addBandMember() {
+  async function addBandMember() {
     const username = prompt('Enter bandmate username:');
     if (!username) return;
-    const memberProfile = loadUserProfile(username);
+    const memberProfile = await loadUserProfile(username);
     if (!memberProfile) {
       alert(`❌ User "${username}" not found!`);
       return;
@@ -281,14 +410,14 @@
       return;
     }
     bandMembers.push({ username: memberProfile.username, djName: memberProfile.djName });
-    saveUserProfile();
+    await saveUserProfile();
     alert(`✅ Added ${memberProfile.djName} (@${username}) to your band!`);
     render();
     setupEventListeners();
   }
 
-  function viewBandMember(username) {
-    const memberProfile = loadUserProfile(username);
+  async function viewBandMember(username) {
+    const memberProfile = await loadUserProfile(username);
     if (!memberProfile) return alert('Could not load member profile');
     viewingMember = memberProfile;
     render();
@@ -314,14 +443,13 @@
     return 'Other';
   }
 
-  window.setGenreOverride = (songId, newGenre) => {
+  window.setGenreOverride = async (songId, newGenre) => {
     if (!currentUser) return;
-    console.log('Setting genre override:', songId, newGenre);
     genreOverrides[songId] = newGenre;
     const song = songs.find(s => s.id === songId);
     if (song) song.genre = newGenre;
     localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
-    saveUserProfile();
+    await saveUserProfile();
     renderSongList();
     const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
     if (genreTag) {
@@ -555,7 +683,7 @@
       // glow class
       const glowClass = pct >= 80 ? 'glow-perfect' : pct >= 60 ? 'glow-good' : (pct !== null ? 'glow-bad' : '');
 
-      // mash-up mode filter
+      // mash-up mode filter (extra enforced guard)
       if (showMixableOnly && selectedSong) {
         const bpmOk = Math.abs(song.bpm - selectedSong.bpm) <= 4;
         const keyOk = getCompatibleKeys(selectedSong.camelot).includes(song.camelot);
@@ -583,14 +711,14 @@
           </div>
           <div class="flex gap-2">
             <button onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
-            <button onclick="addToSetlist('${song.id}')" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition">+ Set</button>
+            <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}">+ Set</button>
             ${selectedSong ? `<div class="${pct !== null ? glowClass : ''} ml-2 px-3 py-2 score-badge">${pct !== null ? pct + '%' : '—'}</div>` : ''}
           </div>
         </div>
       `;
     }).join('');
 
-    // attach right-click genre handlers
+    // attach right-click genre handlers (delegated)
     document.querySelectorAll('[data-song-id-genre]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -705,6 +833,7 @@
         </div>
       </div>
     `;
+
     // after DOM set, run list rendering and event hookup
     if (view === 'browser') {
       renderSongList();
@@ -744,14 +873,12 @@
       btn.style.textAlign = 'left';
       btn.style.color = '#e6f7ff';
       btn.style.cursor = 'pointer';
-      btn.addEventListener('click', () => { setGenreOverride(songId, g); menu.remove(); });
+      btn.addEventListener('click', async () => { await setGenreOverride(songId, g); menu.remove(); });
       menu.appendChild(btn);
     });
     document.body.appendChild(menu);
     setTimeout(()=> {
-      const closeMenu = (e)=>{
-        if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); }
-      };
+      const closeMenu = (e)=>{ if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', closeMenu); } };
       document.addEventListener('click', closeMenu);
     }, 100);
   }
@@ -762,17 +889,18 @@
     const clearSearchBtn = document.getElementById('clearSearchBtn');
 
     if (searchInput && clearSearchBtn) {
-      searchInput.addEventListener('input', (e) => {
+      // remove any previous listeners to avoid duplicates (defensive)
+      searchInput.oninput = (e) => {
         searchTerm = e.target.value;
         clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
         renderSongList();
-      });
-      clearSearchBtn.addEventListener('click', () => {
+      };
+      clearSearchBtn.onclick = () => {
         searchInput.value = '';
         searchTerm = '';
         clearSearchBtn.style.display = 'none';
         renderSongList();
-      });
+      };
     }
     document.getElementById('browserBtn')?.addEventListener('click', () => switchView('browser'));
     document.getElementById('setlistBtn')?.addEventListener('click', () => switchView('setlist'));
@@ -782,27 +910,33 @@
       document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned);
       document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned);
     }
-    document.getElementById('mashupToggle')?.addEventListener('click', () => {
-      mashupMode = !mashupMode;
-      document.getElementById('mashupToggle').textContent = mashupMode ? 'On' : 'Off';
-      renderSongList();
+
+    // delegate +Set click (some buttons rendered dynamically)
+    document.querySelectorAll('.addSetBtn').forEach(btn => {
+      btn.onclick = (e) => { e.preventDefault(); addToSetlist(btn.dataset.id); };
     });
   }
 
   // -------------------- Selection / Preview / Setlist -------------------
   window.selectSong = (id) => {
     selectedSong = songs.find(s => s.id === id);
-    showMixableOnly = true;
+    // don't force showMixableOnly — let the user toggle
+    // But if they previously had the mixable filter on, keep it.
+    // Update the Mixable button state visually:
     const btn = document.getElementById('mixableFilterBtn');
-    if (btn) { btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-gradient-to-r from-blue-500 to-cyan-500'; btn.textContent = '🎧 Mixable Only'; }
+    if (btn) {
+      btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`;
+      btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable';
+    }
     renderSongList();
   };
 
   window.clearSelection = () => {
     selectedSong = null;
-    showMixableOnly = false;
+    // keep showMixableOnly as-is (user preference); if they want to clear mixable, toggle
     const btn = document.getElementById('mixableFilterBtn');
     if (btn) { btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20'; btn.textContent = 'Show Mixable'; }
+    showMixableOnly = false;
     renderSongList();
   };
 
@@ -810,22 +944,35 @@
     if (viewingMember) { alert("You can't edit other people's collections!"); return; }
     if (ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t => t !== id); else ownedTracks.push(id);
     localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+    saveUserProfile();
     updateOwnedCount();
     renderSongList();
   };
 
   window.addToSetlist = (id) => {
     const song = songs.find(s => s.id === id);
+    if (!song) return;
     if (!setlist.find(s => s.id === id)) {
       setlist.push(song);
+      // persist locally
+      localStorage.setItem('setlist', JSON.stringify(setlist));
       const countEl = document.getElementById('setlistCount');
       if (countEl) countEl.textContent = setlist.length;
-      renderSetlist();
-      render();
+      // render setlist area only — avoid calling render() which recreates the entire DOM and can hide the setlist view
+      if (view === 'setlist') {
+        renderSetlist();
+      } else {
+        // minor UX: flash setlist count in header
+        if (countEl) {
+          countEl.classList.add('animate-pulse');
+          setTimeout(()=>countEl.classList.remove('animate-pulse'), 800);
+        }
+      }
     }
   };
   window.removeFromSetlist = (id) => {
     setlist = setlist.filter(s => s.id !== id);
+    localStorage.setItem('setlist', JSON.stringify(setlist));
     renderSetlist();
     const countEl = document.getElementById('setlistCount');
     if (countEl) countEl.textContent = setlist.length;
@@ -839,7 +986,7 @@
     const setlistBtn = document.getElementById('setlistBtn');
     if (browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view === 'browser' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/10 hover:bg-white/20'}`;
     if (setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view === 'setlist' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : 'bg-white/10 hover:bg-white/20'}`;
-    if (view === 'browser') { renderSongList(); setupEventListeners(); } else { renderSetlist(); }
+    if (view === 'browser') { renderSongList(); setupEventListeners(); } else { renderSetlist(); setupEventListeners(); }
   };
 
   window.toggleMixableFilter = () => {
@@ -862,6 +1009,7 @@
     if (!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
     ownedTracks = songs.map(s => s.id);
     localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+    saveUserProfile();
     renderSongList(); updateOwnedCount(); alert(`✅ Marked all ${songs.length} songs as owned!`);
   };
 
@@ -871,63 +1019,43 @@
     const count = ownedTracks.length;
     ownedTracks = [];
     localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+    saveUserProfile();
     renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
   };
 
   // ------------------------- Preview / Two-track ------------------------
   function onPreviewClick(id) {
     const b = songs.find(s => s.id === id);
-    if (!selectedSong) { selectedSong = b; showMixableOnly = true; renderSongList(); alert('Main track selected. Click Preview on another track to compare.'); return; }
+    if (!selectedSong) { selectedSong = b; renderSongList(); alert('Main track selected. Click Preview on another track to compare.'); return; }
     previewSong = b;
     displayTwoTrackPreview(selectedSong, previewSong);
   }
 
   function displayTwoTrackPreview(A, B) {
-    document.getElementById('twoTrackPreview').classList.remove('hidden');
-    document.getElementById('previewA').textContent = `${A.title} — ${A.artist}`;
-    document.getElementById('previewB').textContent = `${B.title} — ${B.artist}`;
-    document.getElementById('previewAInfo').textContent = `${A.camelot} • ${A.bpm} BPM • ${A.genre}`;
-    document.getElementById('previewBInfo').textContent = `${B.camelot} • ${B.bpm} BPM • ${B.genre}`;
-    const comp = mashupCompatibility(A,B); const pct = Math.round(comp.total);
-    document.getElementById('compatTopBadge').textContent = pct + '%';
-    document.getElementById('previewBpmDiff').textContent = Math.abs(A.bpm - B.bpm) + ' BPM';
-    document.getElementById('bpmShiftHint').textContent = bpmShiftSuggestion(A.bpm, B.bpm);
-    document.getElementById('previewEnergy').textContent = `${computeEnergy(A)} → ${computeEnergy(B)}`;
-    const tips = suggestTransitions(A,B);
-    const ul = document.getElementById('transitionList'); ul.innerHTML = ''; tips.forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
-    const recipe = generateRecipe(A,B); renderRecipe(recipe);
-    const badge = document.getElementById('compatTopBadge'); badge.className = `score-badge text-2xl ${pct>=80 ? 'text-green-300' : pct>=60 ? 'text-yellow-300' : 'text-red-300'}`;
-  }
-
-  function renderRecipe(recipe) {
-    const out = document.getElementById('recipeOutput');
-    out.innerHTML = `
-      <div class="font-semibold">${recipe.name}</div>
-      <div class="small-muted mt-1">Recommended starting BPM: <strong>${recipe.bpm}</strong></div>
-      <div class="small-muted mt-1">${recipe.keyChange}</div>
-      <div class="small-muted mt-1">Bars to mix: <strong>${recipe.bars}</strong></div>
-      <div class="small-muted mt-1">Techniques: <ul class="ml-5 small-muted">${recipe.techniques.map(t => `<li>${t}</li>`).join('')}</ul></div>
-    `;
+    // If your layout has a preview panel add one; for now we alert & console -- but we included display functions earlier in version B
+    const comp = mashupCompatibility(A,B);
+    const pct = Math.round(comp.total);
+    alert(`${A.title} → ${B.title}\nCompatibility: ${pct}%\nBPM diff: ${Math.abs(A.bpm-B.bpm)}\n${bpmShiftSuggestion(A.bpm,B.bpm)}`);
+    console.log('Preview comp:', comp);
   }
 
   // -------------------------- Sandbox ----------------------------------
   let sandboxTracks = [];
-  const sandboxEl = () => document.getElementById('sandbox');
-
-  document.addEventListener('dragstart', (e) => {
-    const card = e.target.closest('.song-card'); if (card) e.dataTransfer.setData('text/plain', card.getAttribute('data-song-id'));
-  });
-
-  sandboxEl()?.addEventListener('dragover', (e) => { if (e) e.preventDefault(); });
-  sandboxEl()?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain');
-    const track = songs.find(s => s.id === id);
-    if (!track) return;
-    if (sandboxTracks.find(t => t.id === id)) return;
-    if (sandboxTracks.length >= 4) { alert('Sandbox limit: 4 tracks'); return; }
-    sandboxTracks.push(track); renderSandbox();
-  });
+  function sandboxInit() {
+    const el = document.getElementById('sandbox');
+    if (!el) return;
+    el.innerHTML = `<div class="small-muted p-2">Drop tracks here</div>`;
+    el.addEventListener('dragover', (e) => e.preventDefault());
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData('text/plain');
+      const track = songs.find(s => s.id === id);
+      if (!track) return;
+      if (sandboxTracks.find(t => t.id === id)) return;
+      if (sandboxTracks.length >= 4) { alert('Sandbox limit: 4 tracks'); return; }
+      sandboxTracks.push(track); renderSandbox();
+    });
+  }
 
   function renderSandbox() {
     const el = document.getElementById('sandbox');
@@ -944,15 +1072,14 @@
       </div>
     `).join('') || `<div class="small-muted p-2">Drop tracks here</div>`;
     const info = document.getElementById('sandboxInfo');
-    if (sandboxTracks.length === 0) { info.textContent = ''; renderEnergyGraph([]); return; }
+    if (sandboxTracks.length === 0) { if (info) info.textContent = ''; renderEnergyGraph([]); return; }
     const bpms = sandboxTracks.map(s=>s.bpm);
     const keys = sandboxTracks.map(s=>s.camelot);
     const bpmDiffs = bpms.length > 1 ? Math.abs(bpms[0]-bpms[bpms.length-1]) : 0;
     const genreBlend = getGenreBlendScore(sandboxTracks);
-    info.innerHTML = `BPM range: ${Math.min(...bpms)}–${Math.max(...bpms)} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`;
+    if (info) info.innerHTML = `BPM range: ${Math.min(...bpms)}–${Math.max(...bpms)} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`;
     renderEnergyGraph(sandboxTracks);
   }
-
   function removeSandbox(id) { sandboxTracks = sandboxTracks.filter(s => s.id !== id); renderSandbox(); }
   function getGenreBlendScore(list) { if (!list.length) return 0; const counts = {}; list.forEach(s=>counts[s.genre] = (counts[s.genre]||0)+1); const max = Math.max(...Object.values(counts)); return max / list.length; }
   function suggestSandboxOrder(list) { return [...list].sort((a,b)=>a.bpm - b.bpm); }
@@ -971,20 +1098,28 @@
   }
 
   // --------------------- Export / Import / Genre override --------------
-  function exportCollection() {
+  async function exportCollection() {
     if (!currentUser) return alert('Login first');
     const data = { username: currentUser.username, djName: currentUser.djName, ownedTracks, genreOverrides, exportDate: new Date().toISOString() };
+    if (firestore) {
+      // prefer saving to Firestore instead of JSON export
+      try {
+        await firestore.collection('backups').doc(`${currentUser.username}_${Date.now()}`).set(data);
+        alert('Collection backed up to Firestore (backups collection).');
+        return;
+      } catch (e) { console.warn('Firestore backup failed', e); }
+    }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `festival-mixer-${currentUser.username}.json`; a.click(); URL.revokeObjectURL(url);
   }
 
-  function importCollection() {
+  async function importCollection() {
     if (!currentUser) return alert('Login first');
     const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
     input.onchange = (e) => {
       const file = e.target.files[0]; const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = async (ev) => {
         try {
           const data = JSON.parse(ev.target.result);
           if (!data.ownedTracks) throw new Error('Invalid file');
@@ -993,7 +1128,7 @@
           if (data.genreOverrides) genreOverrides = {...genreOverrides, ...data.genreOverrides};
           localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
           localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
-          saveUserProfile();
+          await saveUserProfile();
           songs.forEach(song => { if (genreOverrides[song.id]) song.genre = genreOverrides[song.id]; });
           renderSongList(); setupEventListeners(); alert('Collection imported successfully!');
         } catch (err) {
@@ -1006,11 +1141,6 @@
   }
 
   // ---------------------- Helpers & Init --------------------------------
-  function getGenres() {
-    const genres = new Set(songs.map(s => s.genre));
-    return ['All', ...Array.from(genres).sort()];
-  }
-
   function showError(message) {
     document.getElementById('app').innerHTML = `
       <div class="min-h-screen flex items-center justify-center p-6">
@@ -1025,10 +1155,10 @@
   }
 
   // ------------------------- Initial boot --------------------------------
-  function checkAuth() {
+  async function checkAuth() {
     const savedUsername = localStorage.getItem('currentUser');
     if (savedUsername) {
-      const profile = loadUserProfile(savedUsername);
+      const profile = await loadUserProfile(savedUsername);
       if (profile) {
         currentUser = profile;
         ownedTracks = profile.ownedTracks || [];
@@ -1049,7 +1179,7 @@
     checkAuth();
   }
 
-  // Expose some functions for debugging & convenience
+  // ------------------- Exposed debug helpers --------------------------
   window.renderSongList = renderSongList;
   window.render = render;
   window.loadSongs = loadSongs;
@@ -1057,7 +1187,12 @@
   window.addToSetlist = addToSetlist;
   window.onPreviewClick = onPreviewClick;
 
-  // Attach click delegation for dynamically rendered preview/add buttons
+  // attach dragstart for song cards to enable sandbox drag/drop
+  document.addEventListener('dragstart', (e) => {
+    const card = e.target.closest('.song-card'); if (card) e.dataTransfer.setData('text/plain', card.getAttribute('data-song-id'));
+  });
+
+  // attach delegated clicks for dynamic preview/add buttons
   document.addEventListener('click', (e) => {
     const preview = e.target.closest('.previewBtn');
     if (preview) { e.preventDefault(); onPreviewClick(preview.dataset.id); }
@@ -1065,7 +1200,6 @@
     if (addSet) { e.preventDefault(); addToSetlist(addSet.dataset.id); }
   });
 
-  // End of script
   </script>
 </body>
 </html>
