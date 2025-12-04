@@ -208,10 +208,15 @@
      **************************************************************************/
 
     // -------------------- FIREBASE (optional) ----------------------------
-    const firebaseEnabled = false; // set true to enable
+    const firebaseEnabled = true; // set true to enable
     const firebaseConfig = {
-      // Paste your firebase config here
-      // apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..."
+      apiKey: "AIzaSyAeVHy4RPVwEAfQaEisW82eqCPwBRkG3WQ",
+      authDomain: "festival-jam-mixer.firebaseapp.com",
+      projectId: "festival-jam-mixer",
+      storageBucket: "festival-jam-mixer.firebasestorage.app",
+      messagingSenderId: "255348637744",
+      appId: "1:255348637744:web:cbd3151011372f0e8fadf5",
+      measurementId: "G-G0ZHBW07C3"
     };
 
     let firebaseApp = null, firebaseAuth = null, firestore = null;
@@ -352,14 +357,59 @@
     }
     async function loadUserProfile(username){
       if(!username) return null;
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      const localProfile = profiles[username] || null;
+      const looseOwned = JSON.parse(localStorage.getItem('ownedTracks')||'[]');
+      let backendProfile = null;
+
       if(firestore){
         try{
           const doc = await firestore.collection('users').doc(username).get();
-          if(doc.exists) return doc.data();
+          if(doc.exists) backendProfile = doc.data() || {};
         }catch(e){ console.warn('Firestore load failed',e); }
       }
-      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      return profiles[username] || null;
+
+      // Merge strategy C: combine local + backend + loose ownedTracks
+      let merged = null;
+      if(backendProfile && localProfile){
+        const backendOwned = Array.isArray(backendProfile.ownedTracks) ? backendProfile.ownedTracks : [];
+        const localOwned = Array.isArray(localProfile.ownedTracks) ? localProfile.ownedTracks : [];
+        const mergedOwned = Array.from(new Set([ ...backendOwned, ...localOwned, ...(Array.isArray(looseOwned)?looseOwned:[]) ]));
+
+        const backendBand = Array.isArray(backendProfile.bandMembers) ? backendProfile.bandMembers : [];
+        const localBand = Array.isArray(localProfile.bandMembers) ? localProfile.bandMembers : [];
+        const bandMap = new Map();
+        [...backendBand, ...localBand].forEach(m=>{ if(m && m.username){ bandMap.set(m.username, Object.assign({}, bandMap.get(m.username)||{}, m)); } });
+
+        merged = Object.assign({}, backendProfile, localProfile, {
+          ownedTracks: mergedOwned,
+          bandMembers: Array.from(bandMap.values()),
+          genreOverrides: Object.assign({}, backendProfile.genreOverrides||{}, localProfile.genreOverrides||{})
+        });
+      } else if(backendProfile){
+        const backendOwned = Array.isArray(backendProfile.ownedTracks) ? backendProfile.ownedTracks : [];
+        const mergedOwned = Array.from(new Set([ ...backendOwned, ...(Array.isArray(looseOwned)?looseOwned:[]) ]));
+        merged = Object.assign({}, backendProfile, { ownedTracks: mergedOwned });
+      } else if(localProfile){
+        const localOwned = Array.isArray(localProfile.ownedTracks) ? localProfile.ownedTracks : [];
+        const mergedOwned = Array.from(new Set([ ...localOwned, ...(Array.isArray(looseOwned)?looseOwned:[]) ]));
+        merged = Object.assign({}, localProfile, { ownedTracks: mergedOwned });
+      } else if(Array.isArray(looseOwned) && looseOwned.length){
+        merged = { username: username, djName: username, ownedTracks: looseOwned, bandMembers: [], genreOverrides: {} };
+      } else {
+        return null;
+      }
+
+      // Persist merged profile locally and to backend if available
+      profiles[username] = merged;
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      localStorage.setItem('ownedTracks', JSON.stringify(merged.ownedTracks || []));
+      if(firestore){
+        try{
+          await firestore.collection('users').doc(username).set(merged, { merge: true });
+        }catch(e){ console.warn('Firestore merged save failed', e); }
+      }
+      return merged;
     }
 
     // --------------------- UI: Landing / Auth ------------------------
