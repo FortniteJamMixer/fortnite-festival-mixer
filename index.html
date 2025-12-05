@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Fortnite Festival Pro Mixer — OptB+PLUS</title>
+  <title>Fortnite Festival Pro Mixer — OptB+PLUS S3</title>
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Firebase Compat SDKs -->
@@ -22,7 +22,6 @@
       -webkit-font-smoothing:antialiased;
       -moz-osx-font-smoothing:grayscale;
     }
-    /* extra moving glow for flair */
     body:before{
       content:'';
       position:fixed;
@@ -44,54 +43,45 @@
     }
     .content-wrapper{max-width:1200px;margin:18px auto;padding:12px}
     .panel{
-      background:linear-gradient(180deg,rgba(0,0,0,.8),rgba(6,10,24,.9));
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,0.04);
-      box-shadow:0 18px 45px rgba(0,0,0,.6);
-      padding:12px;
+      background:radial-gradient(circle at top left,rgba(15,23,42,.96),rgba(3,7,18,.98));
+      border-radius:16px;
+      border:1px solid rgba(148,163,184,0.22);
+      box-shadow:0 20px 50px rgba(0,0,0,.75);
+      padding:14px;
     }
     .vinyl-spin{animation:spin 4s linear infinite}
     @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-    .bounce-icon{animation:bounce 2s ease-in-out infinite}
-    @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
     .graffiti-text{
       text-shadow:3px 3px 0 #ff6b9d,6px 6px 0 rgba(255,107,157,.22);
       letter-spacing:1px;
     }
-    .camelot-pill{padding:6px 10px;border-radius:10px;font-weight:700;color:#fff;display:inline-block}
-    .score-badge{font-weight:800;letter-spacing:.6px;padding:6px 10px;border-radius:8px;display:inline-block}
+    .camelot-pill{padding:4px 8px;border-radius:8px;font-weight:700;color:#fff;display:inline-block}
     .small-muted{color:rgba(230,247,255,.75);font-size:13px}
     .energy-bar{height:12px;border-radius:8px;background:rgba(255,255,255,0.06);overflow:hidden}
     .sandbox-drop{min-height:110px;border-radius:12px;padding:10px;border:2px dashed rgba(255,255,255,0.08)}
-    .context-menu{position:fixed;background:rgba(0,0,0,.96);border-radius:8px;padding:8px;z-index:10000;backdrop-filter:blur(8px);border:1px solid rgba(0,217,255,.2)}
     .song-card{transition:box-shadow .12s,transform .12s}
     .song-card:hover{transform:translateY(-4px);box-shadow:0 10px 26px rgba(0,0,0,.65)}
     .btn{
-      padding:7px 11px;
+      padding:7px 13px;
       border-radius:999px;
-      background:linear-gradient(135deg,rgba(11,15,32,0.9),rgba(20,24,52,0.95));
+      background:linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,64,175,0.96));
       color:#e6f7ff;
-      border:1px solid rgba(0,217,255,0.18);
+      border:1px solid rgba(59,130,246,0.5);
       cursor:pointer;
       font-size:12px;
       display:inline-flex;
       align-items:center;
       gap:6px;
       white-space:nowrap;
+      box-shadow:0 8px 18px rgba(15,23,42,0.7);
     }
-    .btn:hover{background:linear-gradient(135deg,rgba(19,32,64,0.95),rgba(36,50,96,0.97));box-shadow:0 0 12px rgba(0,217,255,0.35)}
+    .btn:hover{background:linear-gradient(135deg,rgba(56,189,248,0.98),rgba(59,130,246,0.98));box-shadow:0 0 14px rgba(56,189,248,0.7);}
     .art-tile{
-      width:64px;height:64px;border-radius:12px;position:relative;overflow:hidden;flex:0 0 64px;
+      width:96px;height:96px;border-radius:10px;position:relative;overflow:hidden;flex:0 0 96px;
       background:#050816;border:2px solid #3b82f6;display:flex;align-items:center;justify-content:center;
     }
     .art-tile img{width:100%;height:100%;object-fit:cover;display:block}
-    .camelot-overlay{
-      position:absolute;left:6px;right:6px;bottom:6px;
-      background:linear-gradient(135deg,rgba(0,0,0,.65),rgba(15,23,42,.95));
-      padding:3px 6px;border-radius:999px;font-weight:800;font-size:11px;text-align:center;
-      text-shadow:0 0 6px rgba(0,0,0,.8);
-    }
-    /* Help modal */
+
     #helpModal{
       display:none;position:fixed;inset:0;z-index:20000;
       background:radial-gradient(circle at top,rgba(15,23,42,.96),rgba(3,6,20,.98));
@@ -149,32 +139,22 @@
 
         <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;align-items:center">
           <div style="flex:0 0 auto">
-            <!-- Spinning Camelot wheel visual -->
+            <!-- Spinning Camelot wheel with correct segment colors -->
             <svg width="150" height="150" viewBox="0 0 120 120" style="transform-origin:center;animation:wheelSpin 18s linear infinite">
-              <defs>
-                <linearGradient id="wheelGrad" x1="0" x2="1">
-                  <stop offset="0" stop-color="#22d3ee"/>
-                  <stop offset="0.5" stop-color="#8b5cf6"/>
-                  <stop offset="1" stop-color="#f97316"/>
-                </linearGradient>
-              </defs>
-              <circle cx="60" cy="60" r="46" fill="url(#wheelGrad)" opacity="0.23"></circle>
-              <g transform="translate(60,60)">
-                <!-- 12 ticks -->
-                <g stroke="rgba(241,245,249,.8)" stroke-width="1.4">
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(0)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(30)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(60)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(90)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(120)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(150)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(180)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(210)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(240)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(270)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(300)"/>
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(330)"/>
-                </g>
+              <circle cx="60" cy="60" r="46" fill="#020617" opacity="0.9"></circle>
+              <g transform="translate(60,60)" stroke-width="1.6">
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(0)"   stroke="#FF6B9D"/>  <!-- 1 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(30)"  stroke="#FFA07A"/>  <!-- 2 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(60)"  stroke="#FFD700"/>  <!-- 3 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(90)"  stroke="#98D8C8"/>  <!-- 4 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(120)" stroke="#6BCB77"/>  <!-- 5 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(150)" stroke="#4D96FF"/>  <!-- 6 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(180)" stroke="#9D4EDD"/>  <!-- 7 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(210)" stroke="#E84A5F"/>  <!-- 8 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(240)" stroke="#00D9FF"/>  <!-- 9 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(270)" stroke="#FFA400"/>  <!-- 10 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(300)" stroke="#FE6D73"/>  <!-- 11 -->
+                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(330)" stroke="#A8E6CF"/>  <!-- 12 -->
               </g>
               <circle cx="60" cy="60" r="30" fill="rgba(15,23,42,.96)" stroke="rgba(148,163,184,.6)" stroke-width="1.2"></circle>
               <text x="60" y="55" text-anchor="middle" font-size="11" fill="#e5e7eb" font-weight="600">HARMONIC</text>
@@ -194,11 +174,7 @@
         <style>@keyframes wheelSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}</style>
 
         <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">2. Priority: Tempo vs Camelot</h2>
-        <p class="small-muted">Use the <strong>Priority</strong> button to decide how we sort suggestions:</p>
-        <ul class="small-muted" style="margin-left:16px;margin-top:4px">
-          <li><strong>Tempo:</strong> Tracks closest in BPM float to the top. Great for club-style beatmatching.</li>
-          <li><strong>Camelot:</strong> Tracks with the best key tier (1 → 2 → 3) float to the top, even if BPM differs.</li>
-        </ul>
+        <p class="small-muted">Use the <strong>Priority</strong> button to decide how we sort suggestions, but in both modes the best overall matches (key + BPM) float to the top.</p>
 
         <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">3. Workflow – How to Use This Tool</h2>
         <ol class="small-muted" style="margin-left:16px">
@@ -211,20 +187,15 @@
         </ol>
 
         <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">4. Sandbox – S3 Hybrid View</h2>
-        <p class="small-muted">The Sandbox (left side) uses the original OptB look – a simple drop zone and list – plus a new analyzer underneath that shows BPM spread, energy graph, and key mix overview. Keep it open while you audition transitions.</p>
+        <p class="small-muted">The Sandbox uses the original simple list for dropped tracks, plus a new analyzer that shows BPM spread, energy graph, and key overview. Use it to preview transitions and energy arcs.</p>
 
         <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">5. Band Members & Profiles</h2>
         <p class="small-muted">You can store your own profile (username, DJ name, owned tracks) and add band members by username. When you view a band member, the browser filters to their collection without breaking your own profile data.</p>
-
-        <div style="margin-top:14px;font-size:12px;color:#9ca3af">
-          Pro tip: this is a planning + visualization tool. Final mix energy will depend on how you blend in-game, but the suggestions here should keep you in the sweet spot most of the time.
-        </div>
       </div>
     </div>
   </div>
 
 <script>
-  /*********************** Firebase compat init *************************/
   const firebaseConfig = {
     apiKey: "AIzaSyAeVHy4RPVwEAfQaEisW82eqCPwBRkG3WQ",
     authDomain: "festival-jam-mixer.firebaseapp.com",
@@ -237,17 +208,14 @@
 
   let firebaseApp=null,firebaseAuth=null,firestore=null;
   try{
-    firebaseApp = firebase.initializeApp(firebaseConfig);
-    firebaseAuth = firebase.auth();
-    firestore = firebase.firestore();
-    if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
-    console.log("Firebase compat initialized");
+    firebaseApp=firebase.initializeApp(firebaseConfig);
+    firebaseAuth=firebase.auth();
+    firestore=firebase.firestore();
+    if(firebase.analytics){try{firebase.analytics();}catch(e){}}
   }catch(e){
-    console.warn("Firebase init failed, running in local-only mode", e);
-    firebaseApp=null;firebaseAuth=null;firestore=null;
+    console.warn("Firebase init failed, using local-only mode",e);
   }
 
-  /*********************** DJ logic + data *************************/
   const camelotColors={
     "1A":"#FF6B9D","1B":"#FF8FAB","2A":"#FFA07A","2B":"#FFB699","3A":"#FFD700","3B":"#FFE55C",
     "4A":"#98D8C8","4B":"#7FD8BE","5A":"#6BCB77","5B":"#8FD89F","6A":"#4D96FF","6B":"#6FB1FF",
@@ -268,63 +236,50 @@
     "Bb":"6B","Gm":"6A","G Minor":"6A","Bb Major":"6B",
     "F":"7B","Dm":"7A","D Minor":"7A","F Major":"7B"
   };
+  function convertToCamelot(key){if(!key)return"?";return keyToCamelot[(key||"").trim()]||"?";}
 
-  function convertToCamelot(key){
-    if(!key) return "?";
-    return keyToCamelot[(key||"").trim()] || "?";
-  }
-
-  // Tier system as you requested:
-  // Tier1: same # AND same letter
-  // Tier2: same letter, +/-1 number
-  // Tier3: same #, different letter
   function getCamelotTier(a,b){
     if(!a||!b||a==="?"||b==="?") return 99;
-    const ma=a.match(/^(\d+)([AB])$/), mb=b.match(/^(\d+)([AB])$/);
+    const ma=a.match(/^(\d+)([AB])$/),mb=b.match(/^(\d+)([AB])$/);
     if(!ma||!mb) return 99;
-    const na=parseInt(ma[1]), la=ma[2];
-    const nb=parseInt(mb[1]), lb=mb[2];
-    if(na===nb && la===lb) return 1; // perfect same code
-    if(la===lb && (Math.abs(na-nb)===1 || Math.abs(na-nb)===11)) return 2; // neighbor same letter
-    if(na===nb && la!==lb) return 3; // swap letter
+    const na=parseInt(ma[1]),la=ma[2],nb=parseInt(mb[1]),lb=mb[2];
+    if(na===nb&&la===lb) return 1;
+    if(la===lb && (Math.abs(na-nb)===1||Math.abs(na-nb)===11)) return 2;
+    if(na===nb && la!==lb) return 3;
     return 99;
   }
-
-  function scoreKeyMatch(aCamelot,bCamelot){
-    const tier=getCamelotTier(aCamelot,bCamelot);
-    if(tier===1) return 40;
-    if(tier===2) return 30;
-    if(tier===3) return 20;
+  function scoreKeyMatch(a,b){
+    const tier=getCamelotTier(a,b);
+    if(tier===1)return 40;
+    if(tier===2)return 30;
+    if(tier===3)return 20;
     return 0;
   }
-  function scoreBpmMatch(aBpm,bBpm){
-    const diff=Math.abs(aBpm-bBpm);
-    if(diff<=1) return 40;
-    if(diff<=3) return 35;
-    if(diff<=6) return 25;
-    if(diff<=10) return 15;
+  function scoreBpmMatch(a,b){
+    const d=Math.abs(a-b);
+    if(d<=1)return 40;
+    if(d<=3)return 35;
+    if(d<=6)return 25;
+    if(d<=10)return 15;
     return 0;
   }
-  function scoreGenreMatch(a,b){
-    if(!a||!b) return 0;
-    return a===b?20:0;
-  }
+  function scoreGenreMatch(a,b){if(!a||!b)return 0;return a===b?20:0;}
   function mashupCompatibility(a,b){
     const key=scoreKeyMatch(a.camelot,b.camelot);
     const bpm=scoreBpmMatch(a.bpm,b.bpm);
     const genre=scoreGenreMatch(a.genre,b.genre);
-    return { total:key+bpm+genre, breakdown:{key,bpm,genre} };
+    return{total:key+bpm+genre,breakdown:{key,bpm,genre}};
   }
   function bpmShiftSuggestion(a,b){
-    const shift=Math.round(b-a);
-    if(shift===0) return "No change";
-    return (shift>0?"+":"")+shift+" BPM = Perfect Match";
+    const s=Math.round(b-a);
+    if(s===0)return"No change";
+    return(s>0?"+":"")+s+" BPM = Perfect Match";
   }
-  function computeEnergy(track){
-    if(!track||!track.bpm) return 3;
-    let e=1; const bpm=track.bpm;
-    if(bpm<90) e=1; else if(bpm<110) e=2; else if(bpm<125) e=3; else if(bpm<140) e=4; else e=5;
-    if(track.genre==="Electronic" || track.genre==="Rock") e=Math.min(5,e+1);
+  function computeEnergy(t){
+    if(!t||!t.bpm)return 3;
+    let e=1,b=t.bpm;
+    if(b<90)e=1; else if(b<110)e=2; else if(b<125)e=3; else if(b<140)e=4; else e=5;
+    if(t.genre==="Electronic"||t.genre==="Rock")e=Math.min(5,e+1);
     return e;
   }
 
@@ -336,15 +291,14 @@
   function detectGenre(artist,title){
     artist=(artist||"").toLowerCase();
     title=(title||"").toLowerCase();
-    for(const [g,list] of Object.entries(genreMap)){
-      if(list.some(a=>artist.includes(a)||title.includes(a))) return g;
+    for(const[g,list]of Object.entries(genreMap)){
+      if(list.some(a=>artist.includes(a)||title.includes(a)))return g;
     }
-    if(title.includes("rock")) return "Rock";
-    if(title.includes("electr")) return "Electronic";
-    return "Other";
+    if(title.includes("rock"))return"Rock";
+    if(title.includes("electr"))return"Electronic";
+    return"Other";
   }
 
-  /*********************** Global state *************************/
   let currentUser=null;
   let songs=[];
   let ownedTracks=JSON.parse(localStorage.getItem("ownedTracks")||"[]");
@@ -357,13 +311,12 @@
   let viewingMember=null;
   let showOwnedOnly=false;
   let showMixableOnly=false;
-  let camelotTier=3; // 1,2,3 (strict → loose)
-  let priorityMode="tempo"; // 'tempo' | 'camelot'
+  let camelotTier=3;
+  let priorityMode="tempo";
 
-  /*********************** UI builder *************************/
   function buildMainUI(){
     const userDisplay=currentUser?(currentUser.djName||currentUser.username):"Guest";
-    return `
+    return`
       <div class="panel mb-4">
         <div class="flex justify-between items-center gap-3">
           <div class="flex items-center gap-3">
@@ -389,25 +342,30 @@
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
-        <!-- Left column: controls + sandbox -->
         <div class="space-y-4">
           <div class="panel">
-            <div class="font-semibold mb-2">Controls</div>
+            <div class="flex items-baseline justify-between mb-2">
+              <div class="font-semibold text-sm tracking-wide">Controls</div>
+              <div class="small-muted text-[11px]">Search • Filters • Mix Logic • Band</div>
+            </div>
             <div class="space-y-2">
+              <div class="small-muted text-[11px]">Search your Festival library</div>
               <input id="searchInput" placeholder="Search by title, artist, or genre..." class="w-full px-3 py-2 rounded-lg bg-black/40 border border-cyan-500/25 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"/>
+              <div class="small-muted text-[11px] mt-1">Quick filters</div>
               <div class="flex flex-wrap gap-2">
                 <button id="mixableFilterBtn" class="btn">${showMixableOnly?"🎧 Mixable Only":"Show Mixable"}</button>
                 <button id="ownedFilterBtn" class="btn">${showOwnedOnly?"✓ Owned Only":"Show All"}</button>
                 <button id="clearSelectionBtn" class="btn">Clear Selection</button>
                 <button id="markAllBtn" class="btn">Mark All Owned</button>
               </div>
-              <div class="flex flex-wrap gap-2 mt-2">
+              <div class="small-muted text-[11px] mt-1">Mix logic</div>
+              <div class="flex flex-wrap gap-2 mt-1">
                 <button id="camelotTierBtn" class="btn">Camelot: All Tiers</button>
                 <button id="priorityBtn" class="btn">Priority: Tempo</button>
               </div>
               <div class="mt-3">
                 <div class="font-semibold mb-1">Band Members</div>
-                <div id="bandContainer" class="space-y-1"></div>
+                <div id="bandContainer" class="space-y-1 small-muted text-[12px]"></div>
                 <div class="flex gap-2 mt-2">
                   <button id="addBandBtn" class="btn">+ Add Band Member</button>
                   ${viewingMember?'<button class="btn" onclick="backToMyProfile()">↩ Back to Me</button>':""}
@@ -416,7 +374,6 @@
             </div>
           </div>
 
-          <!-- S3 Sandbox: original list feel + analyzer -->
           <div class="panel">
             <div class="flex items-center justify-between mb-2">
               <div class="font-semibold">Sandbox (Drag tracks here)</div>
@@ -428,14 +385,13 @@
           </div>
         </div>
 
-        <!-- Right column: browser + setlist -->
         <div class="space-y-4">
           <div class="panel">
             <div class="flex items-center justify-between mb-2">
               <div class="font-semibold">Song Browser</div>
               <div class="small-muted">Selected: <span id="selectedInfo">None</span></div>
             </div>
-            <div id="songList" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"></div>
+            <div id="songList" class="grid gap-3 sm:grid-cols-2"></div>
           </div>
 
           <div class="panel">
@@ -450,9 +406,8 @@
     `;
   }
 
-  /*********************** Render helpers *************************/
   function render(){
-    document.getElementById("app").innerHTML = buildMainUI();
+    document.getElementById("app").innerHTML=buildMainUI();
     renderBandPanel();
     renderSongList();
     renderSetlist();
@@ -463,17 +418,17 @@
 
   function renderBandPanel(){
     const container=document.getElementById("bandContainer");
-    if(!container) return;
-    if(!bandMembers || bandMembers.length===0){
+    if(!container)return;
+    if(!bandMembers||bandMembers.length===0){
       container.innerHTML='<div class="small-muted">No band members yet.</div>';
       return;
     }
-    container.innerHTML = bandMembers.map(m=>{
+    container.innerHTML=bandMembers.map(m=>{
       const dj=m.djName||m.username;
-      return `
-        <div class="flex items-center justify-between text-xs py-1">
+      return`
+        <div class="flex items-center justify-between py-1">
           <div class="flex items-center gap-2">
-            <div class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style="background:${camelotColors["8B"]};box-shadow:0 0 10px rgba(248,113,113,.45);">
+            <div class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold" style="background:${camelotColors["8B"]};box-shadow:0 0 10px rgba(248,113,113,.45);">
               ${dj[0]||"?"}
             </div>
             <div>
@@ -481,36 +436,25 @@
               <div class="small-muted text-[11px]">@${m.username}</div>
             </div>
           </div>
-          <div class="flex gap-1">
-            <button class="btn" style="padding-inline:8px" onclick="viewBandMember('${m.username}')">View</button>
-          </div>
-        </div>
-      `;
+          <button class="btn" style="padding-inline:8px" onclick="viewBandMember('${m.username}')">View</button>
+        </div>`;
     }).join("");
   }
 
   function renderSongList(){
     const listEl=document.getElementById("songList");
-    if(!listEl) return;
-    const selected = selectedSong;
-    const displayTracks = viewingMember ? (viewingMember.ownedTracks||[]) : (ownedTracks||[]);
-
-    let filtered = songs.slice();
+    if(!listEl)return;
+    const selected=selectedSong;
+    const displayTracks=viewingMember?(viewingMember.ownedTracks||[]):(ownedTracks||[]);
+    let filtered=songs.slice();
     const q=(document.getElementById("searchInput")?.value||"").trim().toLowerCase();
     if(q){
-      filtered=filtered.filter(s=>
-        s.title.toLowerCase().includes(q) ||
-        s.artist.toLowerCase().includes(q) ||
-        (s.genre||"").toLowerCase().includes(q)
-      );
+      filtered=filtered.filter(s=>s.title.toLowerCase().includes(q)||s.artist.toLowerCase().includes(q)||(s.genre||"").toLowerCase().includes(q));
     }
-
     if(showOwnedOnly){
       filtered=filtered.filter(s=>displayTracks.includes(s.id));
     }
-
-    filtered = filtered.map(s=>Object.assign({},s,{ _isOwned: displayTracks.includes(s.id) }));
-
+    filtered=filtered.map(s=>Object.assign({},s,{_isOwned:displayTracks.includes(s.id)}));
     if(showMixableOnly && selected){
       filtered=filtered.filter(s=>{
         const tier=getCamelotTier(selected.camelot,s.camelot);
@@ -518,51 +462,56 @@
         return tier<=camelotTier && bpmOk;
       });
     }
-
     if(selected){
       filtered.sort((a,b)=>{
+        const compA=mashupCompatibility(selected,a).total;
+        const compB=mashupCompatibility(selected,b).total;
         if(priorityMode==="tempo"){
-          return Math.abs(a.bpm-selected.bpm) - Math.abs(b.bpm-selected.bpm);
+          if(compB!==compA) return compB-compA;
+          return Math.abs(a.bpm-selected.bpm)-Math.abs(b.bpm-selected.bpm);
         }else{
           const ta=getCamelotTier(selected.camelot,a.camelot);
           const tb=getCamelotTier(selected.camelot,b.camelot);
           if(ta!==tb) return ta-tb;
-          return Math.abs(a.bpm-selected.bpm) - Math.abs(b.bpm-selected.bpm);
+          if(compB!==compA) return compB-compA;
+          return Math.abs(a.bpm-selected.bpm)-Math.abs(b.bpm-selected.bpm);
         }
       });
     }else{
       filtered.sort((a,b)=>a.title.localeCompare(b.title));
     }
 
-    listEl.innerHTML = filtered.map(song=>{
+    listEl.innerHTML=filtered.map(song=>{
       const isOwned=song._isOwned;
-      const keyColor=camelotColors[song.camelot] || "#4b5563";
-      const bpmDiff = selected ? Math.abs(song.bpm-selected.bpm) : null;
-      const bpmBadge = bpmDiff!==null && bpmDiff<=10 ? `<span class="small-muted ml-1 text-[11px]">±${bpmDiff} BPM</span>` : "";
-      const tier = selected ? getCamelotTier(selected.camelot,song.camelot) : null;
-      const mixableMarker = selected && tier<=camelotTier && bpmDiff!==null && bpmDiff<=4 ? "🎧" : "";
-      const art = song.albumArt ? song.albumArt.replace(/"/g,"&quot;") : "";
-      const tierLabel = tier && tier<99 ? `T${tier}` : "";
-      const score = selected ? mashupCompatibility(selected,song).total : null;
+      const keyColor=camelotColors[song.camelot]||"#4b5563";
+      const bpmDiff=selected?Math.abs(song.bpm-selected.bpm):null;
+      const bpmBadge=bpmDiff!==null&&bpmDiff<=10?`<span class="small-muted ml-1 text-[11px]">±${bpmDiff} BPM</span>`:"";
+      const tier=selected?getCamelotTier(selected.camelot,song.camelot):null;
+      const mixableMarker=selected&&tier<=camelotTier&&bpmDiff!==null&&bpmDiff<=4?"🎧":"";
+      const art=song.albumArt?song.albumArt.replace(/"/g,"&quot;"):"";
+      const tierLabel=tier&&tier<99?`T${tier}`:"";
+      const score=selected?mashupCompatibility(selected,song).total:null;
 
-      return `
-        <div class="song-card panel p-2 text-xs" data-song-id="${song.id}" draggable="true">
+      return`
+        <div class="song-card panel p-3 text-xs sm:text-[13px]" data-song-id="${song.id}" draggable="true">
           <div class="flex gap-2 items-center">
             <div class="art-tile" style="border-color:${keyColor}">
               ${art?`<img src="${art}" alt="${song.title} cover" loading="lazy" onerror="this.style.display='none'">`:""}
-              <div class="camelot-overlay" style="background:linear-gradient(135deg,rgba(15,23,42,.88),${keyColor}80);">
-                <span>${song.camelot||"?"}</span>
-              </div>
             </div>
             <div class="flex-1">
               <div class="flex justify-between gap-2">
                 <div class="min-w-0">
-                  <div class="font-semibold truncate">${song.title}</div>
+                  <div class="font-semibold truncate text-[13px] sm:text-sm">${song.title}</div>
                   <div class="small-muted truncate">${song.artist}</div>
                 </div>
-                <div class="text-right">
+                <div class="text-right space-y-0.5">
                   <div class="small-muted">${song.bpm} BPM</div>
-                  <div class="small-muted">${song.genre||"Other"}</div>
+                  <div class="flex items-center justify-end gap-1">
+                    <span class="small-muted">${song.genre||"Other"}</span>
+                    <span class="camelot-pill text-[10px]" style="background:${keyColor};box-shadow:0 0 8px ${keyColor}66;">
+                      ${song.camelot||"?"}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div class="flex flex-wrap gap-1 mt-1 items-center">
@@ -577,51 +526,47 @@
               </div>
             </div>
           </div>
-        </div>
-      `;
+        </div>`;
     }).join("");
 
-    document.getElementById("selectedInfo").textContent = selected ? `${selected.title} • ${selected.artist}` : "None";
-    // drag for sandbox
+    document.getElementById("selectedInfo").textContent=selected?`${selected.title} • ${selected.artist}`:"None";
     document.querySelectorAll(".song-card").forEach(card=>{
       card.addEventListener("dragstart",e=>{
-        e.dataTransfer.setData("text/plain", card.getAttribute("data-song-id"));
+        e.dataTransfer.setData("text/plain",card.getAttribute("data-song-id"));
       });
     });
   }
 
   function renderSetlist(){
     const el=document.getElementById("setlistContent");
-    if(!el) return;
-    if(!setlist || setlist.length===0){
+    if(!el)return;
+    if(!setlist||setlist.length===0){
       el.innerHTML='<div class="small-muted">Setlist is empty – add songs from the browser above.</div>';
       document.getElementById("setlistCount").textContent="0";
       return;
     }
-    el.innerHTML = setlist.map((s,i)=>`
+    el.innerHTML=setlist.map((s,i)=>`
       <div class="panel mb-1 px-3 py-2 flex items-center justify-between text-xs">
         <div>
           <div class="font-semibold">${i+1}. ${s.title}</div>
           <div class="small-muted">${s.artist} • ${s.bpm} BPM • ${s.camelot}</div>
         </div>
         <button class="btn" onclick="removeFromSetlist('${s.id}')">✕</button>
-      </div>
-    `).join("");
-    document.getElementById("setlistCount").textContent = setlist.length;
+      </div>`).join("");
+    document.getElementById("setlistCount").textContent=setlist.length;
   }
 
   function updateOwnedCounter(){
-    const total=songs.length || 0;
+    const total=songs.length||0;
     const owned=(ownedTracks||[]).length;
     const el=document.getElementById("ownedCounter");
-    if(el) el.textContent=`Owned: ${owned}/${total}`;
+    if(el)el.textContent=`Owned: ${owned}/${total}`;
   }
 
-  /*********************** Sandbox (S3 hybrid) *************************/
   function sandboxInit(){
     const el=document.getElementById("sandbox");
-    if(!el) return;
-    if(!sandboxTracks || sandboxTracks.length===0){
+    if(!el)return;
+    if(!sandboxTracks||sandboxTracks.length===0){
       el.innerHTML='<div class="small-muted">Drop or drag tracks here to sandbox transitions.</div>';
       document.getElementById("sandboxInfo").textContent="";
       renderEnergyGraph([]);
@@ -633,9 +578,9 @@
       e.preventDefault();
       const id=e.dataTransfer.getData("text/plain");
       const track=songs.find(s=>s.id===id);
-      if(!track) return;
-      if(sandboxTracks.find(s=>s.id===id)) return;
-      if(sandboxTracks.length>=6){ alert("Sandbox limit: 6 tracks"); return; }
+      if(!track)return;
+      if(sandboxTracks.find(s=>s.id===id))return;
+      if(sandboxTracks.length>=6){alert("Sandbox limit: 6 tracks");return;}
       sandboxTracks.push(track);
       renderSandbox();
     });
@@ -643,12 +588,12 @@
 
   function renderSandbox(){
     const el=document.getElementById("sandbox");
-    if(!el) return;
-    if(!sandboxTracks || sandboxTracks.length===0){
+    if(!el)return;
+    if(!sandboxTracks||sandboxTracks.length===0){
       sandboxInit();
       return;
     }
-    el.innerHTML = sandboxTracks.map((t,i)=>`
+    el.innerHTML=sandboxTracks.map((t,i)=>`
       <div class="panel mb-1 px-2 py-1 flex items-center gap-2 text-xs">
         <div class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px]" style="background:${camelotColors[t.camelot]||"#4b5563"}">
           ${t.camelot||"?"}
@@ -659,42 +604,36 @@
         </div>
         <div class="small-muted mr-1">${computeEnergy(t)}</div>
         <button class="btn" style="padding-inline:8px" onclick="removeSandbox('${t.id}')">✕</button>
-      </div>
-    `).join("");
+      </div>`).join("");
 
     const bpms=sandboxTracks.map(s=>s.bpm);
     const keys=sandboxTracks.map(s=>s.camelot);
     const minBpm=Math.min(...bpms);
     const maxBpm=Math.max(...bpms);
     const bpmSpread=maxBpm-minBpm;
-    const energyAvg = sandboxTracks.reduce((acc,t)=>acc+computeEnergy(t),0)/sandboxTracks.length;
+    const energyAvg=sandboxTracks.reduce((a,t)=>a+computeEnergy(t),0)/sandboxTracks.length;
     const uniqueKeys=[...new Set(keys)];
-    document.getElementById("sandboxInfo").textContent =
-      `BPM range: ${minBpm}–${maxBpm} (Δ ${bpmSpread}) • Avg energy: ${energyAvg.toFixed(1)} • Keys: ${uniqueKeys.join(", ")}`;
+    document.getElementById("sandboxInfo").textContent=`BPM range: ${minBpm}–${maxBpm} (Δ ${bpmSpread}) • Avg energy: ${energyAvg.toFixed(1)} • Keys: ${uniqueKeys.join(", ")}`;
     renderEnergyGraph(sandboxTracks);
   }
 
   function removeSandbox(id){
-    sandboxTracks = sandboxTracks.filter(s=>s.id!==id);
+    sandboxTracks=sandboxTracks.filter(s=>s.id!==id);
     renderSandbox();
   }
 
   function renderEnergyGraph(list){
     const container=document.getElementById("energyGraph");
-    if(!container) return;
-    if(!list || list.length===0){
+    if(!container)return;
+    if(!list||list.length===0){
       container.innerHTML='<div class="small-muted">No sandbox tracks yet.</div>';
       return;
     }
-    container.innerHTML = list.map((t,i)=>{
+    container.innerHTML=list.map((t,i)=>{
       const e=computeEnergy(t);
       const pct=(e/5)*100;
-      const color = e>=4
-        ? "linear-gradient(90deg,#f97316,#ef4444)"
-        : e>=3
-          ? "linear-gradient(90deg,#f59e0b,#f97316)"
-          : "linear-gradient(90deg,#34d399,#10b981)";
-      return `
+      const color=e>=4?"linear-gradient(90deg,#f97316,#ef4444)":e>=3?"linear-gradient(90deg,#f59e0b,#f97316)":"linear-gradient(90deg,#34d399,#10b981)";
+      return`
         <div class="flex items-center gap-2 mb-1">
           <div class="w-5 text-[11px] small-muted">${i+1}</div>
           <div class="flex-1">
@@ -704,23 +643,20 @@
             </div>
           </div>
           <div class="w-6 text-center text-[11px] font-bold">${e}</div>
-        </div>
-      `;
+        </div>`;
     }).join("");
   }
 
-  /*********************** Song interactions *************************/
   function selectSong(id){
     const s=songs.find(x=>x.id===id);
-    if(!s) return;
-    if(selectedSong && selectedSong.id===id){ selectedSong=null; }
-    else selectedSong=s;
+    if(!s)return;
+    if(selectedSong&&selectedSong.id===id)selectedSong=null;else selectedSong=s;
     renderSongList();
   }
 
   function onPreviewClick(id){
     const s=songs.find(x=>x.id===id);
-    if(!s) return;
+    if(!s)return;
     if(!selectedSong){
       selectedSong=s;
       renderSongList();
@@ -740,11 +676,8 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
       alert("You can't edit another band member's collection.");
       return;
     }
-    if(ownedTracks.includes(id)){
-      ownedTracks=ownedTracks.filter(x=>x!==id);
-    }else{
-      ownedTracks.push(id);
-    }
+    if(ownedTracks.includes(id))ownedTracks=ownedTracks.filter(x=>x!==id);
+    else ownedTracks.push(id);
     localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
     saveUserProfile();
     renderSongList();
@@ -753,7 +686,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
 
   function addToSetlist(id){
     const s=songs.find(x=>x.id===id);
-    if(!s) return;
+    if(!s)return;
     if(!setlist.find(x=>x.id===id)){
       setlist.push(s);
       localStorage.setItem("setlist",JSON.stringify(setlist));
@@ -769,22 +702,12 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     updateOwnedCounter();
   }
 
-  /*********************** Band members *************************/
   async function addBandMember(){
     const username=prompt("Enter bandmate username (exact):");
-    if(!username) return;
-    if(bandMembers.find(m=>m.username===username)){
-      alert("This person is already in your band.");
-      return;
-    }
-    const profile = await loadUserProfile(username) || { username, djName:username, ownedTracks:[], bandMembers:[], genreOverrides:{} };
-    const memberProfile={
-      username:profile.username,
-      djName:profile.djName||profile.username,
-      ownedTracks:profile.ownedTracks||[],
-      bandMembers:profile.bandMembers||[],
-      genreOverrides:profile.genreOverrides||{}
-    };
+    if(!username)return;
+    if(bandMembers.find(m=>m.username===username)){alert("This person is already in your band.");return;}
+    const profile=await loadUserProfile(username)||{username,djName:username,ownedTracks:[],bandMembers:[],genreOverrides:{}};
+    const memberProfile={username:profile.username,djName:profile.djName||profile.username,ownedTracks:profile.ownedTracks||[],bandMembers:profile.bandMembers||[],genreOverrides:profile.genreOverrides||{}};
     bandMembers.push(memberProfile);
     localStorage.setItem("bandMembers",JSON.stringify(bandMembers));
     await saveUserProfile();
@@ -793,95 +716,61 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
   }
 
   async function viewBandMember(username){
-    const profile=await loadUserProfile(username) || { username,djName:username,ownedTracks:[],bandMembers:[],genreOverrides:{} };
+    const profile=await loadUserProfile(username)||{username,djName:username,ownedTracks:[],bandMembers:[],genreOverrides:{}};
     profile.ownedTracks=profile.ownedTracks||[];
     viewingMember=profile;
     showOwnedOnly=true;
     render();
-    document.getElementById("ownedFilterBtn").textContent="✓ Owned Only";
+    const btn=document.getElementById("ownedFilterBtn");if(btn)btn.textContent="✓ Owned Only";
   }
 
   function backToMyProfile(){
     viewingMember=null;
     showOwnedOnly=false;
     render();
-    const btn=document.getElementById("ownedFilterBtn");
-    if(btn) btn.textContent="Show All";
+    const btn=document.getElementById("ownedFilterBtn");if(btn)btn.textContent="Show All";
   }
 
-  /*********************** Export / Import *************************/
   async function exportCollection(){
-    const data={
-      username: currentUser?currentUser.username:"guest",
-      djName: currentUser?currentUser.djName:"",
-      ownedTracks,
-      genreOverrides,
-      exportDate:new Date().toISOString()
-    };
+    const data={username:currentUser?currentUser.username:"guest",djName:currentUser?currentUser.djName:"",ownedTracks,genreOverrides,exportDate:new Date().toISOString()};
     if(firestore && currentUser && confirm("Also back up to Firestore? (Cancel for local-only)")){
-      try{
-        await firestore.collection("backups").doc(`${currentUser.username}_${Date.now()}`).set(data);
-        alert("Backed up to Firestore (backups collection).");
-      }catch(e){ console.warn("backup failed",e); }
+      try{await firestore.collection("backups").doc(`${currentUser.username}_${Date.now()}`).set(data);alert("Backed up to Firestore.");}catch(e){console.warn("backup failed",e);}
     }
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download=`festival-mixer-${data.username||"guest"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const a=document.createElement("a");a.href=url;a.download=`festival-mixer-${data.username||"guest"}.json`;a.click();URL.revokeObjectURL(url);
   }
 
   async function importCollection(){
-    const input=document.createElement("input");
-    input.type="file"; input.accept=".json";
-    input.onchange=async(e)=>{
-      const file=e.target.files[0];
-      if(!file) return;
+    const input=document.createElement("input");input.type="file";input.accept=".json";
+    input.onchange=async e=>{
+      const file=e.target.files[0];if(!file)return;
       const text=await file.text();
       try{
         const data=JSON.parse(text);
-        if(!Array.isArray(data.ownedTracks)) throw new Error("Invalid file");
-        if(!confirm(`Import ${data.ownedTracks.length} tracks from ${data.djName||data.username||"file"}?`)) return;
+        if(!Array.isArray(data.ownedTracks))throw new Error("bad");
+        if(!confirm(`Import ${data.ownedTracks.length} tracks from ${data.djName||data.username||"file"}?`))return;
         ownedTracks=data.ownedTracks;
         genreOverrides=data.genreOverrides||{};
         localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
         localStorage.setItem("genreOverrides",JSON.stringify(genreOverrides));
         await saveUserProfile();
-        songs.forEach(song=>{ if(genreOverrides[song.id]) song.genre=genreOverrides[song.id]; });
+        songs.forEach(song=>{if(genreOverrides[song.id])song.genre=genreOverrides[song.id];});
         renderSongList();
         updateOwnedCounter();
         alert("Imported collection.");
-      }catch(err){
-        alert("Invalid file format.");
-      }
+      }catch(err){alert("Invalid file format.");}
     };
     input.click();
   }
 
-  /*********************** Firebase profile *************************/
   async function saveUserProfileToBackend(profile){
-    if(!profile || !firestore || !profile.username) return false;
-    try{
-      await firestore.collection("users").doc(profile.username).set(profile,{merge:true});
-      return true;
-    }catch(e){
-      console.warn("Firestore save failed",e);
-      return false;
-    }
+    if(!profile||!firestore||!profile.username)return false;
+    try{await firestore.collection("users").doc(profile.username).set(profile,{merge:true});return true;}catch(e){console.warn("Firestore save failed",e);return false;}
   }
-
   async function saveUserProfile(){
-    if(!currentUser) return;
-    const profile={
-      username: currentUser.username,
-      djName: currentUser.djName || currentUser.username,
-      ownedTracks,
-      setlist,
-      bandMembers,
-      genreOverrides
-    };
+    if(!currentUser)return;
+    const profile={username:currentUser.username,djName:currentUser.djName||currentUser.username,ownedTracks,setlist,bandMembers,genreOverrides};
     const profiles=JSON.parse(localStorage.getItem("userProfiles")||"{}");
     profiles[profile.username]=profile;
     localStorage.setItem("userProfiles",JSON.stringify(profiles));
@@ -890,121 +779,81 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     localStorage.setItem("genreOverrides",JSON.stringify(genreOverrides));
     await saveUserProfileToBackend(profile);
   }
-
   async function loadUserProfile(username){
-    if(!username) return null;
+    if(!username)return null;
     if(firestore){
-      try{
-        const doc=await firestore.collection("users").doc(username).get();
-        if(doc.exists) return doc.data();
-      }catch(e){ console.warn("Firestore load failed",e); }
+      try{const doc=await firestore.collection("users").doc(username).get();if(doc.exists)return doc.data();}catch(e){console.warn("Firestore load failed",e);}
     }
     const profiles=JSON.parse(localStorage.getItem("userProfiles")||"{}");
-    return profiles[username] || null;
+    return profiles[username]||null;
   }
 
-  /*********************** Auth *************************/
   async function handleLogin(e){
-    e && e.preventDefault && e.preventDefault();
+    e&&e.preventDefault&&e.preventDefault();
     if(firebaseAuth){
-      const email=prompt("Enter email (for Firebase login/register):");
-      if(!email) return;
-      const password=prompt("Enter password:");
-      if(!password) return;
+      const email=prompt("Enter email (for Firebase login/register):");if(!email)return;
+      const password=prompt("Enter password:");if(!password)return;
       try{
         await firebaseAuth.signInWithEmailAndPassword(email,password);
         const username=email.split("@")[0];
         const profile=await loadUserProfile(username);
-        if(profile){
-          currentUser=profile;
-          ownedTracks=profile.ownedTracks||[];
-          setlist=profile.setlist||[];
-          bandMembers=profile.bandMembers||[];
-          genreOverrides=profile.genreOverrides||{};
-        }else{
-          currentUser={ username,djName:username };
-          await saveUserProfile();
-        }
+        if(profile){currentUser=profile;ownedTracks=profile.ownedTracks||[];setlist=profile.setlist||[];bandMembers=profile.bandMembers||[];genreOverrides=profile.genreOverrides||{};}
+        else{currentUser={username,djName:username};await saveUserProfile();}
         localStorage.setItem("currentUser",username);
         render();
         alert("Signed in.");
       }catch(err){
-        if(err.code==="auth/user-not-found" && confirm("No account found — create one?")){
+        if(err.code==="auth/user-not-found"&&confirm("No account found — create one?")){
           try{
             await firebaseAuth.createUserWithEmailAndPassword(email,password);
             const username=email.split("@")[0];
-            currentUser={ username,djName:username,ownedTracks:[],setlist:[],bandMembers:[],genreOverrides:{} };
+            currentUser={username,djName:username,ownedTracks:[],setlist:[],bandMembers:[],genreOverrides:{}};
             await saveUserProfileToBackend(currentUser);
             localStorage.setItem("currentUser",username);
             render();
             alert("Account created & signed in.");
-          }catch(e2){
-            alert("Register failed: "+(e2.message||e2));
-          }
-        }else{
-          alert("Sign in failed: "+(err.message||err));
-        }
+          }catch(e2){alert("Register failed: "+(e2.message||e2));}
+        }else{alert("Sign in failed: "+(err.message||err));}
       }
       return;
     }
-    const username=prompt("Enter username to sign in (local mode):");
-    if(!username) return;
-    currentUser={ username,djName:username };
+    const username=prompt("Enter username to sign in (local mode):");if(!username)return;
+    currentUser={username,djName:username};
     const profile=await loadUserProfile(username);
-    if(profile){
-      currentUser=profile;
-      ownedTracks=profile.ownedTracks||[];
-      setlist=profile.setlist||[];
-      bandMembers=profile.bandMembers||[];
-      genreOverrides=profile.genreOverrides||{};
-    }else{
-      await saveUserProfile();
-    }
+    if(profile){currentUser=profile;ownedTracks=profile.ownedTracks||[];setlist=profile.setlist||[];bandMembers=profile.bandMembers||[];genreOverrides=profile.genreOverrides||{};}
+    else{await saveUserProfile();}
     localStorage.setItem("currentUser",username);
     render();
   }
 
   async function logoutUser(){
     await saveUserProfile();
-    if(firebaseAuth && firebaseAuth.currentUser){
-      try{ await firebaseAuth.signOut(); }catch(e){ console.warn("signout error",e); }
-    }
-    currentUser=null;
-    ownedTracks=[];
-    setlist=[];
-    bandMembers=[];
-    viewingMember=null;
-    genreOverrides={};
+    if(firebaseAuth && firebaseAuth.currentUser){try{await firebaseAuth.signOut();}catch(e){console.warn("signout error",e);}}
+    currentUser=null;ownedTracks=[];setlist=[];bandMembers=[];viewingMember=null;genreOverrides={};
     localStorage.removeItem("currentUser");
     render();
     alert("Logged out.");
   }
 
-  /*********************** Events *************************/
   function setupEventListeners(){
     document.getElementById("mixableFilterBtn")?.addEventListener("click",()=>{
-      if(!selectedSong){ alert("Select a song first to use Mixable Only."); return; }
+      if(!selectedSong){alert("Select a song first to use Mixable Only.");return;}
       showMixableOnly=!showMixableOnly;
-      const btn=document.getElementById("mixableFilterBtn");
-      if(btn) btn.textContent=showMixableOnly?"🎧 Mixable Only":"Show Mixable";
+      const btn=document.getElementById("mixableFilterBtn");if(btn)btn.textContent=showMixableOnly?"🎧 Mixable Only":"Show Mixable";
       renderSongList();
     });
     document.getElementById("ownedFilterBtn")?.addEventListener("click",()=>{
       showOwnedOnly=!showOwnedOnly;
-      const btn=document.getElementById("ownedFilterBtn");
-      if(btn) btn.textContent=showOwnedOnly?"✓ Owned Only":"Show All";
+      const btn=document.getElementById("ownedFilterBtn");if(btn)btn.textContent=showOwnedOnly?"✓ Owned Only":"Show All";
       renderSongList();
     });
     document.getElementById("clearSelectionBtn")?.addEventListener("click",()=>{
-      selectedSong=null;
-      previewSong=null;
-      showMixableOnly=false;
-      const btn=document.getElementById("mixableFilterBtn");
-      if(btn) btn.textContent="Show Mixable";
+      selectedSong=null;previewSong=null;showMixableOnly=false;
+      const btn=document.getElementById("mixableFilterBtn");if(btn)btn.textContent="Show Mixable";
       renderSongList();
     });
     document.getElementById("markAllBtn")?.addEventListener("click",()=>{
-      if(!confirm("Mark ALL loaded songs as owned?")) return;
+      if(!confirm("Mark ALL loaded songs as owned?"))return;
       ownedTracks=songs.map(s=>s.id);
       localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
       saveUserProfile();
@@ -1013,28 +862,22 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     });
     document.getElementById("addBandBtn")?.addEventListener("click",()=>addBandMember());
     document.getElementById("searchInput")?.addEventListener("input",()=>renderSongList());
-
     document.getElementById("camelotTierBtn")?.addEventListener("click",()=>{
-      camelotTier++; if(camelotTier>3) camelotTier=1;
+      camelotTier++;if(camelotTier>3)camelotTier=1;
       const labels={1:"Camelot: Tier 1",2:"Camelot: Tiers 1–2",3:"Camelot: All Tiers"};
-      const btn=document.getElementById("camelotTierBtn");
-      if(btn) btn.textContent=labels[camelotTier];
+      const btn=document.getElementById("camelotTierBtn");if(btn)btn.textContent=labels[camelotTier];
       renderSongList();
     });
-
     document.getElementById("priorityBtn")?.addEventListener("click",()=>{
-      priorityMode = priorityMode==="tempo"?"camelot":"tempo";
-      const btn=document.getElementById("priorityBtn");
-      if(btn) btn.textContent=priorityMode==="tempo"?"Priority: Tempo":"Priority: Camelot";
+      priorityMode=priorityMode==="tempo"?"camelot":"tempo";
+      const btn=document.getElementById("priorityBtn");if(btn)btn.textContent=priorityMode==="tempo"?"Priority: Tempo":"Priority: Camelot";
       renderSongList();
     });
   }
 
-  /*********************** Help modal *************************/
-  function openHelp(){ const m=document.getElementById("helpModal"); if(m){ m.style.display="flex"; m.setAttribute("aria-hidden","false"); } }
-  function closeHelp(){ const m=document.getElementById("helpModal"); if(m){ m.style.display="none"; m.setAttribute("aria-hidden","true"); } }
+  function openHelp(){const m=document.getElementById("helpModal");if(m){m.style.display="flex";m.setAttribute("aria-hidden","false");}}
+  function closeHelp(){const m=document.getElementById("helpModal");if(m){m.style.display="none";m.setAttribute("aria-hidden","true");}}
 
-  /*********************** Song loading *************************/
   async function loadSongs(){
     const endpoints=[
       "https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks",
@@ -1043,58 +886,42 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     for(const ep of endpoints){
       try{
         const res=await fetch(ep);
-        if(!res.ok) continue;
+        if(!res.ok)continue;
         const data=await res.json();
-        songs = Object.entries(data).filter(([k])=>!k.startsWith("_")).map(([id,item])=>{
+        songs=Object.entries(data).filter(([k])=>!k.startsWith("_")).map(([id,item])=>{
           const t=item.track||{};
-          if(!t.tt) return null;
-          const detectedGenre=detectGenre(t.an||"",t.tt);
-          const finalGenre=genreOverrides[id] || detectedGenre;
+          if(!t.tt)return null;
+          const detected=detectGenre(t.an||"",t.tt);
+          const finalGenre=genreOverrides[id]||detected;
           let art="";
-          if(t.au) art=t.au.trim();
-          if(!art && t.at) art=t.at.trim();
-          if(!art && t.im) art=t.im.trim();
-          if(!art && Array.isArray(t.images) && t.images.length) art=t.images[0];
-          if(art && art.startsWith("//")) art=window.location.protocol+art;
-          if(art && art.startsWith("/")) art="https://fortnitecontent-website-prod07.ol.epicgames.com"+art;
-          return {
-            id,
-            title:t.tt,
-            artist:t.an||"Unknown",
-            bpm:Number(t.mt)||0,
-            key:t.mk||"?",
-            mode:t.mm||"",
-            camelot:convertToCamelot(t.mk||""),
-            duration:Number(t.dn)||0,
-            albumArt:art||"",
-            genre:finalGenre
-          };
-        }).filter(s=>s && s.bpm>0);
+          if(t.au)art=t.au.trim();
+          if(!art&&t.at)art=t.at.trim();
+          if(!art&&t.im)art=t.im.trim();
+          if(!art&&Array.isArray(t.images)&&t.images.length)art=t.images[0];
+          if(art&&art.startsWith("//"))art=window.location.protocol+art;
+          if(art&&art.startsWith("/"))art="https://fortnitecontent-website-prod07.ol.epicgames.com"+art;
+          return{id,title:t.tt,artist:t.an||"Unknown",bpm:Number(t.mt)||0,key:t.mk||"?",mode:t.mm||"",camelot:convertToCamelot(t.mk||""),duration:Number(t.dn)||0,albumArt:art||"",genre:finalGenre};
+        }).filter(s=>s&&s.bpm>0);
         if(songs.length>0){
           songs.sort((a,b)=>a.title.localeCompare(b.title));
           renderSongList();
           updateOwnedCounter();
           return;
         }
-      }catch(e){
-        console.warn("Song endpoint error",e);
-      }
+      }catch(e){console.warn("Song endpoint error",e);}
     }
-    // fallback sample
     songs=[
-      { id:"s1",title:"Bad Guy",artist:"Billie Eilish",bpm:135,key:"C",camelot:"8B",duration:180,albumArt:"",genre:"Pop" },
-      { id:"s2",title:"Need You Tonight",artist:"INXS",bpm:115,key:"C",camelot:"8A",duration:210,albumArt:"",genre:"Rock" },
-      { id:"s3",title:"Electric Night",artist:"Daft Sample",bpm:128,key:"D",camelot:"10B",duration:200,albumArt:"",genre:"Electronic" },
-      { id:"s4",title:"Slow Burn",artist:"Indie Star",bpm:95,key:"G",camelot:"9A",duration:190,albumArt:"",genre:"Indie" },
-      { id:"s5",title:"Drop The Bass",artist:"SkrillSample",bpm:142,key:"A",camelot:"11A",duration:160,albumArt:"",genre:"Electronic" }
+      {id:"s1",title:"Bad Guy",artist:"Billie Eilish",bpm:135,key:"C",camelot:"8B",duration:180,albumArt:"",genre:"Pop"},
+      {id:"s2",title:"Need You Tonight",artist:"INXS",bpm:115,key:"C",camelot:"8A",duration:210,albumArt:"",genre:"Rock"},
+      {id:"s3",title:"Electric Night",artist:"Daft Sample",bpm:128,key:"D",camelot:"10B",duration:200,albumArt:"",genre:"Electronic"},
+      {id:"s4",title:"Slow Burn",artist:"Indie Star",bpm:95,key:"G",camelot:"9A",duration:190,albumArt:"",genre:"Indie"},
+      {id:"s5",title:"Drop The Bass",artist:"SkrillSample",bpm:142,key:"A",camelot:"11A",duration:160,albumArt:"",genre:"Electronic"}
     ];
     renderSongList();
     updateOwnedCounter();
   }
 
-  /*********************** Init – merge C (local + backend) *************************/
   (async function init(){
-    // local first
     const ownedLocal=JSON.parse(localStorage.getItem("ownedTracks")||"[]");
     const bandLocal=JSON.parse(localStorage.getItem("bandMembers")||"[]");
     ownedTracks=Array.isArray(ownedLocal)?ownedLocal:[];
@@ -1103,7 +930,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     setlist=JSON.parse(localStorage.getItem("setlist")||"[]");
 
     const savedUser=localStorage.getItem("currentUser");
-    if(savedUser && firestore){
+    if(savedUser&&firestore){
       try{
         const doc=await firestore.collection("users").doc(savedUser).get();
         if(doc.exists){
@@ -1113,23 +940,20 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
           ownedTracks=Array.from(new Set([...(ownedTracks||[]),...backendOwned]));
           const map=new Map();
           for(const m of [...(bandMembers||[]),...(backendBand||[])]){
-            if(!m || !m.username) continue;
+            if(!m||!m.username)continue;
             map.set(m.username,Object.assign({},map.get(m.username)||{},m));
           }
           bandMembers=Array.from(map.values());
           localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
           localStorage.setItem("bandMembers",JSON.stringify(bandMembers));
-          try{
-            await firestore.collection("users").doc(savedUser).set({ownedTracks,bandMembers},{merge:true});
-          }catch(e){ console.warn("firestore merge save failed",e); }
+          try{await firestore.collection("users").doc(savedUser).set({ownedTracks,bandMembers},{merge:true});}catch(e){console.warn("merge save failed",e);}
         }
-      }catch(e){ console.warn("failed to load backend profile",e); }
+      }catch(e){console.warn("failed to load backend profile",e);}
     }
 
     if(savedUser){
       const profile=await loadUserProfile(savedUser);
-      if(profile) currentUser=profile;
-      else currentUser={username:savedUser,djName:savedUser};
+      if(profile)currentUser=profile;else currentUser={username:savedUser,djName:savedUser};
     }
 
     render();
