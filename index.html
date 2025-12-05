@@ -24,7 +24,6 @@
       -webkit-font-smoothing:antialiased;
       -moz-osx-font-smoothing:grayscale;
     }
-    /* extra moving glow */
     body:before{
       content:'';
       position:fixed;
@@ -71,7 +70,7 @@
     .sandbox-drop{min-height:110px;border-radius:12px;padding:10px;border:2px dashed rgba(255,255,255,0.08)}
     .song-card{
       transition:box-shadow .12s,transform .12s;
-      overflow:hidden; /* no bleed */
+      overflow:hidden;
       border-radius:0; /* sharp edges for song card */
       min-height:300px; /* H2-ish */
     }
@@ -148,6 +147,45 @@
     .helpTitle{display:flex;gap:10px;align-items:center}
     .helpContent{padding:14px 18px;overflow-y:auto;color:#e5f3ff;font-size:14px;line-height:1.45}
     .helpTag{font-size:11px;border-radius:999px;padding:3px 10px;border:1px solid rgba(148,163,184,.7);color:#bfdbfe}
+
+    /* Fun tutorial blocks for HG3 + D2 style */
+    .help-section{margin-bottom:16px;}
+    .help-section h2{font-weight:800;font-size:18px;margin-bottom:4px;}
+    .help-section p{margin-top:4px;}
+    .help-diagram{
+      margin-top:8px;
+      margin-bottom:6px;
+      padding:8px 10px;
+      border-radius:10px;
+      background:linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,64,175,.9));
+      border:1px solid rgba(56,189,248,.5);
+      font-size:13px;
+    }
+    .help-diagram-title{
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:#a5f3fc;
+      margin-bottom:4px;
+    }
+    .help-try{
+      margin-top:6px;
+      padding:8px 10px;
+      border-radius:10px;
+      background:linear-gradient(135deg,rgba(22,163,74,.15),rgba(16,185,129,.18));
+      border:1px dashed rgba(52,211,153,.6);
+      font-size:13px;
+    }
+    .help-badge{
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      padding:2px 7px;
+      border-radius:999px;
+      font-size:11px;
+      background:rgba(15,23,42,.9);
+      border:1px solid rgba(148,163,184,.6);
+    }
     @keyframes wheelSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
   </style>
 </head>
@@ -164,7 +202,7 @@
           <div style="width:46px;height:46px;border-radius:14px;background:conic-gradient(from 210deg at 30% 30%,#22d3ee,#8b5cf6,#f97316,#22d3ee);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(15,23,42,.8);font-size:22px;">🎧</div>
           <div>
             <div style="font-size:18px;font-weight:900;letter-spacing:.06em" class="graffiti-text">FESTIVAL JAM MIXER – GUIDE</div>
-            <div style="font-size:12px;color:#bfdbfe">Everything on the landing page plus deeper Camelot + BPM tips.</div>
+            <div style="font-size:12px;color:#bfdbfe">Learn how to build clean Fortnite Festival mixes step-by-step.</div>
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -172,77 +210,273 @@
           <button class="btn" onclick="closeHelp()">Close</button>
         </div>
       </div>
-      <div class="helpContent">
-        <h2 style="font-weight:800;font-size:18px;margin-bottom:6px">1. How the Camelot Wheel Works</h2>
-        <p class="small-muted">Camelot is a DJ key system: each key becomes a number 1–12 and a letter (A = minor, B = major). The closer two codes are on the wheel, the smoother they mix.</p>
-        <ul class="small-muted" style="margin-left:16px;margin-top:6px">
-          <li><strong>Tier 1 – Perfect:</strong> Same number &amp; same letter (e.g. <strong>8A → 8A</strong>).</li>
-          <li><strong>Tier 2 – Near:</strong> Same letter, ±1 number (e.g. <strong>8A → 7A</strong> or <strong>8A → 9A</strong>).</li>
-          <li><strong>Tier 3 – Swap:</strong> Same number, different letter (e.g. <strong>8A → 8B</strong>).</li>
-        </ul>
 
-        <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px;align-items:center">
-          <div style="flex:0 0 auto">
-            <!-- Spinning Camelot wheel with segment colors -->
-            <svg width="150" height="150" viewBox="0 0 120 120" style="transform-origin:center;animation:wheelSpin 18s linear infinite">
-              <circle cx="60" cy="60" r="46" fill="#020617" opacity="0.9"></circle>
-              <g transform="translate(60,60)" stroke-width="1.6">
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(0)"   stroke="#FF6B9D"/>  <!-- 1 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(30)"  stroke="#FFA07A"/>  <!-- 2 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(60)"  stroke="#FFD700"/>  <!-- 3 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(90)"  stroke="#98D8C8"/>  <!-- 4 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(120)" stroke="#6BCB77"/>  <!-- 5 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(150)" stroke="#4D96FF"/>  <!-- 6 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(180)" stroke="#9D4EDD"/>  <!-- 7 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(210)" stroke="#E84A5F"/>  <!-- 8 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(240)" stroke="#00D9FF"/>  <!-- 9 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(270)" stroke="#FFA400"/>  <!-- 10 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(300)" stroke="#FE6D73"/>  <!-- 11 -->
-                <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(330)" stroke="#A8E6CF"/>  <!-- 12 -->
-              </g>
-              <circle cx="60" cy="60" r="30" fill="rgba(15,23,42,.96)" stroke="rgba(148,163,184,.6)" stroke-width="1.2"></circle>
-              <text x="60" y="55" text-anchor="middle" font-size="11" fill="#e5e7eb" font-weight="600">HARMONIC</text>
-              <text x="60" y="70" text-anchor="middle" font-size="13" fill="#f9fafb" font-weight="800">CAMELOT</text>
-            </svg>
+      <div class="helpContent">
+        <!-- 1. What this app does -->
+        <div class="help-section">
+          <h2>1. What Is FESTIVAL JAM MIXER?</h2>
+          <p class="small-muted">
+            This tool helps you pick Fortnite Festival tracks that sound good together. It:
+          </p>
+          <ul class="small-muted" style="margin-left:16px;margin-top:4px">
+            <li>Shows your tracks with BPM, Camelot key and energy.</li>
+            <li>Finds songs that match your main track in key &amp; tempo.</li>
+            <li>Lets you test ideas in a <strong>Sandbox</strong>.</li>
+            <li>Lets you plan a <strong>Setlist</strong> for your in-game show.</li>
+            <li>Lets you see what <strong>your bandmates own</strong> too.</li>
+          </ul>
+
+          <div class="help-diagram">
+            <div class="help-diagram-title">App Layout</div>
+            <div class="small-muted">
+              <strong>Top bar:</strong> app name, who you’re signed in as, owned counter.<br>
+              <strong>Left column:</strong> controls + band + sandbox.<br>
+              <strong>Right column:</strong> song browser + setlist.
+            </div>
           </div>
-          <div style="flex:1 1 220px">
-            <p class="small-muted">When you pick a main track, we rate every other track by key distance and BPM distance. The <strong>Camelot Tier</strong> toggle decides how strict we are:</p>
-            <ul class="small-muted" style="margin-left:16px;margin-top:6px">
-              <li><strong>Tier 1:</strong> Same number &amp; letter only.</li>
-              <li><strong>Tiers 1–2:</strong> Tier 1 + neighbors with same letter.</li>
-              <li><strong>All Tiers:</strong> Adds Tier 3 and creative keys.</li>
+        </div>
+
+        <!-- 2. Song Cards Explained -->
+        <div class="help-section">
+          <h2>2. Song Cards – What Everything Means</h2>
+          <p class="small-muted">
+            Each big box in the Song Browser is one track. It looks something like this:
+          </p>
+          <div class="help-diagram">
+            <div class="help-diagram-title">Song Card Example</div>
+            <div style="display:flex;gap:8px;align-items:flex-start">
+              <div style="width:52px;height:52px;background:#020617;border:2px solid #3b82f6;"></div>
+              <div style="flex:1">
+                <div class="small-muted"><strong>Song Title</strong></div>
+                <div class="small-muted">Artist Name</div>
+                <div class="small-muted" style="margin-top:4px">
+                  <span class="help-badge">💨 128 BPM</span>
+                  <span class="help-badge">🎵 Genre</span>
+                  <span class="help-badge">🎨 Camelot: <strong>8A</strong></span>
+                </div>
+                <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+                  <span class="help-badge">Select</span>
+                  <span class="help-badge">+ Set</span>
+                  <span class="help-badge">✓ Owned</span>
+                  <span class="help-badge">▶ Preview</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="small-muted">
+            <strong>Buttons on a song card:</strong>
+          </p>
+          <ul class="small-muted" style="margin-left:16px;margin-top:4px">
+            <li><strong>Select:</strong> chooses this as your main track. All other songs are compared to it.</li>
+            <li><strong>+ Set:</strong> adds the song to your Setlist at the bottom.</li>
+            <li><strong>Mark Owned / ✓ Owned:</strong> toggle that you own this track in Fortnite.</li>
+            <li><strong>Preview:</strong> compares this song to the selected one and pops up a compatibility summary.</li>
+          </ul>
+          <div class="help-try">
+            <strong>Try this:</strong> pick any song, click <strong>Select</strong>, then click <strong>Preview</strong> on another song.  
+            You’ll see how well they match and how many BPM to shift.
+          </div>
+        </div>
+
+        <!-- 3. Camelot Wheel & Tiers -->
+        <div class="help-section">
+          <h2>3. Camelot Wheel &amp; Tiers (Key Matching)</h2>
+          <p class="small-muted">
+            Camelot turns music keys into codes like <strong>8A</strong> or <strong>10B</strong>.
+            You don’t need music theory – just match the codes in a smart way.
+          </p>
+
+          <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;align-items:center">
+            <div style="flex:0 0 auto">
+              <!-- Spinning Camelot wheel with segment colors -->
+              <svg width="150" height="150" viewBox="0 0 120 120" style="transform-origin:center;animation:wheelSpin 18s linear infinite">
+                <circle cx="60" cy="60" r="46" fill="#020617" opacity="0.9"></circle>
+                <g transform="translate(60,60)" stroke-width="1.6">
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(0)"   stroke="#FF6B9D"/>  <!-- 1 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(30)"  stroke="#FFA07A"/>  <!-- 2 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(60)"  stroke="#FFD700"/>  <!-- 3 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(90)"  stroke="#98D8C8"/>  <!-- 4 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(120)" stroke="#6BCB77"/>  <!-- 5 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(150)" stroke="#4D96FF"/>  <!-- 6 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(180)" stroke="#9D4EDD"/>  <!-- 7 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(210)" stroke="#E84A5F"/>  <!-- 8 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(240)" stroke="#00D9FF"/>  <!-- 9 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(270)" stroke="#FFA400"/>  <!-- 10 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(300)" stroke="#FE6D73"/>  <!-- 11 -->
+                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(330)" stroke="#A8E6CF"/>  <!-- 12 -->
+                </g>
+                <circle cx="60" cy="60" r="30" fill="rgba(15,23,42,.96)" stroke="rgba(148,163,184,.6)" stroke-width="1.2"></circle>
+                <text x="60" y="55" text-anchor="middle" font-size="11" fill="#e5e7eb" font-weight="600">HARMONIC</text>
+                <text x="60" y="70" text-anchor="middle" font-size="13" fill="#f9fafb" font-weight="800">CAMELOT</text>
+              </svg>
+            </div>
+            <div style="flex:1 1 220px">
+              <div class="help-diagram">
+                <div class="help-diagram-title">Tier Rules (Super Simple)</div>
+                <ul class="small-muted" style="margin-left:16px;">
+                  <li><strong>Tier 1:</strong> same number &amp; same letter (8A → 8A) = smoothest.</li>
+                  <li><strong>Tier 2:</strong> same letter, ±1 number (8A → 7A or 9A) = very good.</li>
+                  <li><strong>Tier 3:</strong> same number, swap letter (8A → 8B) = color change but safe.</li>
+                </ul>
+              </div>
+              <div class="help-try">
+                <strong>Try this:</strong> Select a song in <strong>8A</strong>.  
+                Turn <strong>Camelot</strong> to <em>Tiers 1–2</em> and hit <strong>Show Mixable</strong>.  
+                You’ll only see keys that should blend nicely with it.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Controls Panel -->
+        <div class="help-section">
+          <h2>4. Controls Panel (Left Side)</h2>
+          <p class="small-muted">
+            On the left, you control how the song list behaves.
+          </p>
+          <div class="help-diagram">
+            <div class="help-diagram-title">Controls Explained</div>
+            <ul class="small-muted" style="margin-left:16px;">
+              <li><strong>Search bar:</strong> type part of a title, artist, or genre to filter songs.</li>
+              <li><strong>Show Mixable:</strong> only show songs that match your <em>Selected</em> track’s key &amp; BPM.</li>
+              <li><strong>Show All / Owned Only:</strong> switch between everything and just the tracks you own.</li>
+              <li><strong>Clear Selection:</strong> unselect your main song so the list goes back to normal.</li>
+              <li><strong>Mark All Owned:</strong> quickly mark every loaded song as owned (use if you truly have them all).</li>
+              <li><strong>Camelot Tier:</strong> switch between Tier 1 only, Tiers 1–2, or All tiers.</li>
+              <li><strong>Priority:</strong> choose if we sort suggestions mainly by <em>Tempo</em> or by <em>Camelot tier</em>.</li>
+            </ul>
+          </div>
+          <div class="help-try">
+            <strong>Try this:</strong>  
+            1) Pick a main song and hit <strong>Select</strong>.  
+            2) Press <strong>Show Mixable</strong>.  
+            3) Flip <strong>Camelot</strong> from Tier 1 → All tiers and watch how many options appear.
+          </div>
+        </div>
+
+        <!-- 5. Priority Mode -->
+        <div class="help-section">
+          <h2>5. Priority – Tempo vs Camelot</h2>
+          <p class="small-muted">
+            The Priority button changes how we sort songs when you have a <strong>Selected</strong> track.
+          </p>
+          <div class="help-diagram">
+            <div class="help-diagram-title">How Priority Works</div>
+            <ul class="small-muted" style="margin-left:16px;">
+              <li><strong>Tempo Priority:</strong> best overall matches first (key + BPM). If two songs tie, closer BPM wins.</li>
+              <li><strong>Camelot Priority:</strong> best key tiers first (Tier 1 at the very top), then the score, then BPM closeness.</li>
+            </ul>
+          </div>
+          <div class="help-try">
+            <strong>Tip:</strong>  
+            Use <strong>Tempo</strong> when you care about staying near the same speed.  
+            Use <strong>Camelot</strong> when you care more about musical key blending.
+          </div>
+        </div>
+
+        <!-- 6. Sandbox -->
+        <div class="help-section">
+          <h2>6. Sandbox – Your “Test Stage”</h2>
+          <p class="small-muted">
+            The Sandbox is where you drag a few songs you might want to play in a row. It helps you check:
+          </p>
+          <ul class="small-muted" style="margin-left:16px;margin-top:4px">
+            <li>How far the BPM jumps between songs.</li>
+            <li>How the <strong>energy level</strong> rises or falls.</li>
+            <li>How many different keys you’re using.</li>
+          </ul>
+
+          <div class="help-diagram">
+            <div class="help-diagram-title">What You See in Sandbox</div>
+            <ul class="small-muted" style="margin-left:16px;">
+              <li><strong>BPM range:</strong> lowest → highest, plus how big the jump is.</li>
+              <li><strong>Avg energy:</strong> a number from 1–5 showing overall hype level.</li>
+              <li><strong>Keys list:</strong> which Camelot keys appear in that cluster.</li>
+              <li><strong>Energy graph:</strong> bar for each song, showing its energy rating.</li>
+            </ul>
+          </div>
+          <div class="help-try">
+            <strong>Try this:</strong>  
+            Drag 3–5 songs that you think could be a mini-set into the Sandbox.  
+            If BPM jumps are huge or keys look chaotic, swap a track for a closer match.
+          </div>
+        </div>
+
+        <!-- 7. Setlist -->
+        <div class="help-section">
+          <h2>7. Setlist – Planning Your Show</h2>
+          <p class="small-muted">
+            The Setlist panel is a simple list of songs you want to play, in order.
+          </p>
+          <div class="help-diagram">
+            <div class="help-diagram-title">How to Build a Setlist</div>
+            <ul class="small-muted" style="margin-left:16px;">
+              <li>Click <strong>+ Set</strong> on any song card to add it to the Setlist.</li>
+              <li>Each line shows track number, title, artist, BPM and Camelot.</li>
+              <li>Press the <strong>✕</strong> button next to a song to remove it from the Setlist.</li>
+            </ul>
+          </div>
+          <div class="help-try">
+            <strong>Tip:</strong>  
+            Use Setlist to write down your “dream” order. Then in Fortnite Festival, try to follow that flow when you actually queue songs.
+          </div>
+        </div>
+
+        <!-- 8. Owned Tracks & Profiles -->
+        <div class="help-section">
+          <h2>8. Owned Tracks, Profiles &amp; Band Members</h2>
+          <p class="small-muted">
+            The app can remember which tracks you own and save that to your <strong>profile</strong>. You can also look at your <strong>band members’</strong> libraries.
+          </p>
+
+          <div class="help-diagram">
+            <div class="help-diagram-title">Owned &amp; Profile</div>
+            <ul class="small-muted" style="margin-left:16px;">
+              <li>Use <strong>Mark Owned</strong> / <strong>✓ Owned</strong> on song cards to track what you have.</li>
+              <li>The top bar shows <strong>Owned: X / Y</strong> (how many songs are marked vs total songs loaded).</li>
+              <li>If you sign in, your owned list can sync between browser and Firebase.</li>
+            </ul>
+          </div>
+          <div class="help-diagram">
+            <div class="help-diagram-title">Band Members</div>
+            <ul class="small-muted" style="margin-left:16px;">
+              <li>Click <strong>+ Add Band Member</strong> and enter their username.</li>
+              <li>Click <strong>View</strong> next to a band member to see only their owned tracks.</li>
+              <li>Use <strong>↩ Back to Me</strong> to return to your own collection.</li>
+              <li>You <strong>cannot</strong> change another user’s owned tracks – only your own.</li>
             </ul>
           </div>
         </div>
 
-        <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">2. Priority: Tempo vs Camelot</h2>
-        <p class="small-muted">
-          Use the <strong>Priority</strong> button to switch between:
-        </p>
-        <ul class="small-muted" style="margin-left:16px;margin-top:4px">
-          <li><strong>Tempo:</strong> Best overall matches first (key + BPM), tie-broken by BPM distance.</li>
-          <li><strong>Camelot:</strong> Best tiers first (1 → 2 → 3), then overall score, then BPM distance.</li>
-        </ul>
+        <!-- 9. First Time Recipe -->
+        <div class="help-section">
+          <h2>9. First Time? Do This Step-By-Step</h2>
+          <div class="help-diagram">
+            <div class="help-diagram-title">Quick Start</div>
+            <ol class="small-muted" style="margin-left:16px;">
+              <li>Scroll the Song Browser and press <strong>Mark Owned</strong> on each track you actually own.</li>
+              <li>Pick your favorite track and click <strong>Select</strong>.</li>
+              <li>Press <strong>Show Mixable</strong> to see only songs that match it.</li>
+              <li>Set <strong>Camelot</strong> to <em>Tiers 1–2</em> for safe mixes.</li>
+              <li>Click <strong>Preview</strong> on a song you like to compare them.</li>
+              <li>If it looks good, click <strong>+ Set</strong> to add it to your Setlist.</li>
+              <li>Drag a few of those songs into the <strong>Sandbox</strong> and check BPM &amp; energy flow.</li>
+              <li>Keep going until you have a small show planned.</li>
+            </ol>
+          </div>
+        </div>
 
-        <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">3. Workflow – How to Use This Tool</h2>
-        <ol class="small-muted" style="margin-left:16px">
-          <li>Mark your <strong>Owned</strong> Festival tracks.</li>
-          <li>Select a main track.</li>
-          <li>Toggle <em>Show Mixable</em> to filter to good transitions.</li>
-          <li>Use <em>Camelot Tier</em> + <em>Priority</em> to change how matches are ranked.</li>
-          <li>Drag tracks into the <strong>Sandbox</strong> to check energy &amp; BPM arc.</li>
-          <li>Use the <strong>Setlist</strong> panel to sketch your in-game flow.</li>
-        </ol>
-
-        <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">4. Sandbox – S3 Hybrid View</h2>
-        <p class="small-muted">
-          Sandbox tracks show in a simple list plus a mini analyzer: BPM range, average energy, and key spread. Use it to test if a cluster of songs feels like one mini-set.
-        </p>
-
-        <h2 style="font-weight:800;font-size:18px;margin-top:18px;margin-bottom:4px">5. Band Members & Profiles</h2>
-        <p class="small-muted">
-          Add bandmates by username and view each person’s collection without breaking your own. Your profile & owned tracks are merged from local storage and, if enabled, Firebase.
-        </p>
+        <!-- 10. Extra Tips -->
+        <div class="help-section">
+          <h2>10. Extra Tips for Better Mixes</h2>
+          <ul class="small-muted" style="margin-left:16px;">
+            <li>Keep BPM jumps under ~5 if you want smooth transitions.</li>
+            <li>Stay within Tier 1–2 for “safe” mixes; use Tier 3 when you want a bigger change in mood.</li>
+            <li>Watch the energy graph in the Sandbox – let the show build, then cool down, then build again.</li>
+            <li>Use <strong>Priority: Camelot</strong> when you care more about musical key than speed.</li>
+            <li>Use <strong>Priority: Tempo</strong> when you want to stay near the same speed and just slightly bend key.</li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -881,7 +1115,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     input.click();
   }
 
-  /************ Profiles + Firebase merge (Option C style) ************/
+  /************ Profiles + Firebase merge ************/
   async function saveUserProfileToBackend(profile){
     if(!profile || !firestore || !profile.username)return false;
     try{
@@ -1109,7 +1343,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     updateOwnedCounter();
   }
 
-  /************ Init – merge local + backend ************/
+  /************ Init ************/
   (async function init(){
     const ownedLocal=JSON.parse(localStorage.getItem("ownedTracks")||"[]");
     const bandLocal =JSON.parse(localStorage.getItem("bandMembers")||"[]");
@@ -1126,9 +1360,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
           const backend=doc.data()||{};
           const backendOwned=Array.isArray(backend.ownedTracks)?backend.ownedTracks:[];
           const backendBand =Array.isArray(backend.bandMembers)?backend.bandMembers:[];
-          // merge owned (no dupes)
           ownedTracks=Array.from(new Set([...(ownedTracks||[]),...backendOwned]));
-          // merge band members by username
           const map=new Map();
           for(const m of [...(bandMembers||[]),...(backendBand||[])]){ if(!m||!m.username)continue; map.set(m.username,Object.assign({},map.get(m.username)||{},m)); }
           bandMembers=Array.from(map.values());
