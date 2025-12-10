@@ -14,6 +14,9 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics-compat.js"></script>
 
+  <!-- Optional local Firebase config override (ignored if missing) -->
+  <script src="firebase-config.js"></script>
+
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     html,body{height:100%}
@@ -483,7 +486,9 @@
 
 <script>
   /************ Firebase compat init ************/
-  const firebaseConfig = {
+  const isDevEnv = ["localhost", "127.0.0.1", "0.0.0.0"].includes(location.hostname);
+  const requiredFirebaseKeys = ["apiKey", "authDomain", "projectId", "storageBucket", "messagingSenderId", "appId"];
+  const defaultFirebaseConfig = {
     apiKey: "AIzaSyAeVHy4RPVwEAfQaEisW82eqCPwBRkG3WQ",
     authDomain: "festival-jam-mixer.firebaseapp.com",
     projectId: "festival-jam-mixer",
@@ -493,14 +498,31 @@
     measurementId: "G-G0ZHBW07C3"
   };
 
+  const rawOverrideConfig = (typeof window !== "undefined" && window.FESTIVAL_MIXER_CONFIG) ? window.FESTIVAL_MIXER_CONFIG : null;
+  const sanitizedOverrideConfig = {};
+  if(rawOverrideConfig && typeof rawOverrideConfig === "object"){
+    for(const [key,val] of Object.entries(rawOverrideConfig)){
+      if(val){ sanitizedOverrideConfig[key] = val; }
+    }
+  }
+
+  const firebaseConfig = { ...defaultFirebaseConfig, ...sanitizedOverrideConfig };
+  const missingRequiredKeys = requiredFirebaseKeys.filter((key)=>!firebaseConfig[key]);
+
   let firebaseApp=null,firebaseAuth=null,firestore=null;
-  try{
-    firebaseApp = firebase.initializeApp(firebaseConfig);
-    firebaseAuth = firebase.auth();
-    firestore   = firebase.firestore();
-    if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
-  }catch(e){
-    console.warn("Firebase init failed, using local-only mode", e);
+  if(missingRequiredKeys.length){
+    if(isDevEnv){
+      console.warn("Firebase config missing required keys; skipping init.", missingRequiredKeys);
+    }
+  }else{
+    try{
+      firebaseApp = firebase.initializeApp(firebaseConfig);
+      firebaseAuth = firebase.auth();
+      firestore   = firebase.firestore();
+      if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
+    }catch(e){
+      if(isDevEnv){ console.warn("Firebase init failed, using local-only mode", e); }
+    }
   }
 
   /************ Camelot + scoring ************/
