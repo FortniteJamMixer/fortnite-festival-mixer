@@ -9,3 +9,15 @@ This project follows a doc-driven, feature-branch-based workflow.
 - Git control remains manual and explicit
 
 
+---
+
+## Legacy Code Notice
+
+All code that existed before the introduction of Workflow v3.0
+is considered **legacy-stable**.
+
+- Legacy code may be maintained and bug-fixed
+- Structural refactors require a design doc
+- New features MUST follow the v3.0 workflow
+
+This document marks the official transition point.
