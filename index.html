@@ -8,6 +8,9 @@
   <!-- Tailwind (utility classes mostly for layout) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- Firebase config (provided separately, not committed) -->
+  <script src="./firebase-config.js"></script>
+
   <!-- Firebase Compat SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
@@ -483,24 +486,24 @@
 
 <script>
   /************ Firebase compat init ************/
-  const firebaseConfig = {
-    apiKey: "AIzaSyAeVHy4RPVwEAfQaEisW82eqCPwBRkG3WQ",
-    authDomain: "festival-jam-mixer.firebaseapp.com",
-    projectId: "festival-jam-mixer",
-    storageBucket: "festival-jam-mixer.firebasestorage.app",
-    messagingSenderId: "255348637744",
-    appId: "1:255348637744:web:cbd3151011372f0e8fadf5",
-    measurementId: "G-G0ZHBW07C3"
-  };
-
-  let firebaseApp=null,firebaseAuth=null,firestore=null;
-  try{
-    firebaseApp = firebase.initializeApp(firebaseConfig);
-    firebaseAuth = firebase.auth();
-    firestore   = firebase.firestore();
-    if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
-  }catch(e){
-    console.warn("Firebase init failed, using local-only mode", e);
+  const firebaseEnabled=true;
+  const firebaseConfig = window.firebaseConfig || window.FESTIVAL_MIXER_CONFIG || null;
+  const firebaseSetupMissing=!firebaseConfig;
+  let firebaseApp=null,firebaseAuth=null,firestore=null,firebaseInitError=null,firebaseDiagnostics=null;
+  if(firebaseSetupMissing){
+    firebaseInitError="Firebase config missing. Create firebase-config.js before enabling email sign-in.";
+    firebaseDiagnostics={projectId:"missing",authDomain:"missing"};
+  }else{
+    firebaseDiagnostics={projectId:firebaseConfig.projectId||"unset",authDomain:firebaseConfig.authDomain||"unset"};
+    try{
+      firebaseApp = firebase.initializeApp(firebaseConfig);
+      firebaseAuth = firebase.auth();
+      firestore   = firebase.firestore();
+      if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
+    }catch(e){
+      firebaseInitError=`Firebase failed to initialize: ${e?.message||e}`;
+      console.warn("Firebase init failed", e);
+    }
   }
 
   /************ Camelot + scoring ************/
@@ -609,9 +612,33 @@
   let priorityMode="tempo";
 
   /************ UI builder ************/
-  function buildMainUI(){
-    const userDisplay=currentUser?(currentUser.djName||currentUser.username):"Guest";
+  function buildFirebaseSetupUI(){
     return `
+      <div class="panel max-w-3xl mx-auto">
+        <div class="text-2xl font-bold mb-2">Firebase Setup Needed</div>
+        <p class="small-muted mb-3">Add <code>firebase-config.js</code> next to this file with your Firebase web config before signing in.</p>
+        <div class="space-y-2 text-sm">
+          <div>Copy <code>firebase-config.example.js</code> to <code>firebase-config.js</code> and fill in your project's values.</div>
+          <div>Deploy a non-checked-in config via Vercel environment variables or a secure file include.</div>
+        </div>
+        <div class="mt-3 text-[11px] text-rose-200/90">projectId: ${firebaseDiagnostics?.projectId||"missing"}</div>
+        <div class="text-[11px] text-rose-200/90">authDomain: ${firebaseDiagnostics?.authDomain||"missing"}</div>
+      </div>
+    `;
+  }
+
+  function buildMainUI(){
+    const userDisplay=currentUser?(currentUser.djName||currentUser.username):"Not signed in";
+    const firebaseWarning = firebaseInitError ? `
+      <div class="panel mb-4 border border-rose-400/40 bg-rose-900/30">
+        <div class="font-semibold text-rose-100">Firebase issue</div>
+        <div class="small-muted">${firebaseInitError}</div>
+        <div class="text-[11px] mt-1 text-rose-200/90">projectId: ${firebaseDiagnostics?.projectId||"?"}</div>
+        <div class="text-[11px] text-rose-200/90">authDomain: ${firebaseDiagnostics?.authDomain||"?"}</div>
+      </div>
+    ` : "";
+    return `
+      ${firebaseWarning}
       <div class="panel mb-4">
         <div class="flex justify-between items-center gap-3">
           <div class="flex items-center gap-3">
@@ -705,7 +732,13 @@
 
   /************ Render helpers ************/
   function render(){
-    document.getElementById("app").innerHTML = buildMainUI();
+    const app=document.getElementById("app");
+    if(!app)return;
+    if(firebaseSetupMissing){
+      app.innerHTML = buildFirebaseSetupUI();
+      return;
+    }
+    app.innerHTML = buildMainUI();
     renderBandPanel();
     renderSongList();
     renderSetlist();
@@ -734,7 +767,10 @@
               <div class="small-muted text-[11px]">@${m.username}</div>
             </div>
           </div>
-          <button class="btn" style="padding-inline:8px" onclick="viewBandMember('${m.username}')">View</button>
+          <div class="flex gap-1">
+            <button class="btn" style="padding-inline:8px" onclick="viewBandMember('${m.username}')">View</button>
+            <button class="btn" style="padding-inline:8px" onclick="removeBandMember('${m.username}')">Remove</button>
+          </div>
         </div>
       `;
     }).join("");
@@ -994,6 +1030,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
   }
 
   function toggleOwned(id){
+    if(!ensureEmailLogin())return;
     if(viewingMember){
       alert("You can't edit another band member's collection.");
       return;
@@ -1007,6 +1044,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
   }
 
   function addToSetlist(id){
+    if(!ensureEmailLogin())return;
     const s=songs.find(x=>x.id===id);
     if(!s)return;
     if(!setlist.find(x=>x.id===id)){
@@ -1017,6 +1055,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
   }
 
   function removeFromSetlist(id){
+    if(!ensureEmailLogin())return;
     setlist=setlist.filter(x=>x.id!==id);
     localStorage.setItem("setlist",JSON.stringify(setlist));
     renderSetlist();
@@ -1024,6 +1063,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
 
   /************ Band members ************/
   async function addBandMember(){
+    if(!ensureEmailLogin())return;
     const username=prompt("Enter bandmate username (exact):");
     if(!username)return;
     if(bandMembers.find(m=>m.username===username)){
@@ -1045,7 +1085,24 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     alert(`Added ${memberProfile.djName} (@${memberProfile.username}) to your band.`);
   }
 
+  async function removeBandMember(username){
+    if(!ensureEmailLogin())return;
+    const member=bandMembers.find(m=>m.username===username);
+    if(!member)return;
+    const label=member.djName||member.username;
+    if(!confirm(`Remove ${label} (@${member.username}) from your band?`))return;
+    bandMembers=bandMembers.filter(m=>m.username!==username);
+    localStorage.setItem("bandMembers",JSON.stringify(bandMembers));
+    if(viewingMember && viewingMember.username===username){
+      viewingMember=null;
+      showOwnedOnly=false;
+    }
+    await saveUserProfile();
+    render();
+  }
+
   async function viewBandMember(username){
+    if(!ensureEmailLogin())return;
     const profile=await loadUserProfile(username) || { username,djName:username,ownedTracks:[],bandMembers:[],genreOverrides:{} };
     profile.ownedTracks=profile.ownedTracks||[];
     viewingMember=profile;
@@ -1065,6 +1122,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
 
   /************ Export / Import ************/
   async function exportCollection(){
+    if(!ensureEmailLogin())return;
     const data={
       username: currentUser?currentUser.username:"guest",
       djName:   currentUser?currentUser.djName:"",
@@ -1088,6 +1146,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
   }
 
   async function importCollection(){
+    if(!ensureEmailLogin())return;
     const input=document.createElement("input");
     input.type="file";
     input.accept=".json";
@@ -1157,52 +1216,33 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
   }
 
   /************ Auth ************/
-  async function handleLogin(e){
-    e && e.preventDefault && e.preventDefault();
-    if(firebaseAuth){
-      const email=prompt("Enter email (for Firebase login/register):");
-      if(!email)return;
-      const password=prompt("Enter password:");
-      if(!password)return;
-      try{
-        await firebaseAuth.signInWithEmailAndPassword(email,password);
-        const username=email.split("@")[0];
-        const profile=await loadUserProfile(username);
-        if(profile){
-          currentUser=profile;
-          ownedTracks=profile.ownedTracks||[];
-          setlist=profile.setlist||[];
-          bandMembers=profile.bandMembers||[];
-          genreOverrides=profile.genreOverrides||{};
-        }else{
-          currentUser={username,djName:username};
-          await saveUserProfile();
-        }
-        localStorage.setItem("currentUser",username);
-        render();
-        alert("Signed in.");
-      }catch(err){
-        if(err.code==="auth/user-not-found" && confirm("No account found — create one?")){
-          try{
-            await firebaseAuth.createUserWithEmailAndPassword(email,password);
-            const username=email.split("@")[0];
-            currentUser={username,djName:username,ownedTracks:[],setlist:[],bandMembers:[],genreOverrides:{}};
-            await saveUserProfileToBackend(currentUser);
-            localStorage.setItem("currentUser",username);
-            render();
-            alert("Account created & signed in.");
-          }catch(e2){
-            alert("Register failed: "+(e2.message||e2));
-          }
-        }else{
-          alert("Sign in failed: "+(err.message||err));
-        }
-      }
-      return;
+  function ensureEmailLogin(){
+    if(firebaseSetupMissing){
+      alert("Firebase setup is required. Add firebase-config.js before continuing.");
+      return false;
     }
-    const username=prompt("Enter username to sign in (local mode):");
-    if(!username)return;
-    currentUser={username,djName:username};
+    if(firebaseInitError){
+      alert(`Firebase is not ready: ${firebaseInitError}`);
+      return false;
+    }
+    if(!firebaseAuth){
+      alert("Firebase email login is required. Check your Firebase config before continuing.");
+      return false;
+    }
+    if(!firebaseAuth.currentUser){
+      alert("Please sign in with your email to use this feature.");
+      return false;
+    }
+    return true;
+  }
+
+  function usernameFromEmail(email,fallback){
+    if(email && email.includes("@"))return email.split("@")[0];
+    return fallback||"user";
+  }
+
+  async function hydrateProfileFromAuth(user){
+    const username=usernameFromEmail(user?.email,user?.uid||"dj");
     const profile=await loadUserProfile(username);
     if(profile){
       currentUser=profile;
@@ -1211,10 +1251,55 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
       bandMembers=profile.bandMembers||[];
       genreOverrides=profile.genreOverrides||{};
     }else{
+      currentUser={
+        username,
+        djName:username,
+        ownedTracks:ownedTracks||[],
+        setlist:setlist||[],
+        bandMembers:bandMembers||[],
+        genreOverrides:genreOverrides||{}
+      };
       await saveUserProfile();
     }
     localStorage.setItem("currentUser",username);
     render();
+  }
+
+  async function handleLogin(e){
+    e && e.preventDefault && e.preventDefault();
+    if(firebaseSetupMissing){
+      alert("Firebase setup is required. Add firebase-config.js before signing in.");
+      return;
+    }
+    if(firebaseInitError && !firebaseAuth){
+      alert(`Firebase failed to initialize: ${firebaseInitError}`);
+      return;
+    }
+    if(!firebaseAuth){
+      alert("Firebase email login is required. Please configure Firebase before signing in.");
+      return;
+    }
+    const email=prompt("Enter your email for Firebase login/register:");
+    if(!email)return;
+    const password=prompt("Enter password:");
+    if(!password)return;
+    try{
+      await firebaseAuth.signInWithEmailAndPassword(email,password);
+      await hydrateProfileFromAuth(firebaseAuth.currentUser);
+      alert("Signed in.");
+    }catch(err){
+      if(err.code==="auth/user-not-found" && confirm("No account found — create one?")){
+        try{
+          await firebaseAuth.createUserWithEmailAndPassword(email,password);
+          await hydrateProfileFromAuth(firebaseAuth.currentUser);
+          alert("Account created & signed in.");
+        }catch(e2){
+          alert("Register failed: "+(e2.message||e2));
+        }
+      }else{
+        alert("Sign in failed: "+(err.message||err));
+      }
+    }
   }
 
   async function logoutUser(){
@@ -1257,6 +1342,7 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
       renderSongList();
     });
     document.getElementById("markAllBtn")?.addEventListener("click",()=>{
+      if(!ensureEmailLogin())return;
       if(!confirm("Mark ALL loaded songs as owned?"))return;
       ownedTracks=songs.map(s=>s.id);
       localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
@@ -1352,33 +1438,16 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     genreOverrides=JSON.parse(localStorage.getItem("genreOverrides")||"{}");
     setlist       =JSON.parse(localStorage.getItem("setlist")||"[]");
 
-    const savedUser=localStorage.getItem("currentUser");
-    if(savedUser && firestore){
-      try{
-        const doc=await firestore.collection("users").doc(savedUser).get();
-        if(doc.exists){
-          const backend=doc.data()||{};
-          const backendOwned=Array.isArray(backend.ownedTracks)?backend.ownedTracks:[];
-          const backendBand =Array.isArray(backend.bandMembers)?backend.bandMembers:[];
-          ownedTracks=Array.from(new Set([...(ownedTracks||[]),...backendOwned]));
-          const map=new Map();
-          for(const m of [...(bandMembers||[]),...(backendBand||[])]){ if(!m||!m.username)continue; map.set(m.username,Object.assign({},map.get(m.username)||{},m)); }
-          bandMembers=Array.from(map.values());
-          localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
-          localStorage.setItem("bandMembers",JSON.stringify(bandMembers));
-          try{
-            await firestore.collection("users").doc(savedUser).set({ownedTracks,bandMembers},{merge:true});
-          }catch(e){console.warn("merge save failed",e);}
+    if(firebaseAuth){
+      firebaseAuth.onAuthStateChanged(async user=>{
+        if(user){
+          await hydrateProfileFromAuth(user);
+        }else{
+          currentUser=null;
+          localStorage.removeItem("currentUser");
+          render();
         }
-      }catch(e){
-        console.warn("failed to load backend profile",e);
-      }
-    }
-
-    if(savedUser){
-      const profile=await loadUserProfile(savedUser);
-      if(profile)currentUser=profile;
-      else currentUser={username:savedUser,djName:savedUser};
+      });
     }
 
     render();
