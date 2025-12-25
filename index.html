@@ -8,6 +8,9 @@
   <!-- Tailwind (utility classes mostly for layout) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
+  <!-- Firebase config injected from Vercel env vars -->
+  <script src="/api/firebase-config.js"></script>
+
   <!-- Firebase Compat SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
@@ -483,24 +486,21 @@
 
 <script>
   /************ Firebase compat init ************/
-  const firebaseConfig = {
-    apiKey: "AIzaSyAeVHy4RPVwEAfQaEisW82eqCPwBRkG3WQ",
-    authDomain: "festival-jam-mixer.firebaseapp.com",
-    projectId: "festival-jam-mixer",
-    storageBucket: "festival-jam-mixer.firebasestorage.app",
-    messagingSenderId: "255348637744",
-    appId: "1:255348637744:web:cbd3151011372f0e8fadf5",
-    measurementId: "G-G0ZHBW07C3"
-  };
+  const firebaseConfig = window.firebaseConfig || null;
+  const firebaseEnabled = true;
 
   let firebaseApp=null,firebaseAuth=null,firestore=null;
-  try{
-    firebaseApp = firebase.initializeApp(firebaseConfig);
-    firebaseAuth = firebase.auth();
-    firestore   = firebase.firestore();
-    if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
-  }catch(e){
-    console.warn("Firebase init failed, using local-only mode", e);
+  if(firebaseEnabled && firebaseConfig){
+    try{
+      firebaseApp = firebase.initializeApp(firebaseConfig);
+      firebaseAuth = firebase.auth();
+      firestore   = firebase.firestore();
+      if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
+    }catch(e){
+      console.warn("Firebase init failed, using local-only mode", e);
+    }
+  }else if(!firebaseConfig){
+    console.error("Firebase config missing. Ensure /api/firebase-config.js is serving values.");
   }
 
   /************ Camelot + scoring ************/
@@ -705,6 +705,16 @@
 
   /************ Render helpers ************/
   function render(){
+    if(!firebaseConfig){
+      document.getElementById("app").innerHTML = `
+        <div class="panel" style="max-width:640px;margin:32px auto;text-align:center;">
+          <div class="text-2xl font-bold mb-2">Firebase Setup Needed</div>
+          <p class="small-muted mb-2">Add your Firebase environment variables to Vercel so /api/firebase-config.js can return them.</p>
+          <p class="small-muted">After redeploying, reload this page to enable email login and syncing.</p>
+        </div>
+      `;
+      return;
+    }
     document.getElementById("app").innerHTML = buildMainUI();
     renderBandPanel();
     renderSongList();
