@@ -13,6 +13,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics-compat.js"></script>
+  <script src="firebase-config.js"></script>
 
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -483,15 +484,19 @@
 
 <script>
   /************ Firebase compat init ************/
-  const firebaseConfig = {
+  const fallbackFirebaseConfig = {
     apiKey: "AIzaSyAeVHy4RPVwEAfQaEisW82eqCPwBRkG3WQ",
     authDomain: "festival-jam-mixer.firebaseapp.com",
     projectId: "festival-jam-mixer",
     storageBucket: "festival-jam-mixer.firebasestorage.app",
     messagingSenderId: "255348637744",
     appId: "1:255348637744:web:cbd3151011372f0e8fadf5",
-    measurementId: "G-G0ZHBW07C3"
+    measurementId: "G-GOZHBW07C3"
   };
+
+  const firebaseConfig = window.FESTIVAL_MIXER_CONFIG?.apiKey
+    ? { ...fallbackFirebaseConfig, ...window.FESTIVAL_MIXER_CONFIG }
+    : fallbackFirebaseConfig;
 
   let firebaseApp=null,firebaseAuth=null,firestore=null;
   try{
