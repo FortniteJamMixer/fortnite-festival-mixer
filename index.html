@@ -486,21 +486,45 @@
 
 <script>
   /************ Firebase compat init ************/
-  const firebaseConfig = window.firebaseConfig || null;
+  let firebaseConfig = window.firebaseConfig || null;
   const firebaseEnabled = true;
 
   let firebaseApp=null,firebaseAuth=null,firestore=null;
-  if(firebaseEnabled && firebaseConfig){
+
+  async function fetchFirebaseConfig(){
+    if(firebaseConfig) return firebaseConfig;
     try{
-      firebaseApp = firebase.initializeApp(firebaseConfig);
+      const resp=await fetch("/api/firebase-config.js?format=json",{cache:"no-store"});
+      if(!resp.ok) throw new Error(`Config fetch failed (${resp.status})`);
+      const json=await resp.json();
+      firebaseConfig=window.firebaseConfig=json;
+      return firebaseConfig;
+    }catch(err){
+      console.error("Firebase config fetch failed.", err);
+      return null;
+    }
+  }
+
+  function initializeFirebase(config){
+    if(!firebaseEnabled || !config) return;
+    try{
+      firebaseApp = firebase.initializeApp(config);
       firebaseAuth = firebase.auth();
       firestore   = firebase.firestore();
       if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
     }catch(e){
       console.warn("Firebase init failed, using local-only mode", e);
     }
-  }else if(!firebaseConfig){
-    console.error("Firebase config missing. Ensure /api/firebase-config.js is serving values.");
+  }
+
+  async function ensureFirebaseReady(){
+    const config=await fetchFirebaseConfig();
+    if(!config){
+      console.error("Firebase config missing. Ensure /api/firebase-config.js is serving values.");
+      return null;
+    }
+    initializeFirebase(config);
+    return config;
   }
 
   /************ Camelot + scoring ************/
@@ -1398,6 +1422,8 @@ ${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
     bandMembers= Array.isArray(bandLocal)?bandLocal:[];
     genreOverrides=JSON.parse(localStorage.getItem("genreOverrides")||"{}");
     setlist       =JSON.parse(localStorage.getItem("setlist")||"[]");
+
+    await ensureFirebaseReady();
 
     if(firebaseAuth){
       firebaseAuth.onAuthStateChanged(async user=>{
