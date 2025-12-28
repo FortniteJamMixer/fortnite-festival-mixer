@@ -217,6 +217,9 @@ const firebaseConfig = (window.firebaseConfig && window.firebaseConfig.apiKey) ?
 const firebaseEnabled = !!firebaseConfig;
 
 let firebaseApp = null, firebaseAuth = null, firestore = null;
+let firebaseAuthUnsub = null;
+let authSettledUser = null;
+let authProcessing = false;
 if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKey) {
   try {
     firebaseApp = firebase.initializeApp(firebaseConfig);
@@ -562,6 +565,45 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       }
     }
 
+    async function resolveAuthSuccess(username) {
+      if (!username) return;
+      const normalized = username.trim();
+      if (!normalized) return;
+      if (authSettledUser === normalized) return;
+      authSettledUser = normalized;
+      if (authProcessing) return;
+      authProcessing = true;
+      try {
+        await migrateLocalToUserIfHelpful(normalized);
+        const profile = await loadUserProfileFromBackend(normalized);
+        if (profile) {
+          currentUser = profile;
+          ownedTracks = profile.ownedTracks || ownedTracks || [];
+          bandMembers = profile.bandMembers || bandMembers || [];
+          genreOverrides = profile.genreOverrides || genreOverrides || {};
+        } else {
+          currentUser = { username: normalized, djName: normalized, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
+          await saveUserProfileToBackend(currentUser);
+        }
+        localStorage.setItem('currentUser', currentUser.username);
+        await saveUserProfile();
+        loadSongs();
+      } finally {
+        authProcessing = false;
+      }
+    }
+
+    function setupFirebaseAuthListener() {
+      if (!firebaseAuth || firebaseAuthUnsub) return;
+      firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
+        if (user) {
+          const email = user.email || '';
+          const username = email ? email.split('@')[0] : (user.uid || '').trim();
+          await resolveAuthSuccess(username);
+        }
+      });
+    }
+
     async function handleFirebaseAuth(e){
       e.preventDefault();
       if(!firebaseEnabled || !firebaseAuth) return alert('Firebase is not enabled/configured yet.');
@@ -581,26 +623,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           await firebaseAuth.signInWithEmailAndPassword(email,password);
         }
 
-        const username = email.split('@')[0];
-
-        // If this is a brand new cloud profile, offer to import local data
-        await migrateLocalToUserIfHelpful(username);
-
-        // Load or create profile
-        const profile = await loadUserProfileFromBackend(username);
-        if(profile){
-          currentUser = profile;
-          ownedTracks = profile.ownedTracks || ownedTracks || [];
-          bandMembers = profile.bandMembers || bandMembers || [];
-          genreOverrides = profile.genreOverrides || genreOverrides || {};
-        } else {
-          currentUser = { username, djName: username, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
-          await saveUserProfileToBackend(currentUser);
-        }
-
-        localStorage.setItem('currentUser', currentUser.username);
-        await saveUserProfile(); // persist merged state
-        loadSongs();
+        setupFirebaseAuthListener();
+        await resolveAuthSuccess(email.split('@')[0]);
 
       } catch(err){
         console.error(err);
@@ -631,6 +655,7 @@ window.handleLogin = async (event) => {
     async function logoutUser(){
       saveUserProfile();
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
+      authSettledUser = null; authProcessing = false;
       currentUser = null; ownedTracks = []; setlist = []; bandMembers = []; viewingMember = null; genreOverrides = {};
       localStorage.removeItem('currentUser');
       showLoginScreen();
@@ -976,6 +1001,16 @@ window.handleLogin = async (event) => {
 
     // ----------------------- Init / Auth check ------------------------
     async function checkAuth(){
+      if (firebaseEnabled && firebaseAuth) {
+        setupFirebaseAuthListener();
+        const fbUser = firebaseAuth.currentUser;
+        if (fbUser) {
+          const email = fbUser.email || '';
+          const username = email ? email.split('@')[0] : (fbUser.uid || '').trim();
+          await resolveAuthSuccess(username);
+          return;
+        }
+      }
       const savedUsername = localStorage.getItem('currentUser');
       if(savedUsername){
         const profile = await loadUserProfile(savedUsername);
