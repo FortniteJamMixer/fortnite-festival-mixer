@@ -491,14 +491,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       `;
     }
 
-            else { currentUser = { username, djName: username, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} }; await saveUserProfileToBackend(currentUser); }
-        localStorage.setItem('currentUser', currentUser.username);
-        loadSongs();
-      }catch(err){ console.error(err); alert('Sign-in failed: '+(err.message||err)); }
-    }
-
-    
-    // -------------------- Firebase Auth UI helpers ---------------------
+      // -------------------- Firebase Auth UI helpers ---------------------
     window.setAuthMode = (mode) => {
       const m = (mode === 'signup') ? 'signup' : 'signin';
       const authMode = document.getElementById('authMode');
