@@ -1197,7 +1197,7 @@ window.handleLogin = async (event) => {
       if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(profileBtn) profileBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}`;
-      if(view==='browser'){ renderSongList(); setupEventListeners(); sandboxInit(); renderSandbox(); }
+      if(view==='browser'){ renderSongList(); setupEventListeners(); sandboxInit(); renderSandbox(); updateSortButtons(); }
       else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
       else { renderProfile(); setupEventListeners(); }
     };
