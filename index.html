@@ -177,6 +177,28 @@
           <li><strong>Energy Level Graph</strong> — Visualize energy (1–5) across your set or sandbox.</li>
         </ul>
 
+        <h4 style="margin-top:12px;font-weight:800;color:#c5f1ff">Official Festival Jam Mixer Guide</h4>
+        <ol style="margin-left:18px;margin-top:6px;line-height:1.6">
+          <li><strong>Pick your anchor track</strong> — Click a card to lock it in. The list instantly prioritizes the closest matches.</li>
+          <li><strong>Choose a priority mode</strong> — Use the three Smart Match buttons: BPM, Camelot, or Genre. These act as tiebreakers while keeping the best compatibility score on top.</li>
+          <li><strong>Toggle Mixable</strong> — Want strict key/BPM filtering? Hit “🎧 Mixable Only.”</li>
+          <li><strong>Refine</strong> — Search, Owned/All, and Genre tags stack with Smart Match to dial in your set.</li>
+          <li><strong>Sandbox it</strong> — Drag top picks into the Sandbox to visualize energy and compatibility before performing.</li>
+        </ol>
+
+        <div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(0,217,255,0.06);border:1px solid rgba(0,217,255,0.12)">
+          <div style="font-weight:800;color:#9fe8ff;margin-bottom:6px">Smart Matching Explained</div>
+          <p class="small-muted">Every track gets a compatibility score (key > BPM > genre). Switching modes <em>never</em> breaks that order; it only decides the tie-break. Expect the closest harmonic matches first, then tempo closeness, then genre cohesion.</p>
+        </div>
+
+        <h4 style="margin-top:12px;font-weight:800;color:#ffe3b8">Troubleshooting & Tips</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li><strong>Help won’t close?</strong> Click outside the panel or press Esc.</li>
+          <li><strong>Offline mode</strong> — Works with localStorage + export/import. Firebase adds sync; it never removes offline play.</li>
+          <li><strong>Reset a view</strong> — Clear search, toggle filters off, or hit “Show Mixable” again.</li>
+          <li><strong>Bandmates</strong> — You can browse band collections but can’t edit their owned list.</li>
+        </ul>
+
         <h4 style="margin-top:12px;font-weight:800;color:#b6e0ff">Admin & Genre Overrides</h4>
         <p class="small-muted">Admin (user <strong>BattleNeBody</strong>) can correct genre tags by clicking the genre pill. This opens the genre menu for corrections.</p>
 
@@ -296,6 +318,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let songs = [];
     let ownedTracks = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
     let selectedSong = null;
+    let sortMode = 'bpm';
     let previewSong = null;
     let setlist = JSON.parse(localStorage.getItem('setlist') || '[]');
     let searchTerm = '';
@@ -325,9 +348,10 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     }
     function isMixable(song1,song2){ if(!song1||!song2) return false; const compatible = getCompatibleKeys(song1.camelot); return compatible.includes(song2.camelot); }
 
-    function scoreKeyMatch(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 0; if(aCamelot===bCamelot) return 40; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 0; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; if(numA===numB&&letterA!==letterB) return 30; if(letterA===letterB&&(Math.abs(numA-numB)===1||Math.abs(numA-numB)===11)) return 30; if(Math.abs(numA-numB)===1&&letterA!==letterB) return 20; return 0; }
-    function scoreBpmMatch(aBpm,bBpm){ const diff=Math.abs(aBpm-bBpm); if(diff<=1) return 40; if(diff<=3) return 35; if(diff<=6) return 25; if(diff<=10) return 15; return 0; }
-    function scoreGenreMatch(aGenre,bGenre){ if(!aGenre||!bGenre) return 0; return aGenre===bGenre?20:0; }
+    function scoreKeyMatch(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 0; if(aCamelot===bCamelot) return 50; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 0; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; const ringDiff=Math.min(Math.abs(numA-numB),12-Math.abs(numA-numB)); if(numA===numB&&letterA!==letterB) return 42; if(letterA===letterB&&ringDiff===1) return 38; if(letterA!==letterB&&ringDiff===1) return 30; if(letterA===letterB&&ringDiff===2) return 26; return 14 - Math.min(ringDiff,6); }
+    function scoreBpmMatch(aBpm,bBpm){ const diff=Math.abs(aBpm-bBpm); if(diff<=1) return 35; if(diff<=3) return 32; if(diff<=6) return 26; if(diff<=10) return 16; if(diff<=15) return 10; return 0; }
+    function scoreGenreMatch(aGenre,bGenre){ if(!aGenre||!bGenre) return 0; return aGenre===bGenre?15:5; }
+    function camelotDistance(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 99; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 99; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; const numDiff=Math.min(Math.abs(numA-numB),12-Math.abs(numA-numB)); const letterDiff = letterA===letterB ? 0 : 0.5; return numDiff + letterDiff; }
     function mashupCompatibility(a,b){ const key=scoreKeyMatch(a.camelot,b.camelot); const bpm=scoreBpmMatch(a.bpm,b.bpm); const genre=scoreGenreMatch(a.genre,b.genre); const total=key+bpm+genre; return {total,breakdown:{key,bpm,genre}}; }
     function bpmShiftSuggestion(aBpm,bBpm){ const shift=Math.round(bBpm-aBpm); if(shift===0) return 'No change'; return (shift>0?'+':'')+shift+' BPM = Perfect Match'; }
     function computeEnergy(track){ if(!track||!track.bpm) return 3; let e=1; const bpm=track.bpm; if(bpm<90) e=1; else if(bpm<110) e=2; else if(bpm<125) e=3; else if(bpm<140) e=4; else e=5; if(track.genre==='Electronic'||track.genre==='Rock') e=Math.min(5,e+1); return e; }
@@ -699,18 +723,43 @@ window.handleLogin = async (event) => {
     function renderSongList(){
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       const filtered = songs.filter(s=>{
+        if(selectedSong && s.id === selectedSong.id) return false;
         const matchesSearch = !searchTerm || s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
         const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
         const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
         return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
       });
-      if(selectedSong) filtered.sort((a,b)=> Math.abs(a.bpm - selectedSong.bpm) - Math.abs(b.bpm - selectedSong.bpm));
-      const songListEl = document.getElementById('songList'); if(!songListEl) return;
-      songListEl.innerHTML = filtered.map(song=>{
-        const isOwned = displayTracks.includes(song.id);
+
+      const scored = filtered.map(song=>{
         const comp = selectedSong ? mashupCompatibility(selectedSong, song) : null;
-        const pct = comp ? Math.round(comp.total) : null;
+        const bpmDiff = selectedSong ? Math.abs(song.bpm - selectedSong.bpm) : null;
+        const camelotGap = selectedSong ? camelotDistance(selectedSong.camelot, song.camelot) : null;
+        const genreTie = selectedSong ? (song.genre === selectedSong.genre ? 0 : 1) : null;
+        return { song, comp, bpmDiff, camelotGap, genreTie };
+      });
+
+      if(selectedSong){
+        scored.sort((a,b)=>{
+          const scoreDiff = (b.comp?.total || 0) - (a.comp?.total || 0);
+          if(scoreDiff !== 0) return scoreDiff;
+          if(sortMode === 'bpm') return (a.bpmDiff ?? 999) - (b.bpmDiff ?? 999);
+          if(sortMode === 'camelot') return (a.camelotGap ?? 999) - (b.camelotGap ?? 999);
+          if(sortMode === 'genre') {
+            if((a.genreTie ?? 2) !== (b.genreTie ?? 2)) return (a.genreTie ?? 2) - (b.genreTie ?? 2);
+          }
+          return a.song.title.localeCompare(b.song.title);
+        });
+      } else {
+        scored.sort((a,b)=> a.song.title.localeCompare(b.song.title));
+      }
+
+      const songListEl = document.getElementById('songList'); if(!songListEl) return;
+      songListEl.innerHTML = scored.map(entry=>{
+        const song = entry.song;
+        const isOwned = displayTracks.includes(song.id);
+        const comp = entry.comp;
+        const pct = comp ? Math.min(100, Math.max(0, Math.round(comp.total))) : null;
         const hasOverride = genreOverrides[song.id];
         const glowClass = pct>=80 ? 'glow-perfect' : pct>=60 ? 'glow-good' : (pct!==null ? 'glow-bad' : '');
         if(showMixableOnly && selectedSong){
@@ -807,6 +856,18 @@ window.handleLogin = async (event) => {
                   <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
                   ${!viewingMember?`<button id="markAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button><button id="clearAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>`:''}
                 </div>
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-black/30 border border-cyan-500/10 rounded-xl p-3">
+                  <div>
+                    <div class="text-sm text-cyan-200 font-semibold">Smart Match Priority</div>
+                    <div class="text-xs text-gray-400">Best matches stay on top. Choose what to emphasize as a tiebreaker.</div>
+                    ${selectedSong?`<div class="text-xs text-pink-200 mt-1">Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM</div>`:''}
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
+                    <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                    <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                  </div>
+                </div>
               </div>
               <div id="songList"></div>
             </div>
@@ -867,6 +928,11 @@ window.handleLogin = async (event) => {
       if(!viewingMember){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
     }
+
+    window.setSortMode = (mode) => {
+      sortMode = mode;
+      renderSongList();
+    };
 
     window.selectSong = (id) => {
       selectedSong = songs.find(s=>s.id===id);
@@ -996,8 +1062,25 @@ window.handleLogin = async (event) => {
     }
 
     // --------------------- Help modal functions -----------------------
-    function openHelp(){ document.getElementById('helpModal').style.display = 'flex'; document.getElementById('helpModal').focus(); }
-    function closeHelp(){ document.getElementById('helpModal').style.display = 'none'; }
+    function openHelp(){
+      const modal = document.getElementById('helpModal');
+      if(!modal) return;
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden','false');
+      modal.focus();
+    }
+    function closeHelp(){
+      const modal = document.getElementById('helpModal');
+      if(!modal) return;
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden','true');
+    }
+
+    const helpModal = document.getElementById('helpModal');
+    if(helpModal){
+      helpModal.addEventListener('click',(e)=>{ if(e.target === helpModal) closeHelp(); });
+    }
+    document.addEventListener('keydown',(e)=>{ if(e.key === 'Escape') closeHelp(); });
 
     // ----------------------- Init / Auth check ------------------------
     async function checkAuth(){
