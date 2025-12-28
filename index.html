@@ -291,6 +291,16 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       '7A':'#9D4EDD','7B':'#B877FF','8A':'#E84A5F','8B':'#FF6B81','9A':'#00D9FF','9B':'#4DFFFF',
       '10A':'#FFA400','10B':'#FFBB5C','11A':'#FE6D73','11B':'#FF8C94','12A':'#A8E6CF','12B':'#C1F0DD'
     };
+    const camelotOverrides = {
+      ids: {
+        // Example override for known mismatched metadata
+        'dont_fear_the_reaper': '8A'
+      },
+      names: {
+        'don’t fear the reaper|blue öyster cult': '8A',
+        "don't fear the reaper|blue oyster cult": '8A'
+      }
+    };
     const keyToCamelot = { 'C':'8B','Am':'8A','A Minor':'8A','C Major':'8B','G':'9B','Em':'9A','E Minor':'9A','G Major':'9B','D':'10B','Bm':'10A','B Minor':'10A','D Major':'10B','A':'11B','F#m':'11A','F# Minor':'11A','A Major':'11B','E':'12B','C#m':'12A','C# Minor':'12A','E Major':'12B','B':'1B','G#m':'1A','G# Minor':'1A','B Major':'1B','F#':'2B','D#m':'2A','D# Minor':'2A','F# Major':'2B','Db':'3B','Bbm':'3A','Bb Minor':'3A','Db Major':'3B','Ab':'4B','Fm':'4A','F Minor':'4A','Ab Major':'4B','Eb':'5B','Cm':'5A','C Minor':'5A','Eb Major':'5B','Bb':'6B','Gm':'6A','G Minor':'6A','Bb Major':'6B','F':'7B','Dm':'7A','D Minor':'7A','F Major':'7B' };
 
     const genreMap = {
@@ -330,11 +340,50 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let viewingMember = null;
     let genreOverrides = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
     let sandboxTracks = [];
+    let sandboxIds = JSON.parse(localStorage.getItem('sandboxTrackIds') || '[]');
+    const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
 
     // ---------------------- Utils & Scoring -----------------------
-    function convertToCamelot(key) {
-      if (!key) return '?';
-      return keyToCamelot[(key||'').trim()] || '?';
+    function normalizeMode(mode,keyStr){
+      const m=(mode||'').toLowerCase();
+      if(m.includes('min')) return 'minor';
+      if(m.includes('maj')) return 'major';
+      const k=(keyStr||'').toLowerCase();
+      if(/m$/.test(k) || k.includes('minor')) return 'minor';
+      if(k.includes('major')) return 'major';
+      return '';
+    }
+    function normalizeKeyName(raw){
+      if(!raw) return '';
+      let cleaned = (raw||'').replace(/major|minor/ig,'').replace(/maj|min/ig,'').trim();
+      cleaned = cleaned.replace(/m$/i,'');
+      cleaned = cleaned.replace(/[^a-g#b]/ig,'');
+      if(!cleaned) return '';
+      const first = cleaned[0].toUpperCase();
+      const rest = cleaned.slice(1).replace(/b/,'b').replace(/#/,'#');
+      return (first + rest);
+    }
+    function convertToCamelot(key, mode) {
+      if (!key && !mode) return '?';
+      const modeNormalized = normalizeMode(mode,key);
+      const base = normalizeKeyName(key);
+      const variants = [];
+      const modeWord = modeNormalized === 'minor' ? 'Minor' : 'Major';
+      if(base){
+        if(modeNormalized){ variants.push(`${base} ${modeWord}`); variants.push(`${base}${modeNormalized==='minor'?'m':''}`); }
+        variants.push(base);
+      }
+      for(const v of variants){ if(keyToCamelot[v]) return keyToCamelot[v]; }
+      return '?';
+    }
+    function deriveCamelotForTrack(track){
+      const override = camelotOverrides.ids[track.id] || camelotOverrides.names[`${(track.tt||track.title||'').toLowerCase()}|${(track.an||track.artist||'').toLowerCase()}`];
+      const baseKey = normalizeKeyName(track.mk || track.key || '');
+      const mode = normalizeMode(track.mm || track.mode || '', track.mk || track.key || '');
+      const fallbackMode = mode || (((track.key||'') + (track.mk||'')).toLowerCase().includes('m') ? 'minor' : 'major');
+      const camelot = override || convertToCamelot(baseKey || track.mk || track.key || '', fallbackMode);
+      const keyLabel = baseKey ? `${baseKey} ${fallbackMode}` : '?';
+      return { camelot, keyLabel, mode: fallbackMode };
     }
     function getCompatibleKeys(camelot) {
       if (!camelot || camelot === '?') return [];
@@ -711,7 +760,8 @@ window.handleLogin = async (event) => {
             if(!track?.tt) return null;
             const detectedGenre = detectGenre(track.an||'', track.tt);
             const finalGenre = genreOverrides[id] || detectedGenre;
-            return { id, title: track.tt, artist: track.an || 'Unknown', bpm: Number(track.mt) || 0, key: track.mk || '?', mode:track.mm||'', camelot:convertToCamelot(track.mk||''), duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre };
+            const camelotData = deriveCamelotForTrack({ ...track, id });
+            return { id, title: track.tt, artist: track.an || 'Unknown', bpm: Number(track.mt) || 0, key: camelotData.keyLabel || (track.mk || '?'), mode: camelotData.mode || (track.mm||''), camelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre };
           }).filter(s=>s && s.bpm>0);
           songs.sort((a,b)=>a.title.localeCompare(b.title));
           if(songs.length>0){ render(); setupEventListeners(); return; }
@@ -719,11 +769,11 @@ window.handleLogin = async (event) => {
       }
       console.warn('endpoints failed, using fallback sample');
       songs = [
-        { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, key:'C', mode:'major', camelot:'8B', duration:180, albumArt:'', genre:'Pop'},
-        { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, key:'C', mode:'minor', camelot:'8A', duration:210, albumArt:'', genre:'Rock'},
-        { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, key:'D', mode:'major', camelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
-        { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, key:'G', mode:'minor', camelot:'9A', duration:190, albumArt:'', genre:'Indie'},
-        { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, key:'A', mode:'minor', camelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
+        { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, key:'C major', mode:'major', camelot:'8B', duration:180, albumArt:'', genre:'Pop'},
+        { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, key:'C minor', mode:'minor', camelot:'8A', duration:210, albumArt:'', genre:'Rock'},
+        { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, key:'D major', mode:'major', camelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
+        { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, key:'G minor', mode:'minor', camelot:'9A', duration:190, albumArt:'', genre:'Indie'},
+        { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, key:'A minor', mode:'minor', camelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
       ];
       render(); setupEventListeners();
     }
@@ -791,7 +841,7 @@ window.handleLogin = async (event) => {
                 <div class="flex items-center gap-2 text-sm flex-wrap">
                   <button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${currentUser && currentUser.username === 'BattleNeBody' ? 'cursor-pointer' : 'cursor-default opacity-75'}">${song.genre}${hasOverride ? ' ✓' : ''}</button>
                   <span class="px-3 py-1 rounded-lg font-mono font-bold text-white" style="background:${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
-                  <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
+                  <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key}</span>
                   <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
                   ${selectedSong && isMixable(selectedSong,song) ? `<span class="px-2 py-1 bg-purple-600/40 border border-purple-400/40 rounded text-xs text-purple-200 font-bold">±${Math.abs(song.bpm - selectedSong.bpm)} BPM</span>` : ''}
                   <span class="text-gray-400">${formatDuration(song.duration)}</span>
@@ -821,6 +871,119 @@ window.handleLogin = async (event) => {
       }
     }
 
+    function renderProfile(){
+      const profileEl = document.getElementById('profileView'); if(!profileEl) return;
+      const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : 'Offline mode (local storage)';
+      const usernameVal = currentUser?.username || '';
+      const djVal = currentUser?.djName || usernameVal;
+      profileEl.innerHTML = `
+        <div class="panel max-w-3xl mx-auto space-y-4">
+          <div class="text-2xl font-bold text-white">Profile</div>
+          <p class="text-sm text-gray-300">Update your DJ identity without leaving the mixer. Username changes migrate your data safely.</p>
+          <div class="grid gap-4">
+            <div>
+              <label class="text-sm text-gray-300">Email</label>
+              <div class="px-4 py-3 bg-black/40 border border-gray-700 rounded-lg text-white">${email}</div>
+            </div>
+            <div>
+              <label class="text-sm text-gray-300">Username</label>
+              <input id="profileUsername" value="${usernameVal}" class="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white" />
+              <p class="text-xs text-gray-400 mt-1">3–20 characters, letters/numbers/underscore only. No logout needed.</p>
+            </div>
+            <div>
+              <label class="text-sm text-gray-300">DJ Name</label>
+              <input id="profileDjName" value="${djVal}" class="w-full px-4 py-3 bg-black/40 border border-purple-500/30 rounded-lg text-white" />
+              <p class="text-xs text-gray-400 mt-1">Shown in headers and band views.</p>
+            </div>
+          </div>
+          <div class="flex gap-3 flex-wrap">
+            <button onclick="saveProfileSettings()" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Save Profile</button>
+            <button onclick="switchView('browser')" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
+          </div>
+          <div id="profileStatus" class="text-sm text-cyan-200"></div>
+        </div>`;
+    }
+
+    function updateBandReferencesLocal(oldUsername,newUsername,newDj){
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      Object.keys(profiles).forEach(key=>{
+        const memberList = profiles[key].bandMembers || [];
+        const updated = memberList.map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDj } : m);
+        profiles[key].bandMembers = updated;
+      });
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      bandMembers = (bandMembers||[]).map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDj } : m);
+      currentUser.bandMembers = bandMembers;
+    }
+
+    async function migrateUsername(oldUsername,newUsername,newDjName){
+      const status = document.getElementById('profileStatus');
+      const merged = { ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlist, setlists:setlist, bandMembers, genreOverrides };
+      if(firestore){
+        try{
+          const oldRef = firestore.collection('users').doc(oldUsername);
+          const newRef = firestore.collection('users').doc(newUsername);
+          const snap = await oldRef.get();
+          const payload = snap.exists ? { ...snap.data(), username:newUsername, djName:newDjName } : merged;
+          await newRef.set(payload, { merge:true });
+          try{
+            const snapshot = await firestore.collection('users').get();
+            const batch = firestore.batch();
+            let needsCommit = false;
+            snapshot.forEach(doc=>{
+              const data = doc.data()||{};
+              const members = data.bandMembers || [];
+              const updated = members.map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDjName } : m);
+              const changed = JSON.stringify(updated)!==JSON.stringify(members);
+              if(changed){ batch.set(doc.ref,{ bandMembers: updated },{merge:true}); needsCommit=true; }
+            });
+            if(needsCommit) await batch.commit();
+          }catch(err){ console.warn('band member update failed', err); }
+          await oldRef.delete().catch(()=>{});
+        }catch(e){ if(status) status.textContent = 'Error migrating in Firestore: ' + (e.message||e); throw e; }
+      }
+
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      if(profiles[oldUsername]){
+        profiles[newUsername] = { ...profiles[oldUsername], ...merged, username:newUsername, djName:newDjName };
+        delete profiles[oldUsername];
+      } else {
+        profiles[newUsername] = merged;
+      }
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      updateBandReferencesLocal(oldUsername,newUsername,newDjName);
+      currentUser = merged;
+      localStorage.setItem('currentUser', newUsername);
+      await saveUserProfileToBackend(currentUser);
+    }
+
+    async function saveProfileSettings(){
+      if(!currentUser) return;
+      const status = document.getElementById('profileStatus');
+      const newUsername = (document.getElementById('profileUsername')?.value || '').trim();
+      const newDjName = (document.getElementById('profileDjName')?.value || '').trim() || newUsername;
+      const usernameChanged = newUsername !== currentUser.username;
+      const djChanged = newDjName !== currentUser.djName;
+      if(!usernamePattern.test(newUsername)){
+        if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
+        return;
+      }
+      try{
+        if(usernameChanged){
+          if(status) status.textContent = 'Migrating profile...';
+          await migrateUsername(currentUser.username,newUsername,newDjName);
+        } else {
+          currentUser.djName = newDjName;
+          if(djChanged) updateBandReferencesLocal(currentUser.username,currentUser.username,newDjName);
+          await saveUserProfile();
+        }
+        const msg = usernameChanged ? 'Username updated successfully' : (djChanged ? 'DJ name updated successfully' : 'Profile saved');
+        render(); setupEventListeners();
+        const statusEl = document.getElementById('profileStatus');
+        if(statusEl) statusEl.textContent = msg;
+      }catch(e){ const statusEl = document.getElementById('profileStatus'); if(statusEl) statusEl.textContent = 'Error saving profile: ' + (e.message||e); }
+    }
+
     function render(){
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       const ownedCount = displayTracks.length;
@@ -839,6 +1002,7 @@ window.handleLogin = async (event) => {
                 <div class="flex items-center gap-3">
                   ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm">← Back</button>`:`
                     <div class="text-right"><div class="text-sm text-pink-300 font-bold">${currentUser?currentUser.djName:''}</div><div class="text-xs text-gray-400">@${currentUser?currentUser.username:''}${Object.keys(genreOverrides).length>0?` • ${Object.keys(genreOverrides).length} corrections`:''}</div></div>
+                    <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
                     <button onclick="exportCollection()" class="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-300 text-sm">Export</button>
                     <button onclick="importCollection()" class="px-3 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 rounded-lg text-green-300 text-sm">Import</button>
                     <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
@@ -852,6 +1016,7 @@ window.handleLogin = async (event) => {
               <div class="flex gap-2">
                 <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
                 <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
+                <button id="profileBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
               </div>
             </div>
           </div>
@@ -875,9 +1040,23 @@ window.handleLogin = async (event) => {
                     ${selectedSong?`<div class="text-xs text-pink-200 mt-1">Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM</div>`:''}
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
-                    <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
-                    <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                    <button id="sortBpmBtn" onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
+                    <button id="sortCamelotBtn" onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                    <button id="sortGenreBtn" onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                  </div>
+                </div>
+                <div class="grid lg:grid-cols-3 gap-4">
+                  <div class="panel lg:col-span-2">
+                    <div class="flex items-center justify-between mb-2">
+                      <div class="font-bold text-white">Sandbox (drag tracks here)</div>
+                      <div class="text-xs text-gray-300">Limit 4 • persists locally</div>
+                    </div>
+                    <div id="sandbox" class="sandbox-drop bg-black/40"></div>
+                    <div id="sandboxInfo" class="small-muted mt-2"></div>
+                  </div>
+                  <div class="panel">
+                    <div class="font-bold text-white mb-2">Energy Graph</div>
+                    <div id="energyGraph"></div>
                   </div>
                 </div>
               </div>
@@ -887,10 +1066,11 @@ window.handleLogin = async (event) => {
             <div id="setlistView" style="display:${view==='setlist'?'block':'none'}">
               <div id="setlistContent"></div>
             </div>
+            <div id="profileView" style="display:${view==='profile'?'block':'none'}"></div>
           </div>
         </div>
       `;
-      if(view==='browser'){ renderSongList(); } else { renderSetlist(); }
+      if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); updateSortButtons(); } else if(view==='setlist'){ renderSetlist(); } else { renderProfile(); }
     }
 
     // ------------------ Genre context menu ------------------------
@@ -935,14 +1115,25 @@ window.handleLogin = async (event) => {
       }
       document.getElementById('browserBtn')?.addEventListener('click', ()=> switchView('browser'));
       document.getElementById('setlistBtn')?.addEventListener('click', ()=> switchView('setlist'));
+      document.getElementById('profileBtn')?.addEventListener('click', ()=> switchView('profile'));
       document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
       document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
       if(!viewingMember){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
     }
 
+    function updateSortButtons(){
+      const bpmBtn = document.getElementById('sortBpmBtn');
+      const camelotBtn = document.getElementById('sortCamelotBtn');
+      const genreBtn = document.getElementById('sortGenreBtn');
+      if(bpmBtn) bpmBtn.className = `px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}`;
+      if(camelotBtn) camelotBtn.className = `px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}`;
+      if(genreBtn) genreBtn.className = `px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}`;
+    }
+
     window.setSortMode = (mode) => {
       sortMode = mode;
+      updateSortButtons();
       renderSongList();
     };
 
@@ -959,6 +1150,13 @@ window.handleLogin = async (event) => {
       if(btn){ btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20'; btn.textContent = 'Show Mixable'; }
       showMixableOnly = false;
       renderSongList();
+    };
+
+    window.openProfileView = () => {
+      view = 'profile';
+      render();
+      setupEventListeners();
+      renderProfile();
     };
 
     window.toggleOwned = (id) => {
@@ -989,12 +1187,19 @@ window.handleLogin = async (event) => {
 
     window.switchView = (newView) => {
       view = newView;
-      document.getElementById('browserView').style.display = view==='browser' ? 'block' : 'none';
-      document.getElementById('setlistView').style.display = view==='setlist' ? 'block' : 'none';
-      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn');
+      const browserView = document.getElementById('browserView');
+      const setlistView = document.getElementById('setlistView');
+      const profileView = document.getElementById('profileView');
+      if(browserView) browserView.style.display = view==='browser' ? 'block' : 'none';
+      if(setlistView) setlistView.style.display = view==='setlist' ? 'block' : 'none';
+      if(profileView) profileView.style.display = view==='profile' ? 'block' : 'none';
+      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn'); const profileBtn = document.getElementById('profileBtn');
       if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
-      if(view==='browser'){ renderSongList(); setupEventListeners(); } else { renderSetlist(); setupEventListeners(); }
+      if(profileBtn) profileBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}`;
+      if(view==='browser'){ renderSongList(); setupEventListeners(); sandboxInit(); renderSandbox(); }
+      else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
+      else { renderProfile(); setupEventListeners(); }
     };
 
     window.toggleMixableFilter = () => {
@@ -1050,8 +1255,9 @@ window.handleLogin = async (event) => {
     }
 
     // -------------------- Sandbox functions --------------------------
-    function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML=`<div class="small-muted p-2">Drop tracks here</div>`; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); }
-    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM</div></div><div class="small-muted">${computeEnergy(t)}</div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; renderEnergyGraph([]); return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmDiffs=bpms.length>1?Math.abs(bpms[0]-bpms[bpms.length-1]):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${Math.min(...bpms)}–${Math.max(...bpms)} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; renderEnergyGraph(sandboxTracks); }
+    function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; if(!el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); } if(!sandboxTracks.length && sandboxIds.length){ sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4); } renderSandbox(); }
+    function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem('sandboxTrackIds', JSON.stringify(sandboxIds)); }
+    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><div class="small-muted">${computeEnergy(t)}</div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; renderEnergyGraph([]); return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; renderEnergyGraph(sandboxTracks); }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
 
