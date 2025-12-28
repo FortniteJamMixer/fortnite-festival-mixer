@@ -374,13 +374,24 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     // ----------------------- Storage helpers -----------------------
     async function saveUserProfile(){
       if(!currentUser) return;
-      const profile = { username: currentUser.username, djName: currentUser.djName, ownedTracks, setlists: currentUser.setlists||[], bandMembers, genreOverrides };
+      const mergedProfile = {
+        ...currentUser,
+        username: currentUser.username,
+        djName: currentUser.djName,
+        ownedTracks,
+        setlists: currentUser.setlists || setlist || [],
+        setlist: setlist || [],
+        bandMembers,
+        genreOverrides
+      };
+      currentUser = mergedProfile;
       localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
       localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
+      localStorage.setItem('setlist', JSON.stringify(setlist));
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      profiles[profile.username] = profile;
+      profiles[mergedProfile.username] = { ...(profiles[mergedProfile.username]||{}), ...mergedProfile };
       localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      await saveUserProfileToBackend(profile);
+      await saveUserProfileToBackend(mergedProfile);
     }
     async function loadUserProfile(username){
       if(!username) return null;
@@ -603,10 +614,11 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         if (profile) {
           currentUser = profile;
           ownedTracks = profile.ownedTracks || ownedTracks || [];
+          setlist = profile.setlist || profile.setlists || setlist || [];
           bandMembers = profile.bandMembers || bandMembers || [];
           genreOverrides = profile.genreOverrides || genreOverrides || {};
         } else {
-          currentUser = { username: normalized, djName: normalized, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
+          currentUser = { username: normalized, djName: normalized, ownedTracks: ownedTracks || [], setlists: setlist || [], setlist: setlist || [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
           await saveUserProfileToBackend(currentUser);
         }
         localStorage.setItem('currentUser', currentUser.username);
