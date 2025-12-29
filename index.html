@@ -785,7 +785,6 @@ window.handleLogin = async (event) => {
     function renderSongList(){
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       const filtered = songs.filter(s=>{
-        if(selectedSong && s.id === selectedSong.id) return false;
         const matchesSearch = !searchTerm || s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
         const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
@@ -805,10 +804,17 @@ window.handleLogin = async (event) => {
         scored.sort((a,b)=>{
           const scoreDiff = (b.comp?.total || 0) - (a.comp?.total || 0);
           if(scoreDiff !== 0) return scoreDiff;
-          if(sortMode === 'bpm') return (a.bpmDiff ?? 999) - (b.bpmDiff ?? 999);
-          if(sortMode === 'camelot') return (a.camelotGap ?? 999) - (b.camelotGap ?? 999);
-          if(sortMode === 'genre') {
-            if((a.genreTie ?? 2) !== (b.genreTie ?? 2)) return (a.genreTie ?? 2) - (b.genreTie ?? 2);
+          if(sortMode === 'bpm'){
+            const bpmDelta = (a.bpmDiff ?? 999) - (b.bpmDiff ?? 999);
+            if(bpmDelta !== 0) return bpmDelta;
+          }
+          if(sortMode === 'camelot'){
+            const camelotDelta = (a.camelotGap ?? 999) - (b.camelotGap ?? 999);
+            if(camelotDelta !== 0) return camelotDelta;
+          }
+          if(sortMode === 'genre'){
+            const genreDelta = (a.genreTie ?? 2) - (b.genreTie ?? 2);
+            if(genreDelta !== 0) return genreDelta;
           }
           return a.song.title.localeCompare(b.song.title);
         });
@@ -824,13 +830,15 @@ window.handleLogin = async (event) => {
         const pct = comp ? Math.min(100, Math.max(0, Math.round(comp.total))) : null;
         const hasOverride = genreOverrides[song.id];
         const glowClass = pct>=80 ? 'glow-perfect' : pct>=60 ? 'glow-good' : (pct!==null ? 'glow-bad' : '');
+        const isSelected = selectedSong && song.id === selectedSong.id;
         if(showMixableOnly && selectedSong){
           const bpmOk = Math.abs(song.bpm - selectedSong.bpm) <= 4;
           const keyOk = getCompatibleKeys(selectedSong.camelot).includes(song.camelot);
           if(!bpmOk || !keyOk) return '';
         }
         return `
-          <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all" data-song-id="${song.id}" draggable="true">
+          <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${isSelected ? 'border-2 border-cyan-400 shadow-[0_0_25px_rgba(34,211,238,0.45)]' : ''}" data-song-id="${song.id}" draggable="true">
+            ${isSelected ? '<div class="absolute -top-3 left-3 px-2 py-1 bg-cyan-600 text-white text-xs font-bold rounded shadow-lg">SELECTED</div>' : ''}
             <div class="star-icon absolute top-2 right-2 text-xl" style="display:${isOwned?'block':'none'}">⭐</div>
             ${selectedSong && isMixable(selectedSong,song) ? `<div class="absolute top-2 left-2 text-xl">🎧</div>` : ''}
             <div class="flex gap-4 mb-3">
@@ -856,10 +864,41 @@ window.handleLogin = async (event) => {
           </div>
         `;
       }).join('');
+      renderSelectionUI();
       // attach right-click genre handlers
       document.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
         btn.addEventListener('click',(e)=>{ e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); });
       });
+    }
+
+    function renderSelectionUI(){
+      const panel = document.getElementById('selectedTrackPanel');
+      if(panel){
+        if(selectedSong){
+          panel.innerHTML = `
+            <div class="panel border border-cyan-400/60 shadow-[0_0_28px_rgba(34,211,238,0.35)] p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-sm text-cyan-200 font-semibold">Selected Track</div>
+                <button onclick="clearSelection()" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded text-sm font-semibold text-red-200">Clear Selection</button>
+              </div>
+              <div class="flex items-center gap-3 flex-wrap">
+                <div>
+                  <div class="text-white font-bold text-lg">${selectedSong.title}</div>
+                  <div class="text-gray-300 text-sm">${selectedSong.artist}</div>
+                </div>
+                <span class="camelot-pill" style="background:${camelotColors[selectedSong.camelot] || '#666'}">${selectedSong.camelot}</span>
+                <span class="px-3 py-1 bg-white/10 rounded text-sm font-semibold">${selectedSong.bpm} BPM</span>
+              </div>
+            </div>
+          `;
+        } else {
+          panel.innerHTML = '';
+        }
+      }
+      const smartMatchStatus = document.getElementById('smartMatchStatus');
+      if(smartMatchStatus){
+        smartMatchStatus.innerHTML = selectedSong ? `Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM` : '<span class="text-gray-400">No track selected</span>';
+      }
     }
 
     function renderSetlist(){
@@ -1028,28 +1067,30 @@ window.handleLogin = async (event) => {
                   <input type="text" id="searchInput" placeholder="🔍 Quick search (optional)..." class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
                   <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
                 </div>
-                <div class="flex flex-wrap gap-3">
+                <div class="flex flex-wrap gap-3 items-center">
                   <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
                   <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
                   ${!viewingMember?`<button id="markAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button><button id="clearAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>`:''}
+                  <button id="resetSessionBtn" class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg font-semibold text-red-200">Reset Session</button>
                 </div>
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-black/30 border border-cyan-500/10 rounded-xl p-3">
                   <div>
                     <div class="text-sm text-cyan-200 font-semibold">Smart Match Priority</div>
                     <div class="text-xs text-gray-400">Best matches stay on top. Choose what to emphasize as a tiebreaker.</div>
-                    ${selectedSong?`<div class="text-xs text-pink-200 mt-1">Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM</div>`:''}
+                    <div id="smartMatchStatus" class="text-xs text-pink-200 mt-1">${selectedSong?`Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM`:'<span class="text-gray-400">No track selected</span>'}</div>
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
-                    <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
-                    <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                    <button id="sortTempoBtn" onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
+                    <button id="sortCamelotBtn" onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                    <button id="sortGenreBtn" onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
                   </div>
                 </div>
+                <div id="selectedTrackPanel"></div>
                 <div class="grid lg:grid-cols-3 gap-4">
                   <div class="panel lg:col-span-2">
                     <div class="flex items-center justify-between mb-2">
                       <div class="font-bold text-white">Sandbox (drag tracks here)</div>
-                      <div class="text-xs text-gray-300">Limit 4 • persists locally</div>
+                      <div class="flex items-center gap-2 text-xs text-gray-300"><span>Limit 4 • persists locally</span><button id="clearSandboxBtn" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10 text-gray-200">Clear Sandbox</button></div>
                     </div>
                     <div id="sandbox" class="sandbox-drop bg-black/40"></div>
                     <div id="sandboxInfo" class="small-muted mt-2"></div>
@@ -1118,12 +1159,24 @@ window.handleLogin = async (event) => {
       document.getElementById('profileBtn')?.addEventListener('click', ()=> switchView('profile'));
       document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
       document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
+      document.getElementById('resetSessionBtn')?.addEventListener('click', resetSession);
+      document.getElementById('clearSandboxBtn')?.addEventListener('click', clearSandbox);
       if(!viewingMember){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
     }
 
+    function updateSortButtons(){
+      const tempoBtn = document.getElementById('sortTempoBtn');
+      const camelotBtn = document.getElementById('sortCamelotBtn');
+      const genreBtn = document.getElementById('sortGenreBtn');
+      if(tempoBtn) tempoBtn.className = `px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}`;
+      if(camelotBtn) camelotBtn.className = `px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}`;
+      if(genreBtn) genreBtn.className = `px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}`;
+    }
+
     window.setSortMode = (mode) => {
       sortMode = mode;
+      updateSortButtons();
       renderSongList();
     };
 
@@ -1139,6 +1192,22 @@ window.handleLogin = async (event) => {
       const btn = document.getElementById('mixableFilterBtn');
       if(btn){ btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20'; btn.textContent = 'Show Mixable'; }
       showMixableOnly = false;
+      renderSongList();
+    };
+
+    window.resetSession = () => {
+      const shouldReset = confirm('Reset your session?\nThis will clear search, selected track, mixable filter, sandbox, and energy graph.\nYour Owned songs and Setlist will NOT be deleted.');
+      if(!shouldReset) return;
+      searchTerm = '';
+      const searchInput = document.getElementById('searchInput');
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+      if(searchInput) searchInput.value = '';
+      if(clearSearchBtn) clearSearchBtn.style.display = 'none';
+      selectedSong = null;
+      showMixableOnly = false;
+      const mixBtn = document.getElementById('mixableFilterBtn');
+      if(mixBtn){ mixBtn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20'; mixBtn.textContent = 'Show Mixable'; }
+      clearSandbox();
       renderSongList();
     };
 
@@ -1247,6 +1316,7 @@ window.handleLogin = async (event) => {
     // -------------------- Sandbox functions --------------------------
     function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; if(!el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); } if(!sandboxTracks.length && sandboxIds.length){ sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4); } renderSandbox(); }
     function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem('sandboxTrackIds', JSON.stringify(sandboxIds)); }
+    window.clearSandbox = () => { sandboxTracks = []; sandboxIds = []; localStorage.setItem('sandboxTrackIds', JSON.stringify([])); renderSandbox(); };
     function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><div class="small-muted">${computeEnergy(t)}</div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; renderEnergyGraph([]); return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; renderEnergyGraph(sandboxTracks); }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
