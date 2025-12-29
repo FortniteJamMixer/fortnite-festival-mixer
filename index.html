@@ -260,28 +260,46 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     // Backend save/load wrappers (Firestore or localStorage)
     async function saveUserProfileToBackend(profile) {
       if (!profile) return;
-      if (firestore && profile.username) {
+      const firebaseUser = firebaseAuth?.currentUser;
+      const profileKey = profile.uid || firebaseUser?.uid || profile.username;
+      if (firestore && firebaseUser && profileKey) {
         try {
-          await firestore.collection('users').doc(profile.username).set(profile, { merge: true });
+          await firestore.collection('users').doc(profileKey).set({ ...profile, uid: profileKey }, { merge: true });
           return true;
         } catch (e) { console.warn('Firestore save failed', e); return false; }
       } else {
         const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-        profiles[profile.username] = profile;
+        if (profile.username) profiles[profile.username] = profile;
+        if (profileKey) profiles[profileKey] = profile;
         localStorage.setItem('userProfiles', JSON.stringify(profiles));
         return true;
       }
     }
-    async function loadUserProfileFromBackend(username) {
-      if (!username) return null;
-      if (firestore) {
+    async function loadUserProfileFromBackend(identifier) {
+      if (!identifier && !firebaseAuth?.currentUser) return null;
+      const firebaseUser = firebaseAuth?.currentUser;
+      const lookupKey = identifier || firebaseUser?.uid;
+      if (firestore && lookupKey) {
         try {
-          const doc = await firestore.collection('users').doc(username).get();
-          return doc.exists ? doc.data() : null;
+          const doc = await firestore.collection('users').doc(lookupKey).get();
+          if (doc.exists) return doc.data();
+          if (firebaseUser?.email) {
+            const emailKey = firebaseUser.email.split('@')[0];
+            if (emailKey && emailKey !== lookupKey) {
+              const legacyDoc = await firestore.collection('users').doc(emailKey).get();
+              if (legacyDoc.exists) return legacyDoc.data();
+            }
+          }
         } catch (e) { console.warn('Firestore load failed', e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      return profiles[username] || null;
+      if (lookupKey && profiles[lookupKey]) return profiles[lookupKey];
+      if (firebaseUser?.uid && profiles[firebaseUser.uid]) return profiles[firebaseUser.uid];
+      if (firebaseUser?.email) {
+        const fallbackName = firebaseUser.email.split('@')[0];
+        if (profiles[fallbackName]) return profiles[fallbackName];
+      }
+      return identifier ? profiles[identifier] || null : null;
     }
 
     // ---------------------------- Data ------------------------------
@@ -425,6 +443,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if(!currentUser) return;
       const mergedProfile = {
         ...currentUser,
+        uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
         username: currentUser.username,
         djName: currentUser.djName,
         ownedTracks,
@@ -438,19 +457,22 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
       localStorage.setItem('setlist', JSON.stringify(setlist));
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      profiles[mergedProfile.username] = { ...(profiles[mergedProfile.username]||{}), ...mergedProfile };
+      if (mergedProfile.username) profiles[mergedProfile.username] = { ...(profiles[mergedProfile.username]||{}), ...mergedProfile };
+      if (mergedProfile.uid) profiles[mergedProfile.uid] = { ...(profiles[mergedProfile.uid]||{}), ...mergedProfile };
       localStorage.setItem('userProfiles', JSON.stringify(profiles));
       await saveUserProfileToBackend(mergedProfile);
     }
     async function loadUserProfile(username){
-      if(!username) return null;
-      if(firestore){
+      if(!username && !firebaseAuth?.currentUser) return null;
+      const firebaseUser = firebaseAuth?.currentUser;
+      if(firestore && (firebaseUser || username)){
         try{
-          const doc = await firestore.collection('users').doc(username).get();
+          const doc = await firestore.collection('users').doc(firebaseUser?.uid || username).get();
           if(doc.exists) return doc.data();
         }catch(e){ console.warn('Firestore load failed',e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      if(firebaseUser?.uid && profiles[firebaseUser.uid]) return profiles[firebaseUser.uid];
       return profiles[username] || null;
     }
 
@@ -535,7 +557,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
                   <div>
                     <label class="block text-sm text-gray-300 mb-2">Password</label>
-                    <input id="password" type="password" required placeholder="password"
+                    <input id="password" type="password" required minlength="6" placeholder="password"
                       class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
                   </div>
 
@@ -556,6 +578,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
                       Continue Offline
                     </button>
                   </div>
+
+                  <p class="text-xs text-gray-400 text-center">Offline mode is device-only and not tied to any account.</p>
 
                   <div class="text-center">
                     <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
@@ -589,24 +613,34 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       const tabUp = document.getElementById('tabSignUp');
       const confirmWrap = document.getElementById('confirmWrap');
       const submit = document.getElementById('authSubmit');
+      const confirmInput = document.getElementById('passwordConfirm');
 
       if (m === 'signup') {
         if (tabUp) { tabUp.classList.add('bg-white/10'); tabUp.classList.remove('opacity-80'); }
         if (tabIn) { tabIn.classList.remove('bg-white/10'); tabIn.classList.add('opacity-80'); }
         if (confirmWrap) confirmWrap.style.display = 'block';
         if (submit) submit.textContent = 'Create Account';
+        if (confirmInput) { confirmInput.required = true; confirmInput.setAttribute('minlength','6'); confirmInput.value = ''; }
       } else {
         if (tabIn) { tabIn.classList.add('bg-white/10'); tabIn.classList.remove('opacity-80'); }
         if (tabUp) { tabUp.classList.remove('bg-white/10'); tabUp.classList.add('opacity-80'); }
         if (confirmWrap) confirmWrap.style.display = 'none';
         if (submit) submit.textContent = 'Sign In';
+        if (confirmInput) { confirmInput.required = false; confirmInput.value = ''; }
       }
     };
 
+    function getLocalDeviceId(){
+      let localId = localStorage.getItem('localDeviceUserId');
+      if(!localId){
+        localId = 'local_' + Math.random().toString(36).slice(2,10);
+        localStorage.setItem('localDeviceUserId', localId);
+      }
+      return localId;
+    }
+
     window.continueOffline = () => {
-      // Stay in local mode using whatever is already in localStorage.
-      // We'll create a lightweight local profile if needed.
-      const username = localStorage.getItem('currentUser') || 'local';
+      const username = getLocalDeviceId();
       currentUser = { username, djName: username, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
       localStorage.setItem('currentUser', currentUser.username);
       loadSongs();
@@ -624,53 +658,98 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       }
     };
 
-    async function migrateLocalToUserIfHelpful(username) {
-      // If user has empty cloud profile but local has data, merge local in.
+    function hasMeaningfulData(profile){
+      if(!profile) return false;
+      return (profile.ownedTracks && profile.ownedTracks.length) ||
+        (profile.setlist && profile.setlist.length) ||
+        (profile.setlists && profile.setlists.length) ||
+        (profile.genreOverrides && Object.keys(profile.genreOverrides).length) ||
+        (profile.bandMembers && profile.bandMembers.length);
+    }
+
+    async function promptLocalImport(firebaseUsername){
       const localOwned = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
       const localSet = JSON.parse(localStorage.getItem('setlist') || '[]');
       const localGenre = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
-      const hasLocal = (localOwned && localOwned.length) || (localSet && localSet.length) || (localGenre && Object.keys(localGenre).length);
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
 
-      if (!hasLocal) return;
+      const candidateProfiles = Object.entries(profiles)
+        .filter(([name, data]) => name && name !== firebaseUsername && hasMeaningfulData(data));
+      const deviceDataAvailable = (localOwned && localOwned.length) || (localSet && localSet.length) || (localGenre && Object.keys(localGenre).length);
+      if(!candidateProfiles.length && !deviceDataAvailable) return null;
 
-      const cloud = await loadUserProfileFromBackend(username);
-      const cloudOwned = cloud?.ownedTracks || [];
-      const cloudGenre = cloud?.genreOverrides || {};
-      const cloudEmpty = (!cloudOwned.length) && (!Object.keys(cloudGenre).length);
-
-      if (cloudEmpty) {
-        const ok = confirm('You already have saved local data from before email login.\n\nDo you want to import your local data into this new account for cloud sync?');
-        if (ok) {
-          ownedTracks = localOwned;
-          setlist = localSet;
-          genreOverrides = localGenre;
-          bandMembers = cloud?.bandMembers || bandMembers || [];
-        }
-      }
+      return await new Promise((resolve)=>{
+        const modal = document.createElement('div');
+        modal.id = 'importModal';
+        modal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:30000;backdrop-filter:blur(6px);padding:12px;';
+        const optionsHtml = candidateProfiles.length ?
+          `<label class="block text-sm text-gray-200 mb-2">Import from saved profile</label>
+            <select id="importProfileSelect" class="w-full px-3 py-2 rounded-lg bg-black/60 border border-cyan-500/30 text-white mb-3">
+              ${candidateProfiles.map(([name])=>`<option value="${name}">${name}</option>`).join('')}
+            </select>` : '';
+        modal.innerHTML = `
+          <div class="w-full max-w-md bg-gradient-to-b from-black/85 to-black/90 border border-cyan-500/30 rounded-2xl p-6 text-white shadow-2xl">
+            <h3 class="text-xl font-bold mb-2">Import your local data?</h3>
+            <p class="text-sm text-gray-200 mb-4">We found local data on this device. Import into this account?</p>
+            ${optionsHtml || ''}
+            ${deviceDataAvailable ? '<p class="text-xs text-gray-300 mb-4">Tip: If you used this app offline, choose Import to keep your owned songs and setlists.</p>' : ''}
+            <div class="flex gap-2 justify-end">
+              <button id="importSkip" class="px-4 py-2 rounded-lg bg-gray-700 text-white">Skip</button>
+              <button id="importConfirm" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Import</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        const cleanup = ()=>{ modal.remove(); };
+        modal.querySelector('#importSkip').onclick = ()=>{ cleanup(); resolve(null); };
+        modal.querySelector('#importConfirm').onclick = ()=>{
+          const choice = modal.querySelector('#importProfileSelect')?.value || null;
+          cleanup();
+          if(choice && profiles[choice]) return resolve(profiles[choice]);
+          if(deviceDataAvailable){
+            return resolve({
+              ownedTracks: localOwned,
+              setlist: localSet,
+              setlists: localSet,
+              genreOverrides: localGenre
+            });
+          }
+          resolve(null);
+        };
+      });
     }
 
-    async function resolveAuthSuccess(username) {
-      if (!username) return;
-      const normalized = username.trim();
-      if (!normalized) return;
-      if (authSettledUser === normalized) return;
-      authSettledUser = normalized;
+    async function resolveAuthSuccess(firebaseUser) {
+      if (!firebaseUser?.uid) return;
+      if (authSettledUser === firebaseUser.uid) return;
+      authSettledUser = firebaseUser.uid;
       if (authProcessing) return;
       authProcessing = true;
       try {
-        await migrateLocalToUserIfHelpful(normalized);
-        const profile = await loadUserProfileFromBackend(normalized);
-        if (profile) {
-          currentUser = profile;
-          ownedTracks = profile.ownedTracks || ownedTracks || [];
-          setlist = profile.setlist || profile.setlists || setlist || [];
-          bandMembers = profile.bandMembers || bandMembers || [];
-          genreOverrides = profile.genreOverrides || genreOverrides || {};
-        } else {
-          currentUser = { username: normalized, djName: normalized, ownedTracks: ownedTracks || [], setlists: setlist || [], setlist: setlist || [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
-          await saveUserProfileToBackend(currentUser);
+        const defaultUsername = firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : `user_${firebaseUser.uid.slice(0,6)}`);
+        const existingProfile = await loadUserProfileFromBackend(firebaseUser.uid);
+        const shouldOfferImport = !hasMeaningfulData(existingProfile);
+        let importedProfile = null;
+        if (shouldOfferImport) {
+          importedProfile = await promptLocalImport(defaultUsername);
         }
-        localStorage.setItem('currentUser', currentUser.username);
+
+        const profile = existingProfile || {};
+        currentUser = {
+          ...profile,
+          uid: firebaseUser.uid,
+          username: profile.username || defaultUsername,
+          djName: profile.djName || defaultUsername,
+          ownedTracks: importedProfile?.ownedTracks || profile.ownedTracks || ownedTracks || [],
+          setlists: importedProfile?.setlists || profile.setlists || setlist || [],
+          setlist: importedProfile?.setlist || profile.setlist || profile.setlists || setlist || [],
+          bandMembers: importedProfile?.bandMembers || profile.bandMembers || bandMembers || [],
+          genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {}
+        };
+        ownedTracks = currentUser.ownedTracks || [];
+        setlist = currentUser.setlist || currentUser.setlists || [];
+        bandMembers = currentUser.bandMembers || [];
+        genreOverrides = currentUser.genreOverrides || {};
+        localStorage.setItem('currentUser', firebaseUser.uid);
         await saveUserProfile();
         loadSongs();
       } finally {
@@ -682,9 +761,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
         if (user) {
-          const email = user.email || '';
-          const username = email ? email.split('@')[0] : (user.uid || '').trim();
-          await resolveAuthSuccess(username);
+          await resolveAuthSuccess(user);
         }
       });
     }
@@ -694,14 +771,14 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if(!firebaseEnabled || !firebaseAuth) return alert('Firebase is not enabled/configured yet.');
       const mode = document.getElementById('authMode')?.value || 'signin';
       const email = (document.getElementById('email')?.value || '').trim();
-      const password = document.getElementById('password')?.value || '';
+      const password = (document.getElementById('password')?.value || '').trim();
       const passwordConfirm = document.getElementById('passwordConfirm')?.value || '';
 
       if(!email || !password) return alert('Enter email & password.');
+      if(password.length < 6 && mode === 'signup') return alert('Password must be at least 6 characters.');
 
       try{
         if(mode === 'signup'){
-          if(password.length < 6) return alert('Password must be at least 6 characters.');
           if(password !== passwordConfirm) return alert('Passwords do not match.');
           await firebaseAuth.createUserWithEmailAndPassword(email,password);
         } else {
@@ -709,7 +786,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         }
 
         setupFirebaseAuthListener();
-        await resolveAuthSuccess(email.split('@')[0]);
+        await resolveAuthSuccess(firebaseAuth.currentUser);
 
       } catch(err){
         console.error(err);
@@ -1296,11 +1373,17 @@ window.handleLogin = async (event) => {
         setupFirebaseAuthListener();
         const fbUser = firebaseAuth.currentUser;
         if (fbUser) {
-          const email = fbUser.email || '';
-          const username = email ? email.split('@')[0] : (fbUser.uid || '').trim();
-          await resolveAuthSuccess(username);
+          await resolveAuthSuccess(fbUser);
           return;
         }
+        const savedUsername = localStorage.getItem('currentUser');
+        const localId = localStorage.getItem('localDeviceUserId');
+        if(savedUsername && savedUsername === localId){
+          const profile = await loadUserProfile(savedUsername);
+          if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; bandMembers = profile.bandMembers || []; genreOverrides = profile.genreOverrides || {}; loadSongs(); return; }
+        }
+        showLoginScreen();
+        return;
       }
       const savedUsername = localStorage.getItem('currentUser');
       if(savedUsername){
