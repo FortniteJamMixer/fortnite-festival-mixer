@@ -359,6 +359,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let genreOverrides = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
     let sandboxTracks = [];
     let sandboxIds = JSON.parse(localStorage.getItem('sandboxTrackIds') || '[]');
+    let priorityStrength = 'medium';
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
 
     // ---------------------- Utils & Scoring -----------------------
@@ -420,6 +421,29 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     function scoreGenreMatch(aGenre,bGenre){ if(!aGenre||!bGenre) return 0; return aGenre===bGenre?15:5; }
     function camelotDistance(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 99; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 99; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; const numDiff=Math.min(Math.abs(numA-numB),12-Math.abs(numA-numB)); const letterDiff = letterA===letterB ? 0 : 0.5; return numDiff + letterDiff; }
     function mashupCompatibility(a,b){ const key=scoreKeyMatch(a.camelot,b.camelot); const bpm=scoreBpmMatch(a.bpm,b.bpm); const genre=scoreGenreMatch(a.genre,b.genre); const total=key+bpm+genre; return {total,breakdown:{key,bpm,genre}}; }
+    function getPriorityBoost(strength){ if(strength==='low') return 60; if(strength==='high') return 200; return 120; }
+    function priorityRank(anchor, candidate, mode){
+      const comp = mashupCompatibility(anchor, candidate);
+      const bpmDiff = Math.abs(candidate.bpm - anchor.bpm);
+      const keyDist = camelotDistance(anchor.camelot, candidate.camelot);
+      const sameGenre = candidate.genre === anchor.genre;
+
+      const bpmScore = Math.max(0, 1 - (bpmDiff / 10));
+      const keyScore = Math.max(0, 1 - (keyDist / 6));
+      const genreScore = sameGenre ? 1 : 0;
+
+      const boost = getPriorityBoost(priorityStrength);
+      let rank = comp.total * 10;
+
+      if(mode === 'bpm') rank += bpmScore * boost;
+      if(mode === 'camelot') rank += keyScore * boost;
+      if(mode === 'genre') rank += genreScore * boost;
+
+      if(bpmDiff > 12) rank -= 40;
+      if(keyDist > 4) rank -= 40;
+
+      return { rank, comp, bpmDiff, keyDist, sameGenre };
+    }
     function bpmShiftSuggestion(aBpm,bBpm){ const shift=Math.round(bBpm-aBpm); if(shift===0) return 'No change'; return (shift>0?'+':'')+shift+' BPM = Perfect Match'; }
     function computeEnergy(track){ if(!track||!track.bpm) return 3; let e=1; const bpm=track.bpm; if(bpm<90) e=1; else if(bpm<110) e=2; else if(bpm<125) e=3; else if(bpm<140) e=4; else e=5; if(track.genre==='Electronic'||track.genre==='Rock') e=Math.min(5,e+1); return e; }
 
@@ -871,22 +895,17 @@ window.handleLogin = async (event) => {
       });
 
       const scored = filtered.map(song=>{
-        const comp = selectedSong ? mashupCompatibility(selectedSong, song) : null;
-        const bpmDiff = selectedSong ? Math.abs(song.bpm - selectedSong.bpm) : null;
-        const camelotGap = selectedSong ? camelotDistance(selectedSong.camelot, song.camelot) : null;
-        const genreTie = selectedSong ? (song.genre === selectedSong.genre ? 0 : 1) : null;
-        return { song, comp, bpmDiff, camelotGap, genreTie };
+        if(!selectedSong){
+          return { song, comp: null, rank: 0, bpmDiff: null, keyDist: null, sameGenre: false };
+        }
+        const rankData = priorityRank(selectedSong, song, sortMode);
+        return { song, ...rankData };
       });
 
       if(selectedSong){
         scored.sort((a,b)=>{
-          const scoreDiff = (b.comp?.total || 0) - (a.comp?.total || 0);
+          const scoreDiff = (b.rank ?? 0) - (a.rank ?? 0);
           if(scoreDiff !== 0) return scoreDiff;
-          if(sortMode === 'bpm') return (a.bpmDiff ?? 999) - (b.bpmDiff ?? 999);
-          if(sortMode === 'camelot') return (a.camelotGap ?? 999) - (b.camelotGap ?? 999);
-          if(sortMode === 'genre') {
-            if((a.genreTie ?? 2) !== (b.genreTie ?? 2)) return (a.genreTie ?? 2) - (b.genreTie ?? 2);
-          }
           return a.song.title.localeCompare(b.song.title);
         });
       } else {
@@ -894,13 +913,41 @@ window.handleLogin = async (event) => {
       }
 
       const songListEl = document.getElementById('songList'); if(!songListEl) return;
-      songListEl.innerHTML = scored.map(entry=>{
+      const priorityNames = { bpm:'Tempo', camelot:'Camelot', genre:'Genre' };
+      const priorityDescriptions = {
+        bpm: 'Priority: Tempo — closest BPM results are boosted within compatible matches.',
+        camelot: 'Priority: Camelot — harmonic neighbors rise to the top within the best matches.',
+        genre: 'Priority: Genre — same-genre blends are boosted while keeping top compatibility first.'
+      };
+      const priorityHeader = selectedSong ? `
+        <div class="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+          <div class="text-lg font-bold text-white">Top Matches (Priority: ${priorityNames[sortMode] || 'Tempo'})</div>
+          <div class="text-xs text-cyan-200 font-semibold">Strength: ${priorityStrength==='low'?'Low':priorityStrength==='high'?'High':'Medium'}</div>
+        </div>
+        <div class="text-xs text-gray-300 mb-4">${priorityDescriptions[sortMode] || priorityDescriptions.bpm} Top matches are sorted by compatibility first, then the priority boost (showing strongest ~10 results up top).</div>
+      ` : '';
+
+      songListEl.innerHTML = priorityHeader + scored.map(entry=>{
         const song = entry.song;
         const isOwned = displayTracks.includes(song.id);
         const comp = entry.comp;
         const pct = comp ? Math.min(100, Math.max(0, Math.round(comp.total))) : null;
         const hasOverride = genreOverrides[song.id];
         const glowClass = pct>=80 ? 'glow-perfect' : pct>=60 ? 'glow-good' : (pct!==null ? 'glow-bad' : '');
+        const priorityLabel = selectedSong ? (()=>{
+          if(sortMode === 'bpm'){
+            const delta = entry.bpmDiff !== null && entry.bpmDiff !== undefined ? Math.round(entry.bpmDiff) : '—';
+            return `🔥 Closest BPM match (Δ${delta})`;
+          }
+          if(sortMode === 'camelot'){
+            const distVal = entry.keyDist !== null && entry.keyDist !== undefined ? (Number.isInteger(entry.keyDist) ? entry.keyDist : entry.keyDist.toFixed(1)) : '—';
+            return `🎼 Harmonic neighbor (distance ${distVal})`;
+          }
+          if(sortMode === 'genre'){
+            return entry.sameGenre ? '🎭 Same genre boost' : '🎭 Genre priority (different genre)';
+          }
+          return '';
+        })() : '';
         if(showMixableOnly && selectedSong){
           const bpmOk = Math.abs(song.bpm - selectedSong.bpm) <= 4;
           const keyOk = getCompatibleKeys(selectedSong.camelot).includes(song.camelot);
@@ -923,6 +970,7 @@ window.handleLogin = async (event) => {
                   ${selectedSong && isMixable(selectedSong,song) ? `<span class="px-2 py-1 bg-purple-600/40 border border-purple-400/40 rounded text-xs text-purple-200 font-bold">±${Math.abs(song.bpm - selectedSong.bpm)} BPM</span>` : ''}
                   <span class="text-gray-400">${formatDuration(song.duration)}</span>
                 </div>
+                ${priorityLabel ? `<div class="text-xs text-cyan-200 mt-1">${priorityLabel}</div>` : ''}
               </div>
             </div>
             <div class="flex gap-2">
@@ -1116,10 +1164,21 @@ window.handleLogin = async (event) => {
                     <div class="text-xs text-gray-400">Best matches stay on top. Choose what to emphasize as a tiebreaker.</div>
                     ${selectedSong?`<div class="text-xs text-pink-200 mt-1">Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM</div>`:''}
                   </div>
-                  <div class="flex flex-wrap gap-2">
-                    <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
-                    <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
-                    <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                  <div class="flex flex-col gap-2 items-start">
+                    <div class="flex flex-wrap gap-2">
+                      <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
+                      <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                      <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                    </div>
+                    <div class="flex items-center gap-2 w-full">
+                      <div class="text-xs text-gray-300 font-semibold">Priority Strength</div>
+                      <div class="flex items-center gap-2 flex-1 max-w-xs">
+                        <span class="text-[11px] text-gray-500">Low</span>
+                        <input type="range" min="0" max="2" step="1" value="${priorityStrength==='low'?0:priorityStrength==='high'?2:1}" class="flex-1 accent-cyan-400" oninput="setPriorityStrength(this.value)" aria-label="Priority Strength" />
+                        <span class="text-[11px] text-gray-500">High</span>
+                      </div>
+                      <div class="text-[11px] px-2 py-1 rounded bg-white/10 border border-white/10 text-cyan-200 font-semibold">${priorityStrength==='low'?'Low':priorityStrength==='high'?'High':'Medium'}</div>
+                    </div>
                   </div>
                 </div>
                 <div class="grid lg:grid-cols-3 gap-4">
@@ -1198,6 +1257,12 @@ window.handleLogin = async (event) => {
       if(!viewingMember){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
     }
+
+    window.setPriorityStrength = (val) => {
+      const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
+      priorityStrength = map[val] || 'medium';
+      renderSongList();
+    };
 
     window.setSortMode = (mode) => {
       sortMode = mode;
