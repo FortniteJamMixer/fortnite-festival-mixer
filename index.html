@@ -309,16 +309,9 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       '7A':'#9D4EDD','7B':'#B877FF','8A':'#E84A5F','8B':'#FF6B81','9A':'#00D9FF','9B':'#4DFFFF',
       '10A':'#FFA400','10B':'#FFBB5C','11A':'#FE6D73','11B':'#FF8C94','12A':'#A8E6CF','12B':'#C1F0DD'
     };
-    const camelotOverrides = {
-      ids: {
-        // Example override for known mismatched metadata
-        'dont_fear_the_reaper': '8A'
-      },
-      names: {
-        'don’t fear the reaper|blue öyster cult': '8A',
-        "don't fear the reaper|blue oyster cult": '8A'
-      }
-    };
+    const knownCorrections = [
+      { id: 'dont_fear_the_reaper', expectedCamelot: '8A' },
+    ];
     const keyToCamelot = { 'C':'8B','Am':'8A','A Minor':'8A','C Major':'8B','G':'9B','Em':'9A','E Minor':'9A','G Major':'9B','D':'10B','Bm':'10A','B Minor':'10A','D Major':'10B','A':'11B','F#m':'11A','F# Minor':'11A','A Major':'11B','E':'12B','C#m':'12A','C# Minor':'12A','E Major':'12B','B':'1B','G#m':'1A','G# Minor':'1A','B Major':'1B','F#':'2B','D#m':'2A','D# Minor':'2A','F# Major':'2B','Db':'3B','Bbm':'3A','Bb Minor':'3A','Db Major':'3B','Ab':'4B','Fm':'4A','F Minor':'4A','Ab Major':'4B','Eb':'5B','Cm':'5A','C Minor':'5A','Eb Major':'5B','Bb':'6B','Gm':'6A','G Minor':'6A','Bb Major':'6B','F':'7B','Dm':'7A','D Minor':'7A','F Major':'7B' };
 
     const genreMap = {
@@ -343,12 +336,14 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
     // -------------------------- State -----------------------------
     let currentUser = null;
+    let userKey = null;
+    let localDeviceId = localStorage.getItem('localDeviceId') || null;
     let songs = [];
-    let ownedTracks = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
+    let ownedTracks = [];
     let selectedSong = null;
     let sortMode = 'bpm';
     let previewSong = null;
-    let setlist = JSON.parse(localStorage.getItem('setlist') || '[]');
+    let setlist = [];
     let searchTerm = '';
     let view = 'browser';
     let showOwnedOnly = false;
@@ -356,11 +351,66 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let selectedGenre = 'All';
     let bandMembers = [];
     let viewingMember = null;
-    let genreOverrides = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
+    let genreOverrides = {};
     let sandboxTracks = [];
-    let sandboxIds = JSON.parse(localStorage.getItem('sandboxTrackIds') || '[]');
+    let sandboxIds = [];
     let priorityStrength = 'medium';
+    let camelotOverridesStore = { ids: {}, names: {} };
+    let bpmOverridesStore = { ids: {}, names: {} };
+    let auditSearch = '';
+    let auditFilters = { flaggedOnly:false, overriddenOnly:false, invalidCamelot:false, modeMismatch:false, bpmOutlier:false };
+    let regressionWarnings = [];
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
+
+    // ---------------------- Admin & identity helpers -----------------------
+    function ensureLocalDeviceId(){
+      if(!localDeviceId){
+        localDeviceId = 'device_' + Math.random().toString(36).slice(2,10);
+        localStorage.setItem('localDeviceId', localDeviceId);
+      }
+      return localDeviceId;
+    }
+    function computeUserKey(){
+      const firebaseUser = firebaseAuth?.currentUser;
+      if(firebaseUser?.uid) return firebaseUser.uid;
+      if(currentUser?.uid) return currentUser.uid;
+      if(currentUser?.username) return currentUser.username;
+      return ensureLocalDeviceId();
+    }
+    function getNamespacedKey(base){
+      const key = computeUserKey();
+      userKey = key;
+      return `${base}_${key}`;
+    }
+    function migrateLegacyStorage(){
+      const bases = ['ownedTracks','setlist','genreOverrides','sandboxTrackIds'];
+      bases.forEach(base=>{
+        const legacy = localStorage.getItem(base);
+        const namespacedKey = getNamespacedKey(base);
+        const existing = localStorage.getItem(namespacedKey);
+        if(legacy && !existing){
+          localStorage.setItem(namespacedKey, legacy);
+        }
+      });
+    }
+    function loadNamespacedState(){
+      migrateLegacyStorage();
+      ownedTracks = JSON.parse(localStorage.getItem(getNamespacedKey('ownedTracks')) || '[]');
+      setlist = JSON.parse(localStorage.getItem(getNamespacedKey('setlist')) || '[]');
+      genreOverrides = JSON.parse(localStorage.getItem(getNamespacedKey('genreOverrides')) || '{}');
+      sandboxIds = JSON.parse(localStorage.getItem(getNamespacedKey('sandboxTrackIds')) || '[]');
+    }
+    function persistNamespacedState(){
+      localStorage.setItem(getNamespacedKey('ownedTracks'), JSON.stringify(ownedTracks));
+      localStorage.setItem(getNamespacedKey('setlist'), JSON.stringify(setlist));
+      localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
+      localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
+    }
+    function isAdmin(){
+      if(firebaseAuth?.currentUser?.email?.toLowerCase() === 'johnnybradford1@gmail.com') return true;
+      if(currentUser?.username === 'BattleNeBody') return true;
+      return false;
+    }
 
     // ---------------------- Utils & Scoring -----------------------
     function normalizeMode(mode,keyStr){
@@ -396,11 +446,10 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return '?';
     }
     function deriveCamelotForTrack(track){
-      const override = camelotOverrides.ids[track.id] || camelotOverrides.names[`${(track.tt||track.title||'').toLowerCase()}|${(track.an||track.artist||'').toLowerCase()}`];
       const baseKey = normalizeKeyName(track.mk || track.key || '');
       const mode = normalizeMode(track.mm || track.mode || '', track.mk || track.key || '');
       const fallbackMode = mode || (((track.key||'') + (track.mk||'')).toLowerCase().includes('m') ? 'minor' : 'major');
-      const camelot = override || convertToCamelot(baseKey || track.mk || track.key || '', fallbackMode);
+      const camelot = convertToCamelot(baseKey || track.mk || track.key || '', fallbackMode);
       const keyLabel = baseKey ? `${baseKey} ${fallbackMode}` : '?';
       return { camelot, keyLabel, mode: fallbackMode };
     }
@@ -445,6 +494,50 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return { rank, comp, bpmDiff, keyDist, sameGenre };
     }
     function bpmShiftSuggestion(aBpm,bBpm){ const shift=Math.round(bBpm-aBpm); if(shift===0) return 'No change'; return (shift>0?'+':'')+shift+' BPM = Perfect Match'; }
+    function normalizeTitleArtist(title,artist){
+      return `${(title||'').toLowerCase()}|${(artist||'').toLowerCase()}`;
+    }
+    function applyCamelotOverride(track, derivedCamelot){
+      const key = normalizeTitleArtist(track.title || track.tt, track.artist || track.an);
+      const fromId = camelotOverridesStore.ids[track.id];
+      const fromName = camelotOverridesStore.names[key];
+      const finalCamelot = fromId || fromName || derivedCamelot;
+      return { camelot: finalCamelot, overridden: !!(fromId || fromName) };
+    }
+    function applyBpmOverride(track, rawBpm){
+      const key = normalizeTitleArtist(track.title || track.tt, track.artist || track.an);
+      const fromId = bpmOverridesStore.ids[track.id];
+      const fromName = bpmOverridesStore.names[key];
+      const finalBpm = fromId ? Number(fromId) : (fromName ? Number(fromName) : rawBpm);
+      return { bpm: isNaN(finalBpm) ? rawBpm : finalBpm, overridden: !!(fromId || fromName) };
+    }
+    function computeTrackFlags(track){
+      const flags = [];
+      if(!track.camelot || !/^\d{1,2}[AB]$/.test(track.camelot)) flags.push('INVALID_CAMELOT');
+      const modeLower = (track.mode||'').toLowerCase();
+      if(track.camelot && /^\d{1,2}[AB]$/.test(track.camelot)){
+        const letter = track.camelot.slice(-1);
+        if(modeLower==='major' && letter==='A') flags.push('MODE_MISMATCH');
+        if(modeLower==='minor' && letter==='B') flags.push('MODE_MISMATCH');
+      }
+      if(!track.rawKey && !track.rawMode) flags.push('WEAK_PARSE');
+      if(!track.bpm || isNaN(track.bpm)) flags.push('BPM_MISSING');
+      if(track.bpm && (track.bpm < 60 || track.bpm > 220)) flags.push('BPM_OUTLIER');
+      if(track.camelotOverridden) flags.push('OVERRIDDEN_CAMELOT');
+      if(track.bpmOverridden) flags.push('OVERRIDDEN_BPM');
+      return flags;
+    }
+    function refreshSongOverrides(track){
+      const camelotData = deriveCamelotForTrack({ mk: track.rawKey, mm: track.rawMode, key: track.key, title: track.title, artist: track.artist });
+      const camelotApplied = applyCamelotOverride(track, camelotData.camelot);
+      const bpmApplied = applyBpmOverride(track, track.rawBpm || track.bpm);
+      track.camelot = camelotApplied.camelot;
+      track.camelotOverridden = camelotApplied.overridden;
+      track.bpm = bpmApplied.bpm;
+      track.bpmOverridden = bpmApplied.overridden;
+      track.derivedCamelot = camelotData.camelot;
+      track.flags = computeTrackFlags(track);
+    }
     // ----------------------- Genre detection -----------------------
     function detectGenre(artist, title){
       artist=(artist||'').toLowerCase(); title=(title||'').toLowerCase();
@@ -461,6 +554,38 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     }
 
     // ----------------------- Storage helpers -----------------------
+    function loadOverridesFromStorage(){
+      try{
+        camelotOverridesStore = JSON.parse(localStorage.getItem('camelotOverrides_v2') || '{"ids":{},"names":{}}');
+      }catch(e){ camelotOverridesStore = { ids:{}, names:{} }; }
+      try{
+        bpmOverridesStore = JSON.parse(localStorage.getItem('bpmOverrides_v1') || '{"ids":{},"names":{}}');
+      }catch(e){ bpmOverridesStore = { ids:{}, names:{} }; }
+    }
+    async function persistOverrides(){
+      localStorage.setItem('camelotOverrides_v2', JSON.stringify(camelotOverridesStore));
+      localStorage.setItem('bpmOverrides_v1', JSON.stringify(bpmOverridesStore));
+      if(isAdmin() && firestore && firebaseAuth?.currentUser){
+        try{
+          await firestore.collection('users').doc(firebaseAuth.currentUser.uid).set({
+            camelotOverrides: camelotOverridesStore,
+            bpmOverrides: bpmOverridesStore
+          },{merge:true});
+        }catch(err){ console.warn('persist override firestore', err); }
+      }
+    }
+    async function loadUserOverridesFromBackend(){
+      if(isAdmin() && firestore && firebaseAuth?.currentUser){
+        try{
+          const doc = await firestore.collection('users').doc(firebaseAuth.currentUser.uid).get();
+          if(doc.exists){
+            const data = doc.data()||{};
+            if(data.camelotOverrides) camelotOverridesStore = data.camelotOverrides;
+            if(data.bpmOverrides) bpmOverridesStore = data.bpmOverrides;
+          }
+        }catch(err){ console.warn('load override firestore', err); }
+      }
+    }
     async function saveUserProfile(){
       if(!currentUser) return;
       const mergedProfile = {
@@ -475,9 +600,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         genreOverrides
       };
       currentUser = mergedProfile;
-      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
-      localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
-      localStorage.setItem('setlist', JSON.stringify(setlist));
+      persistNamespacedState();
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
       if (mergedProfile.username) profiles[mergedProfile.username] = { ...(profiles[mergedProfile.username]||{}), ...mergedProfile };
       if (mergedProfile.uid) profiles[mergedProfile.uid] = { ...(profiles[mergedProfile.uid]||{}), ...mergedProfile };
@@ -767,6 +890,9 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           bandMembers: importedProfile?.bandMembers || profile.bandMembers || bandMembers || [],
           genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {}
         };
+        loadNamespacedState();
+        loadOverridesFromStorage();
+        await loadUserOverridesFromBackend();
         ownedTracks = currentUser.ownedTracks || [];
         setlist = currentUser.setlist || currentUser.setlists || [];
         bandMembers = currentUser.bandMembers || [];
@@ -830,8 +956,10 @@ window.handleLogin = async (event) => {
       const djName = (document.getElementById('djName').value || username).trim() || username;
       if(username.length<3){ alert('Username must be at least 3 characters'); return; }
       const profile = await loadUserProfile(username);
-      if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; bandMembers = profile.bandMembers || []; genreOverrides = profile.genreOverrides || {}; }
+      if(profile){ currentUser = profile; }
       else { currentUser = { username, djName, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} }; await saveUserProfileToBackend(currentUser); }
+      loadNamespacedState();
+      loadOverridesFromStorage();
       localStorage.setItem('currentUser', username);
       loadSongs();
     };
@@ -859,22 +987,67 @@ window.handleLogin = async (event) => {
             if(!track?.tt) return null;
             const detectedGenre = detectGenre(track.an||'', track.tt);
             const finalGenre = genreOverrides[id] || detectedGenre;
+            const rawBpm = Number(track.mt) || 0;
             const camelotData = deriveCamelotForTrack({ ...track, id });
-            return { id, title: track.tt, artist: track.an || 'Unknown', bpm: Number(track.mt) || 0, key: camelotData.keyLabel || (track.mk || '?'), mode: camelotData.mode || (track.mm||''), camelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre };
+            const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
+            const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
+            const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden };
+            enriched.flags = computeTrackFlags(enriched);
+            return enriched;
           }).filter(s=>s && s.bpm>0);
           songs.sort((a,b)=>a.title.localeCompare(b.title));
+          regressionWarnings = knownCorrections.filter(kc=>{
+            const track = songs.find(s=>s.id===kc.id);
+            return track && track.camelot !== kc.expectedCamelot;
+          });
+          if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
           if(songs.length>0){ render(); setupEventListeners(); return; }
         }catch(e){ console.warn('endpoint err',e); }
       }
       console.warn('endpoints failed, using fallback sample');
       songs = [
-        { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, key:'C major', mode:'major', camelot:'8B', duration:180, albumArt:'', genre:'Pop'},
-        { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, key:'C minor', mode:'minor', camelot:'8A', duration:210, albumArt:'', genre:'Rock'},
-        { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, key:'D major', mode:'major', camelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
-        { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, key:'G minor', mode:'minor', camelot:'9A', duration:190, albumArt:'', genre:'Indie'},
-        { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, key:'A minor', mode:'minor', camelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
-      ];
+        { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
+        { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, rawBpm:115, key:'C minor', rawKey:'C', rawMode:'minor', mode:'minor', camelot:'8A', derivedCamelot:'8A', duration:210, albumArt:'', genre:'Rock'},
+        { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, rawBpm:128, key:'D major', rawKey:'D', rawMode:'major', mode:'major', camelot:'10B', derivedCamelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
+        { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, rawBpm:95, key:'G minor', rawKey:'G', rawMode:'minor', mode:'minor', camelot:'9A', derivedCamelot:'9A', duration:190, albumArt:'', genre:'Indie'},
+        { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, rawBpm:142, key:'A minor', rawKey:'A', rawMode:'minor', mode:'minor', camelot:'11A', derivedCamelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
+      ].map(t=>({ ...t, flags: computeTrackFlags(t) }));
       render(); setupEventListeners();
+    }
+
+    function refreshRegressionWarnings(){
+      regressionWarnings = knownCorrections.filter(kc=>{
+        const track = songs.find(s=>s.id===kc.id);
+        return track && track.camelot !== kc.expectedCamelot;
+      });
+    }
+
+    async function setCamelotOverride(trackId,value){
+      camelotOverridesStore.ids[trackId] = value;
+      await persistOverrides();
+      const track = songs.find(s=>s.id===trackId);
+      if(track){ refreshSongOverrides(track); }
+      refreshRegressionWarnings();
+      renderAuditView();
+      renderSongList();
+    }
+    async function setBpmOverride(trackId,value){
+      bpmOverridesStore.ids[trackId] = Number(value);
+      await persistOverrides();
+      const track = songs.find(s=>s.id===trackId);
+      if(track){ refreshSongOverrides(track); }
+      renderAuditView();
+      renderSongList();
+    }
+    async function clearOverrides(trackId){
+      delete camelotOverridesStore.ids[trackId];
+      delete bpmOverridesStore.ids[trackId];
+      await persistOverrides();
+      const track = songs.find(s=>s.id===trackId);
+      if(track){ refreshSongOverrides(track); }
+      refreshRegressionWarnings();
+      renderAuditView();
+      renderSongList();
     }
 
     // ---------------------- Render list & setlist -----------------------
@@ -1029,6 +1202,73 @@ window.handleLogin = async (event) => {
         </div>`;
     }
 
+    function renderAuditView(){
+      const auditEl = document.getElementById('auditView');
+      if(!auditEl) return;
+      if(!isAdmin()){ auditEl.innerHTML = '<div class="panel">Admin only</div>'; return; }
+      const total = songs.length;
+      const flaggedCount = songs.filter(s=>s.flags && s.flags.length).length;
+      const camelotCount = Object.keys(camelotOverridesStore.ids||{}).length;
+      const bpmCount = Object.keys(bpmOverridesStore.ids||{}).length;
+      const okCount = total - flaggedCount;
+      const filterMatches = (track)=>{
+        const term = (auditSearch||'').toLowerCase();
+        if(term && !(track.title.toLowerCase().includes(term) || track.artist.toLowerCase().includes(term))) return false;
+        if(auditFilters.flaggedOnly && !(track.flags&&track.flags.length)) return false;
+        if(auditFilters.overriddenOnly && !(track.camelotOverridden||track.bpmOverridden)) return false;
+        if(auditFilters.invalidCamelot && !(track.flags||[]).includes('INVALID_CAMELOT')) return false;
+        if(auditFilters.modeMismatch && !(track.flags||[]).includes('MODE_MISMATCH')) return false;
+        if(auditFilters.bpmOutlier && !(track.flags||[]).includes('BPM_OUTLIER')) return false;
+        return true;
+      };
+      const filtered = songs.filter(filterMatches);
+      const rows = filtered.map(t=>{
+        const flags = t.flags && t.flags.length ? t.flags.map(f=>`<span class="px-2 py-1 rounded bg-white/10 border border-white/10 text-xs mr-1">${f}</span>`).join('') : '<span class="text-green-300 text-xs">OK</span>';
+        return `<tr class="border-b border-white/5"><td class="p-2">${t.title}<div class="text-xs text-gray-400">${t.artist}</div></td><td class="p-2">${t.bpm} <div class="text-xs text-gray-400">raw ${t.rawBpm||t.bpm}</div></td><td class="p-2">${t.camelot}<div class="text-xs text-gray-400">derived ${t.derivedCamelot}</div></td><td class="p-2 text-xs text-gray-300">${t.rawKey||'?'} ${t.rawMode||''}</td><td class="p-2">${flags}</td><td class="p-2 text-xs"><button class="px-2 py-1 bg-purple-500/30 rounded" onclick="openOverrideModal('camelot','${t.id}')">Set Camelot</button><button class="ml-1 px-2 py-1 bg-blue-500/30 rounded" onclick="openOverrideModal('bpm','${t.id}')">Set BPM</button><button class="ml-1 px-2 py-1 bg-red-500/30 rounded" onclick="clearOverrides('${t.id}')">Clear</button></td></tr>`;
+      }).join('');
+
+      auditEl.innerHTML = `
+        <div class="space-y-4">
+          <div class="grid md:grid-cols-5 gap-3">
+            <div class="panel p-3"><div class="text-xs text-gray-400">Total tracks</div><div class="text-2xl font-bold">${total}</div></div>
+            <div class="panel p-3"><div class="text-xs text-gray-400">OK</div><div class="text-2xl font-bold text-green-300">${okCount}</div></div>
+            <div class="panel p-3"><div class="text-xs text-gray-400">Flagged</div><div class="text-2xl font-bold text-amber-300">${flaggedCount}</div></div>
+            <div class="panel p-3"><div class="text-xs text-gray-400">Camelot overrides</div><div class="text-2xl font-bold">${camelotCount}</div></div>
+            <div class="panel p-3"><div class="text-xs text-gray-400">BPM overrides</div><div class="text-2xl font-bold">${bpmCount}</div></div>
+          </div>
+          <div class="panel p-3 space-y-3">
+            <div class="flex flex-wrap gap-2 items-center">
+              <input id="auditSearchInput" value="${auditSearch}" placeholder="Search title or artist" class="flex-1 min-w-[200px] px-3 py-2 bg-black/40 border border-white/10 rounded" />
+              <button onclick="exportFlaggedJson(true)" class="px-3 py-2 bg-blue-500/20 rounded border border-blue-400/50">Export Flagged JSON</button>
+              <button onclick="exportFlaggedJson(false)" class="px-3 py-2 bg-white/10 rounded border border-white/20">Export Full Audit JSON</button>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs">
+              <button class="px-3 py-1 rounded ${auditFilters.flaggedOnly?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('flaggedOnly')">Show flagged only</button>
+              <button class="px-3 py-1 rounded ${auditFilters.overriddenOnly?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('overriddenOnly')">Show overridden only</button>
+              <button class="px-3 py-1 rounded ${auditFilters.invalidCamelot?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('invalidCamelot')">Invalid camelot</button>
+              <button class="px-3 py-1 rounded ${auditFilters.modeMismatch?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('modeMismatch')">Mode mismatch</button>
+              <button class="px-3 py-1 rounded ${auditFilters.bpmOutlier?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('bpmOutlier')">BPM outliers</button>
+            </div>
+          </div>
+          <div class="panel overflow-auto">
+            <table class="w-full text-sm">
+              <thead class="text-left text-gray-300">
+                <tr><th class="p-2">Title</th><th class="p-2">BPM</th><th class="p-2">Camelot</th><th class="p-2">Raw key/mode</th><th class="p-2">Flags</th><th class="p-2">Actions</th></tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <div class="panel text-xs text-gray-300">
+            <div class="font-semibold text-white mb-1">Debug</div>
+            <div>Firebase enabled: ${firebaseEnabled}</div>
+            <div>User key: ${computeUserKey()}</div>
+            <div>Songs loaded: ${songs.length}</div>
+            <div>Overrides loaded: ${camelotCount} camelot / ${bpmCount} bpm</div>
+          </div>
+        </div>
+      `;
+    }
+
     function updateBandReferencesLocal(oldUsername,newUsername,newDj){
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
       Object.keys(profiles).forEach(key=>{
@@ -1112,6 +1352,8 @@ window.handleLogin = async (event) => {
     function render(){
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       const ownedCount = displayTracks.length;
+      const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
+      const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
       const selectedPanel = selectedSong ? `
         <div class="selected-panel rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div class="flex items-start gap-3">
@@ -1141,7 +1383,7 @@ window.handleLogin = async (event) => {
                 </div>
                 <div class="flex items-center gap-3">
                   ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm">← Back</button>`:`
-                    <div class="text-right"><div class="text-sm text-pink-300 font-bold">${currentUser?currentUser.djName:''}</div><div class="text-xs text-gray-400">@${currentUser?currentUser.username:''}${Object.keys(genreOverrides).length>0?` • ${Object.keys(genreOverrides).length} corrections`:''}</div></div>
+                    <div class="text-right"><div class="text-sm text-pink-300 font-bold">${currentUser?currentUser.djName:''}${adminBadge}</div><div class="text-xs text-gray-400">@${currentUser?currentUser.username:''}${Object.keys(genreOverrides).length>0?` • ${Object.keys(genreOverrides).length} corrections`:''}</div></div>
                     <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
                     <button onclick="exportCollection()" class="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-300 text-sm">Export</button>
                     <button onclick="importCollection()" class="px-3 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 rounded-lg text-green-300 text-sm">Import</button>
@@ -1157,11 +1399,13 @@ window.handleLogin = async (event) => {
                 <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
                 <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
                 <button id="profileBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
+                ${isAdmin()?`<button id="auditBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='audit'?'bg-gradient-to-r from-amber-500 to-yellow-500':'bg-white/10 hover:bg-white/20'}">Audit</button>`:''}
               </div>
             </div>
           </div>
 
           <div class="max-w-7xl mx-auto px-6 py-6 pb-20">
+            ${regressionBanner}
             <div id="browserView" style="display:${view==='browser'?'block':'none'}">
               <div class="mb-6 space-y-4">
                 <div class="relative">
@@ -1213,10 +1457,11 @@ window.handleLogin = async (event) => {
               <div id="setlistContent"></div>
             </div>
             <div id="profileView" style="display:${view==='profile'?'block':'none'}"></div>
+            <div id="auditView" style="display:${view==='audit'?'block':'none'}"></div>
           </div>
         </div>
       `;
-      if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else { renderProfile(); }
+      if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
     }
 
     // ------------------ Genre context menu ------------------------
@@ -1244,12 +1489,41 @@ window.handleLogin = async (event) => {
       if(!currentUser) return;
       genreOverrides[songId] = newGenre;
       const song = songs.find(s=>s.id===songId); if(song) song.genre = newGenre;
-      localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
+      persistNamespacedState();
       await saveUserProfile();
       renderSongList();
       const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
       if(genreTag){ genreTag.textContent = newGenre + ' ✓'; genreTag.classList.add('animate-pulse'); setTimeout(()=>genreTag.classList.remove('animate-pulse'),1000); }
     };
+
+    function toggleAuditFilter(key){ auditFilters[key] = !auditFilters[key]; renderAuditView(); }
+    function exportFlaggedJson(flaggedOnly){
+      const list = songs.filter(s=> flaggedOnly ? (s.flags&&s.flags.length) : true).map(t=>({ id:t.id, title:t.title, artist:t.artist, rawMk:t.rawKey, rawMm:t.rawMode, rawMt:t.rawBpm, derivedCamelot:t.derivedCamelot, camelot:t.camelot, bpmRaw:t.rawBpm, bpm:t.bpm, flags:t.flags||[] }));
+      const blob = new Blob([JSON.stringify(list,null,2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download = flaggedOnly? 'flagged-tracks.json':'audit-tracks.json'; a.click(); URL.revokeObjectURL(url);
+    }
+    function closeOverrideModal(){ const m=document.getElementById('overrideModal'); if(m) m.remove(); }
+    function openOverrideModal(type, trackId){
+      if(!isAdmin()) return alert('Admin only');
+      const track = songs.find(s=>s.id===trackId); if(!track) return;
+      closeOverrideModal();
+      const modal=document.createElement('div'); modal.id='overrideModal'; modal.className='fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50';
+      const options = Array.from({length:12},(_,i)=>`${i+1}A`).concat(Array.from({length:12},(_,i)=>`${i+1}B`));
+      const camelotSelect = `<select id="camelotSelect" class="w-full px-3 py-2 bg-black/60 border border-white/20 rounded">${options.map(o=>`<option value="${o}" ${track.camelot===o?'selected':''}>${o}</option>`).join('')}</select>`;
+      const bpmInput = `<input id="bpmInput" type="number" value="${Math.round(track.bpm)}" class="w-full px-3 py-2 bg-black/60 border border-white/20 rounded"/>`;
+      const actionCall = type==='camelot' ? `setCamelotOverride('${trackId}', document.getElementById('camelotSelect').value)` : `setBpmOverride('${trackId}', document.getElementById('bpmInput').value)`;
+      modal.innerHTML = `<div class="panel max-w-md w-full">
+        <div class="flex items-center justify-between mb-3"><div class="font-bold">Set ${type==='camelot'?'Camelot':'BPM'} for ${track.title}</div><button onclick="closeOverrideModal()">✕</button></div>
+        <div class="space-y-3">
+          ${type==='camelot'?camelotSelect:bpmInput}
+          <div class="flex gap-2 justify-end">
+            <button class="px-3 py-2 bg-white/10 rounded" onclick="closeOverrideModal()">Cancel</button>
+            <button class="px-3 py-2 bg-blue-500/60 rounded" onclick="${actionCall}; closeOverrideModal();">Save</button>
+          </div>
+        </div>
+      </div>`;
+      document.body.appendChild(modal);
+    }
 
     // ------------------ Event listeners and interactions --------------
     function setupEventListeners(){
@@ -1262,8 +1536,10 @@ window.handleLogin = async (event) => {
       document.getElementById('browserBtn')?.addEventListener('click', ()=> switchView('browser'));
       document.getElementById('setlistBtn')?.addEventListener('click', ()=> switchView('setlist'));
       document.getElementById('profileBtn')?.addEventListener('click', ()=> switchView('profile'));
+      document.getElementById('auditBtn')?.addEventListener('click', ()=> switchView('audit'));
       document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
       document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
+      const auditInput = document.getElementById('auditSearchInput'); if(auditInput){ auditInput.oninput = (e)=>{ auditSearch = e.target.value; renderAuditView(); }; }
       if(!viewingMember){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
     }
@@ -1304,7 +1580,7 @@ window.handleLogin = async (event) => {
     window.toggleOwned = (id) => {
       if(viewingMember){ alert("You can't edit other people's collections!"); return; }
       if(ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t=>t!==id); else ownedTracks.push(id);
-      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      persistNamespacedState();
       saveUserProfile();
       updateOwnedCount();
       renderSongList();
@@ -1314,7 +1590,7 @@ window.handleLogin = async (event) => {
       const song = songs.find(s=>s.id===id); if(!song) return;
       if(!setlist.find(s=>s.id===id)){
         setlist.push(song);
-        localStorage.setItem('setlist', JSON.stringify(setlist));
+        persistNamespacedState();
         const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
         if(view==='setlist') renderSetlist(); else { if(countEl){ countEl.classList.add('animate-pulse'); setTimeout(()=>countEl.classList.remove('animate-pulse'),800); } }
       }
@@ -1322,7 +1598,7 @@ window.handleLogin = async (event) => {
 
     window.removeFromSetlist = (id) => {
       setlist = setlist.filter(s=>s.id!==id);
-      localStorage.setItem('setlist', JSON.stringify(setlist));
+      persistNamespacedState();
       renderSetlist();
       const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
     };
@@ -1332,15 +1608,19 @@ window.handleLogin = async (event) => {
       const browserView = document.getElementById('browserView');
       const setlistView = document.getElementById('setlistView');
       const profileView = document.getElementById('profileView');
+      const auditViewEl = document.getElementById('auditView');
       if(browserView) browserView.style.display = view==='browser' ? 'block' : 'none';
       if(setlistView) setlistView.style.display = view==='setlist' ? 'block' : 'none';
       if(profileView) profileView.style.display = view==='profile' ? 'block' : 'none';
-      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn'); const profileBtn = document.getElementById('profileBtn');
+      if(auditViewEl) auditViewEl.style.display = view==='audit' ? 'block' : 'none';
+      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn'); const profileBtn = document.getElementById('profileBtn'); const auditBtn = document.getElementById('auditBtn');
       if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(profileBtn) profileBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}`;
+      if(auditBtn) auditBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='audit'?'bg-gradient-to-r from-amber-500 to-yellow-500':'bg-white/10 hover:bg-white/20'}`;
       if(view==='browser'){ renderSongList(); setupEventListeners(); sandboxInit(); renderSandbox(); }
       else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
+      else if(view==='audit'){ renderAuditView(); setupEventListeners(); }
       else { renderProfile(); setupEventListeners(); }
     };
 
@@ -1361,14 +1641,14 @@ window.handleLogin = async (event) => {
       if(viewingMember) return;
       if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
       ownedTracks = songs.map(s=>s.id);
-      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      persistNamespacedState();
       saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`✅ Marked all ${songs.length} songs as owned!`);
     };
 
     window.clearAllOwned = () => {
       if(viewingMember) return;
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
-      const count = ownedTracks.length; ownedTracks = []; localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks)); saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
+      const count = ownedTracks.length; ownedTracks = []; persistNamespacedState(); saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
     };
 
     async function addBandMember(){
@@ -1396,7 +1676,7 @@ window.handleLogin = async (event) => {
 
     // -------------------- Sandbox functions --------------------------
     function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; if(!el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); } if(!sandboxTracks.length && sandboxIds.length){ sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4); } renderSandbox(); }
-    function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem('sandboxTrackIds', JSON.stringify(sandboxIds)); }
+    function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds)); }
     function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
@@ -1413,7 +1693,7 @@ window.handleLogin = async (event) => {
     async function importCollection(){
       if(!currentUser) return alert('Login first');
       const input=document.createElement('input'); input.type='file'; input.accept='.json';
-      input.onchange = (e)=>{ const file=e.target.files[0]; const reader=new FileReader(); reader.onload = async (ev)=>{ try{ const data = JSON.parse(ev.target.result); if(!data.ownedTracks) throw new Error('Invalid file'); if(!confirm(`Import ${data.ownedTracks.length} songs from ${data.djName || data.username || 'file'}?`)) return; ownedTracks = data.ownedTracks; if(data.genreOverrides) genreOverrides = {...genreOverrides,...data.genreOverrides}; localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks)); localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides)); await saveUserProfile(); songs.forEach(song=>{ if(genreOverrides[song.id]) song.genre = genreOverrides[song.id]; }); renderSongList(); setupEventListeners(); alert('Collection imported successfully!'); }catch(err){ alert('Invalid file format'); } }; reader.readAsText(file); };
+      input.onchange = (e)=>{ const file=e.target.files[0]; const reader=new FileReader(); reader.onload = async (ev)=>{ try{ const data = JSON.parse(ev.target.result); if(!data.ownedTracks) throw new Error('Invalid file'); if(!confirm(`Import ${data.ownedTracks.length} songs from ${data.djName || data.username || 'file'}?`)) return; ownedTracks = data.ownedTracks; if(data.genreOverrides) genreOverrides = {...genreOverrides,...data.genreOverrides}; persistNamespacedState(); await saveUserProfile(); songs.forEach(song=>{ if(genreOverrides[song.id]) song.genre = genreOverrides[song.id]; }); renderSongList(); setupEventListeners(); alert('Collection imported successfully!'); }catch(err){ alert('Invalid file format'); } }; reader.readAsText(file); };
       input.click();
     }
 
@@ -1439,6 +1719,7 @@ window.handleLogin = async (event) => {
     document.addEventListener('keydown',(e)=>{ if(e.key === 'Escape') closeHelp(); });
 
     // ----------------------- Init / Auth check ------------------------
+    loadOverridesFromStorage();
     async function checkAuth(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();
@@ -1451,7 +1732,7 @@ window.handleLogin = async (event) => {
         const localId = localStorage.getItem('localDeviceUserId');
         if(savedUsername && savedUsername === localId){
           const profile = await loadUserProfile(savedUsername);
-          if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; bandMembers = profile.bandMembers || []; genreOverrides = profile.genreOverrides || {}; loadSongs(); return; }
+          if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); loadSongs(); return; }
         }
         showLoginScreen();
         return;
@@ -1459,7 +1740,7 @@ window.handleLogin = async (event) => {
       const savedUsername = localStorage.getItem('currentUser');
       if(savedUsername){
         const profile = await loadUserProfile(savedUsername);
-        if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; bandMembers = profile.bandMembers || []; genreOverrides = profile.genreOverrides || {}; loadSongs(); return; }
+        if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); loadSongs(); return; }
       }
       showLoginScreen();
     }
