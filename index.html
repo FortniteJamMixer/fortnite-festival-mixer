@@ -35,12 +35,13 @@
     .camelot-pill { padding: 6px 10px; border-radius: 10px; font-weight: 700; color: #fff; }
     .score-badge { font-weight: 800; letter-spacing: .6px; padding: 6px 10px; border-radius: 8px; display:inline-block; }
     .small-muted { color: rgba(230,247,255,0.7); font-size: 13px; }
-    .energy-bar { height: 12px; border-radius: 8px; background: rgba(255,255,255,0.06); overflow: hidden; }
     .sandbox-drop { min-height: 110px; border-radius: 12px; padding: 10px; border: 2px dashed rgba(255,255,255,0.04); }
     .context-menu { position: fixed; background: rgba(0,0,0,0.95); border-radius: 8px; padding: 8px; z-index:10000; backdrop-filter: blur(8px); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; }
     .glow-perfect { box-shadow: 0 0 18px rgba(57,255,20,0.85), 0 0 48px rgba(57,255,20,0.12); }
     .glow-good { box-shadow: 0 0 12px rgba(255,230,65,0.9), 0 0 36px rgba(255,230,65,0.08); }
     .glow-bad { box-shadow: 0 0 12px rgba(255,63,63,0.9), 0 0 36px rgba(255,63,63,0.08); }
+    .selected-panel { border: 2px solid rgba(0,217,255,0.6); box-shadow: 0 0 18px rgba(0,217,255,0.18), 0 0 32px rgba(255,107,157,0.18); background: linear-gradient(90deg, rgba(0,217,255,0.1), rgba(255,107,157,0.12)); }
+    .selected-badge { background: linear-gradient(90deg,#06b6d4,#ec4899); color:#fff; font-weight:800; padding:4px 8px; border-radius:999px; font-size:11px; letter-spacing:0.5px; }
 
     /* Help modal */
     #helpModal {
@@ -163,18 +164,17 @@
         <h4 style="margin-top:12px;font-weight:800;color:#b0ffc8">Setlist & Sandbox</h4>
         <ul style="margin-left:16px;margin-top:6px">
           <li><strong>Add to setlist</strong> — Click <em>+ Set</em>. The Setlist view shows your list. Removing works with the ✕ button.</li>
-          <li><strong>Sandbox</strong> — Drag tracks into the sandbox to visualize BPM differences, compatible keys, and energy flow (limit 4 tracks).</li>
+          <li><strong>Sandbox</strong> — Drag tracks into the sandbox to visualize BPM differences and compatible keys (limit 4 tracks).</li>
         </ul>
 
         <h4 style="margin-top:12px;font-weight:800;color:#ffd3e0">New Mashup Tools</h4>
         <ul style="margin-left:16px;margin-top:6px">
           <li><strong>Mash-up Compatibility Score</strong> — Shows a combined compatibility score (0–100%) using key (0–40), BPM (0–40), and genre (0–20).</li>
           <li><strong>Auto BPM Suggestion</strong> — Displays <em>+N BPM = Perfect Match</em> calculated as otherBpm - selectedBpm.</li>
-          <li><strong>Two-Track Preview Panel</strong> — Compare two tracks: keys, BPM, energy, tips, and a suggested mash-up recipe.</li>
+          <li><strong>Two-Track Preview Panel</strong> — Compare two tracks: keys, BPM, tips, and a suggested mash-up recipe.</li>
           <li><strong>Auto-Suggest Transitions</strong> — Based on key/BPM/genre, suggestions like <em>Filter sweep + reverb tail → chorus</em>.</li>
           <li><strong>Mash-up Recipe Generator</strong> — Recommends starting BPM, key-change advice, bars to mix, and techniques.</li>
           <li><strong>AI Mash-up Naming</strong> — Fun name suggestions for your mashups.</li>
-          <li><strong>Energy Level Graph</strong> — Visualize energy (1–5) across your set or sandbox.</li>
         </ul>
 
         <h4 style="margin-top:12px;font-weight:800;color:#c5f1ff">Official Festival Jam Mixer Guide</h4>
@@ -183,7 +183,7 @@
           <li><strong>Choose a priority mode</strong> — Use the three Smart Match buttons: BPM, Camelot, or Genre. These act as tiebreakers while keeping the best compatibility score on top.</li>
           <li><strong>Toggle Mixable</strong> — Want strict key/BPM filtering? Hit “🎧 Mixable Only.”</li>
           <li><strong>Refine</strong> — Search, Owned/All, and Genre tags stack with Smart Match to dial in your set.</li>
-          <li><strong>Sandbox it</strong> — Drag top picks into the Sandbox to visualize energy and compatibility before performing.</li>
+          <li><strong>Sandbox it</strong> — Drag top picks into the Sandbox to visualize compatibility before performing.</li>
         </ol>
 
         <div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(0,217,255,0.06);border:1px solid rgba(0,217,255,0.12)">
@@ -212,7 +212,7 @@
           <li>Mix on phrase boundaries (8/16 bars).</li>
           <li>Use FX (filter/reverb) to hide key clashes on cross-genre mixes.</li>
           <li>When BPM differs by >6, consider tempo ramp or resampling for smoothness.</li>
-          <li>Use the sandbox to pre-visualize your energy curve and reorder for build-ups.</li>
+          <li>Use the sandbox to pre-visualize transitions and reorder for build-ups.</li>
         </ul>
 
         <p class="small-muted" style="margin-top:10px">That's it — open this panel anytime via the ❓ Help button. Stay in theme and keep the groove alive. 🎧</p>
@@ -445,8 +445,6 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return { rank, comp, bpmDiff, keyDist, sameGenre };
     }
     function bpmShiftSuggestion(aBpm,bBpm){ const shift=Math.round(bBpm-aBpm); if(shift===0) return 'No change'; return (shift>0?'+':'')+shift+' BPM = Perfect Match'; }
-    function computeEnergy(track){ if(!track||!track.bpm) return 3; let e=1; const bpm=track.bpm; if(bpm<90) e=1; else if(bpm<110) e=2; else if(bpm<125) e=3; else if(bpm<140) e=4; else e=5; if(track.genre==='Electronic'||track.genre==='Rock') e=Math.min(5,e+1); return e; }
-
     // ----------------------- Genre detection -----------------------
     function detectGenre(artist, title){
       artist=(artist||'').toLowerCase(); title=(title||'').toLowerCase();
@@ -886,10 +884,10 @@ window.handleLogin = async (event) => {
     function renderSongList(){
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       const filtered = songs.filter(s=>{
-        if(selectedSong && s.id === selectedSong.id) return false;
+        const isSelected = selectedSong && s.id === selectedSong.id;
         const matchesSearch = !searchTerm || s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
-        const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+        const matchesMixable = isSelected || !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
         const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
         return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
       });
@@ -929,6 +927,7 @@ window.handleLogin = async (event) => {
 
       songListEl.innerHTML = priorityHeader + scored.map(entry=>{
         const song = entry.song;
+        const isSelected = selectedSong && song.id === selectedSong.id;
         const isOwned = displayTracks.includes(song.id);
         const comp = entry.comp;
         const pct = comp ? Math.min(100, Math.max(0, Math.round(comp.total))) : null;
@@ -953,10 +952,11 @@ window.handleLogin = async (event) => {
           const keyOk = getCompatibleKeys(selectedSong.camelot).includes(song.camelot);
           if(!bpmOk || !keyOk) return '';
         }
+        const selectedStyles = isSelected ? 'border-2 border-cyan-400 shadow-[0_0_24px_rgba(0,255,255,0.35)]' : '';
         return `
-          <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all" data-song-id="${song.id}" draggable="true">
+          <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" draggable="true">
             <div class="star-icon absolute top-2 right-2 text-xl" style="display:${isOwned?'block':'none'}">⭐</div>
-            ${selectedSong && isMixable(selectedSong,song) ? `<div class="absolute top-2 left-2 text-xl">🎧</div>` : ''}
+            ${isSelected ? `<div class="selected-badge absolute top-2 left-2">SELECTED</div>` : (selectedSong && isMixable(selectedSong,song) ? `<div class="absolute top-2 left-2 text-xl">🎧</div>` : '')}
             <div class="flex gap-4 mb-3">
               ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
               <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
@@ -1112,6 +1112,21 @@ window.handleLogin = async (event) => {
     function render(){
       const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
       const ownedCount = displayTracks.length;
+      const selectedPanel = selectedSong ? `
+        <div class="selected-panel rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <div class="w-14 h-14 rounded-lg flex items-center justify-center text-lg font-bold" style="background:${camelotColors[selectedSong.camelot] || '#0ea5e9'}">${selectedSong.camelot}</div>
+            <div>
+              <div class="selected-badge inline-flex items-center gap-2 mb-1">Selected Track</div>
+              <div class="text-white font-bold text-lg leading-tight">${selectedSong.title}</div>
+              <div class="text-gray-300 text-sm">${selectedSong.artist}</div>
+              <div class="text-xs text-cyan-100 font-semibold mt-1">BPM: ${selectedSong.bpm} • Key: ${selectedSong.key || selectedSong.camelot}</div>
+            </div>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button onclick="clearSelection()" class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100">Clear Selection</button>
+          </div>
+        </div>` : '';
       document.getElementById('app').innerHTML = `
         <div class="min-h-screen">
           <div class="bg-black/60 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg">
@@ -1181,19 +1196,14 @@ window.handleLogin = async (event) => {
                     </div>
                   </div>
                 </div>
-                <div class="grid lg:grid-cols-3 gap-4">
-                  <div class="panel lg:col-span-2">
-                    <div class="flex items-center justify-between mb-2">
-                      <div class="font-bold text-white">Sandbox (drag tracks here)</div>
-                      <div class="text-xs text-gray-300">Limit 4 • persists locally</div>
-                    </div>
-                    <div id="sandbox" class="sandbox-drop bg-black/40"></div>
-                    <div id="sandboxInfo" class="small-muted mt-2"></div>
+                ${selectedPanel}
+                <div class="panel">
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="font-bold text-white">Sandbox (drag tracks here)</div>
+                    <div class="text-xs text-gray-300">Limit 4 • persists locally</div>
                   </div>
-                  <div class="panel">
-                    <div class="font-bold text-white mb-2">Energy Graph</div>
-                    <div id="energyGraph"></div>
-                  </div>
+                  <div id="sandbox" class="sandbox-drop bg-black/40"></div>
+                  <div id="sandboxInfo" class="small-muted mt-2"></div>
                 </div>
               </div>
               <div id="songList"></div>
@@ -1261,27 +1271,27 @@ window.handleLogin = async (event) => {
     window.setPriorityStrength = (val) => {
       const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
       priorityStrength = map[val] || 'medium';
-      renderSongList();
+      render();
+      setupEventListeners();
     };
 
     window.setSortMode = (mode) => {
       sortMode = mode;
-      renderSongList();
+      render();
+      setupEventListeners();
     };
 
     window.selectSong = (id) => {
       selectedSong = songs.find(s=>s.id===id);
-      const btn = document.getElementById('mixableFilterBtn');
-      if(btn){ btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`; btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable'; }
-      renderSongList();
+      render();
+      setupEventListeners();
     };
 
     window.clearSelection = () => {
       selectedSong = null;
-      const btn = document.getElementById('mixableFilterBtn');
-      if(btn){ btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20'; btn.textContent = 'Show Mixable'; }
       showMixableOnly = false;
-      renderSongList();
+      render();
+      setupEventListeners();
     };
 
     window.openProfileView = () => {
@@ -1337,16 +1347,14 @@ window.handleLogin = async (event) => {
     window.toggleMixableFilter = () => {
       if(!selectedSong){ alert('Select a song first to see mixable tracks!'); return; }
       showMixableOnly = !showMixableOnly;
-      const btn = document.getElementById('mixableFilterBtn');
-      if(btn){ btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`; btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable'; }
-      renderSongList();
+      render();
+      setupEventListeners();
     };
 
     window.toggleOwnedFilter = () => {
       showOwnedOnly = !showOwnedOnly;
-      const btn = document.getElementById('ownedFilterBtn');
-      if(btn){ btn.className = `px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-white/10 hover:bg-white/20'}`; btn.textContent = showOwnedOnly ? '✓ Owned Only' : 'Show All'; }
-      renderSongList();
+      render();
+      setupEventListeners();
     };
 
     window.markAllOwned = () => {
@@ -1378,7 +1386,7 @@ window.handleLogin = async (event) => {
 
     // --------------------- Preview & two-track (simple) ---------------
     function onPreviewClick(id){
-      const b = songs.find(s => s.id === id); if(!selectedSong){ selectedSong = b; renderSongList(); alert('Main track selected. Click Preview on another track to compare.'); return; }
+      const b = songs.find(s => s.id === id); if(!selectedSong){ selectedSong = b; render(); setupEventListeners(); alert('Main track selected. Click Preview on another track to compare.'); return; }
       previewSong = b; displayTwoTrackPreview(selectedSong, previewSong);
     }
     function displayTwoTrackPreview(A,B){
@@ -1389,11 +1397,9 @@ window.handleLogin = async (event) => {
     // -------------------- Sandbox functions --------------------------
     function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; if(!el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); } if(!sandboxTracks.length && sandboxIds.length){ sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4); } renderSandbox(); }
     function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem('sandboxTrackIds', JSON.stringify(sandboxIds)); }
-    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><div class="small-muted">${computeEnergy(t)}</div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; renderEnergyGraph([]); return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; renderEnergyGraph(sandboxTracks); }
+    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
-
-    function renderEnergyGraph(list){ const container=document.getElementById('energyGraph'); if(!container) return; if(!list||list.length===0){ container.innerHTML='<div class="small-muted">No tracks selected</div>'; return; } container.innerHTML = list.map((t,i)=>{ const e=computeEnergy(t); const pct=(e/5)*100; const color = e>=4 ? 'linear-gradient(90deg,#f97316,#ef4444)' : e>=3 ? 'linear-gradient(90deg,#f59e0b,#f97316)' : 'linear-gradient(90deg,#34d399,#10b981)'; return `<div class="flex items-center gap-3"><div style="width:40px" class="small-muted">${i+1}</div><div style="flex:1"><div class="small-muted text-xs">${t.title} — <span style="color:${camelotColors[t.camelot]||'#fff'}">${t.camelot}</span></div><div class="energy-bar mt-1"><div class="energy-fill" style="width:${pct}%;background:${color}"></div></div></div><div style="width:36px" class="text-center font-bold">${e}</div></div>`; }).join('<div style="height:8px"></div>'); }
 
     // ---------------- Export / Import -------------------------
     async function exportCollection(){
