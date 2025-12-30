@@ -174,7 +174,6 @@
             <a class="anchorLink" href="#select">Select a Track & Mixable Only</a>
             <a class="anchorLink" href="#priority">Priority Modes & Strength</a>
             <a class="anchorLink" href="#setlist">Setlist & Set view</a>
-            <a class="anchorLink" href="#band">Band Members</a>
             <a class="anchorLink" href="#sandbox">Sandbox</a>
             <a class="anchorLink" href="#camelot">Camelot Wheel & Harmonic Mixing</a>
             <a class="anchorLink" href="#internalCamelot">How Festival Pro Mixer uses Camelot</a>
@@ -250,16 +249,6 @@
             <div class="calloutTitle">🎯 Beginner Tip</div>
             <p class="small-muted">Curate your first 5 songs with Owned Only + Camelot Priority. Add them to Set, then drag two into Sandbox to rehearse.</p>
           </div>
-        </div>
-
-        <div class="helpSection" id="band">
-          <h3>Band Members</h3>
-          <p>Band members let you view and combine collections without editing anyone else’s library.</p>
-          <ul>
-            <li><strong>Add bandmates</strong> to browse their owned tracks alongside yours.</li>
-            <li><strong>Selections stay yours</strong>: you can’t toggle Owned for another member, but you can put their songs into your Sandbox or Setlist for planning.</li>
-            <li><strong>Great for squads</strong> who split duties (e.g., one player handles vocals, another the drums).</li>
-          </ul>
         </div>
 
         <div class="helpSection" id="sandbox">
@@ -599,7 +588,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let showMixableOnly = false;
     let selectedGenre = 'All';
     let bandMembers = [];
-    let viewingMember = null;
+    let viewingProfile = null;
+    let profileOwnedSearch = '';
     let genreOverrides = {};
     let sandboxTracks = [];
     let sandboxIds = [];
@@ -612,6 +602,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let adminMenuOpen = false;
     let adminMenuListenersBound = false;
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
+    const profileParam = new URLSearchParams(window.location.search).get('profile');
 
     // ---------------------- Admin & identity helpers -----------------------
     function ensureLocalDeviceId(){
@@ -913,6 +904,23 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return profiles[username] || null;
     }
 
+    async function loadProfileForViewing(username){
+      if(!username) return null;
+      const profile = await loadUserProfileFromBackend(username) || await loadUserProfile(username);
+      viewingProfile = profile || null;
+      return viewingProfile;
+    }
+
+    function clearViewedProfile(){
+      viewingProfile = null;
+      profileOwnedSearch = '';
+      const params = new URLSearchParams(window.location.search);
+      params.delete('profile');
+      const query = params.toString();
+      const newUrl = `${location.pathname}${query ? `?${query}` : ''}${location.hash}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+
     // --------------------- UI: Landing / Auth ------------------------
     function showLandingPage(){
       document.getElementById('app').innerHTML = `
@@ -979,7 +987,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
                     <button type="button" id="tabSignUp" onclick="setAuthMode('signup')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
                   </div>
                   <p class="text-xs text-gray-300 mt-3 text-center">
-                    Cloud sync works after you create an account once. If you just want to use your old saved data, hit <strong>Continue Offline</strong>.
+                    Cloud sync works after you create an account once. Sign in to access your profile and owned songs.
                   </p>
                 </div>
 
@@ -1005,18 +1013,12 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
                     <p class="text-xs text-gray-400 mt-2">Tip: use at least 6 characters.</p>
                   </div>
 
-                  <div class="flex gap-2">
+                  <div>
                     <button type="submit" id="authSubmit"
-                      class="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-bold text-white">
+                      class="w-full px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-bold text-white">
                       Sign In
                     </button>
-                    <button type="button" onclick="continueOffline()"
-                      class="px-4 py-3 bg-black/50 border border-gray-600 rounded-lg font-bold text-white">
-                      Continue Offline
-                    </button>
                   </div>
-
-                  <p class="text-xs text-gray-400 text-center">Offline mode is device-only and not tied to any account.</p>
 
                   <div class="text-center">
                     <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
@@ -1076,6 +1078,10 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     }
 
     window.continueOffline = () => {
+      if(firebaseEnabled){
+        alert('Sign in is required while cloud sync is enabled.');
+        return;
+      }
       const username = getLocalDeviceId();
       currentUser = { username, djName: username, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
       localStorage.setItem('currentUser', currentUser.username);
@@ -1190,6 +1196,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         genreOverrides = currentUser.genreOverrides || {};
         localStorage.setItem('currentUser', firebaseUser.uid);
         await saveUserProfile();
+        await maybeLoadSharedProfile();
         loadSongs();
       } finally {
         authProcessing = false;
@@ -1259,7 +1266,7 @@ window.handleLogin = async (event) => {
       saveUserProfile();
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
-      currentUser = null; ownedTracks = []; setlist = []; bandMembers = []; viewingMember = null; genreOverrides = {};
+      currentUser = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
       localStorage.removeItem('currentUser');
       showLoginScreen();
     }
@@ -1346,10 +1353,10 @@ window.handleLogin = async (event) => {
 
     // ---------------------- Render list & setlist -----------------------
     function formatDuration(sec){ const m=Math.floor(sec/60); const s=sec%60; return `${m}:${s.toString().padStart(2,'0')}`; }
-    function updateOwnedCount(){ const el=document.getElementById('ownedCount'); if(el){ const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks; el.textContent = `${viewingMember ? viewingMember.djName : 'You'} own ${displayTracks.length}/${songs.length} tracks`; } }
+    function updateOwnedCount(){ const el=document.getElementById('ownedCount'); if(el){ const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks; const ownerLabel = viewingProfile ? (viewingProfile.djName || viewingProfile.username || 'Profile') : 'You'; el.textContent = `${ownerLabel} own ${displayTracks.length}/${songs.length} tracks`; } }
 
     function renderSongList(){
-      const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
+      const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
       const filtered = songs.filter(s=>{
         const isSelected = selectedSong && s.id === selectedSong.id;
         const matchesSearch = !searchTerm || s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1443,7 +1450,7 @@ window.handleLogin = async (event) => {
             <div class="flex flex-wrap gap-2 items-center">
               <button onclick="selectSong('${song.id}')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
               <button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-id="${song.id}">Preview</button>
-              <button onclick="toggleOwned('${song.id}')" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
+              <button onclick="toggleOwned('${song.id}')" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
               <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}">+ Set</button>
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
@@ -1467,34 +1474,86 @@ window.handleLogin = async (event) => {
 
     function renderProfile(){
       const profileEl = document.getElementById('profileView'); if(!profileEl) return;
-      const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : 'Offline mode (local storage)';
-      const usernameVal = currentUser?.username || '';
-      const djVal = currentUser?.djName || usernameVal;
+      const profileOwner = viewingProfile || currentUser || {};
+      const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
+      const usernameVal = profileOwner?.username || '';
+      const djVal = profileOwner?.djName || usernameVal;
+      const ownedIds = profileOwner?.ownedTracks || [];
+      const viewOnly = !!viewingProfile;
+      const ownedFiltered = songs
+        .filter(s=>ownedIds.includes(s.id))
+        .filter(s=>{
+          const term = (profileOwnedSearch||'').toLowerCase();
+          return !term || s.title.toLowerCase().includes(term) || s.artist.toLowerCase().includes(term);
+        })
+        .sort((a,b)=> a.title.localeCompare(b.title));
+      const ownedCards = ownedFiltered.map(song=>{
+        const camelotColor = camelotColors[song.camelot] || '#4b5563';
+        return `<div class="flex gap-3 bg-black/40 border border-white/10 rounded-xl p-3 hover:border-cyan-500/40 transition">
+          ${song.albumArt ? `<img src="${song.albumArt}" class="w-16 h-16 rounded-lg object-cover" alt="${song.title} cover"/>` : `<div class="w-16 h-16 rounded-lg bg-white/5 flex items-center justify-center text-xl">🎵</div>`}
+          <div class="flex-1 space-y-1">
+            <div class="font-bold text-white">${song.title}</div>
+            <div class="text-sm text-gray-300">${song.artist}</div>
+            <div class="flex flex-wrap gap-2 items-center text-xs">
+              <span class="px-2 py-1 rounded font-mono font-semibold text-white" style="background:${camelotColor};">${song.camelot}</span>
+              <span class="px-2 py-1 bg-white/10 border border-white/10 rounded text-white">${song.bpm} BPM</span>
+              <span class="px-2 py-1 bg-emerald-500/20 border border-emerald-400/40 rounded text-emerald-100">${song.genre}</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      const ownedEmpty = `<div class="text-sm text-gray-400">${profileOwnedSearch ? 'No owned songs match your search.' : 'No owned songs yet.'}</div>`;
       profileEl.innerHTML = `
-        <div class="panel max-w-3xl mx-auto space-y-4">
-          <div class="text-2xl font-bold text-white">Profile</div>
-          <p class="text-sm text-gray-300">Update your DJ identity without leaving the mixer. Username changes migrate your data safely.</p>
-          <div class="grid gap-4">
-            <div>
-              <label class="text-sm text-gray-300">Email</label>
-              <div class="px-4 py-3 bg-black/40 border border-gray-700 rounded-lg text-white">${email}</div>
+        <div class="space-y-4 max-w-5xl mx-auto">
+          <div class="panel space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-2xl font-bold text-white">Profile</div>
+                <p class="text-sm text-gray-300">Update your DJ identity without leaving the mixer. Username changes migrate your data safely.</p>
+              </div>
+              <div class="text-sm px-3 py-1 rounded-full ${viewOnly ? 'bg-purple-500/20 border border-purple-400/40 text-purple-100' : 'bg-cyan-500/20 border border-cyan-400/40 text-cyan-100'}">${viewOnly ? 'View only' : 'Editable'}</div>
             </div>
-            <div>
-              <label class="text-sm text-gray-300">Username</label>
-              <input id="profileUsername" value="${usernameVal}" class="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white" />
-              <p class="text-xs text-gray-400 mt-1">3–20 characters, letters/numbers/underscore only. No logout needed.</p>
+            ${viewOnly ? `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Viewing ${djVal || usernameVal}'s public profile. Editing is disabled.</div>` : ''}
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <label class="text-sm text-gray-300">Email</label>
+                <div class="px-4 py-3 bg-black/40 border border-gray-700 rounded-lg text-white">${email}</div>
+              </div>
+              <div>
+                <label class="text-sm text-gray-300">Username</label>
+                <input id="profileUsername" value="${usernameVal}" ${viewOnly ? 'disabled' : ''} class="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white ${viewOnly?'opacity-60 cursor-not-allowed':''}" />
+                <p class="text-xs text-gray-400 mt-1">3–20 characters, letters/numbers/underscore only. No logout needed.</p>
+              </div>
+              <div>
+                <label class="text-sm text-gray-300">DJ Name</label>
+                <input id="profileDjName" value="${djVal}" ${viewOnly ? 'disabled' : ''} class="w-full px-4 py-3 bg-black/40 border border-purple-500/30 rounded-lg text-white ${viewOnly?'opacity-60 cursor-not-allowed':''}" />
+                <p class="text-xs text-gray-400 mt-1">Shown in headers and shared views.</p>
+              </div>
             </div>
-            <div>
-              <label class="text-sm text-gray-300">DJ Name</label>
-              <input id="profileDjName" value="${djVal}" class="w-full px-4 py-3 bg-black/40 border border-purple-500/30 rounded-lg text-white" />
-              <p class="text-xs text-gray-400 mt-1">Shown in headers and band views.</p>
+            <div class="flex gap-3 flex-wrap">
+              ${viewOnly ? '' : `<button onclick="saveProfileSettings()" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Save Profile</button>`}
+              <button onclick="switchView('browser')" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
+              ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Exit view-only</button>` : ''}
+            </div>
+            <div id="profileStatus" class="text-sm text-cyan-200"></div>
+          </div>
+
+          <div class="panel space-y-4">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div class="text-lg font-bold text-white">Owned Songs</div>
+                <p class="text-sm text-gray-300">Songs you’ve marked as owned</p>
+              </div>
+              <div class="text-sm text-cyan-200 font-semibold">${ownedIds.length} / ${songs.length}</div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+              <input id="ownedSearchInput" value="${profileOwnedSearch || ''}" placeholder="Search owned songs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+              <div class="text-xs text-gray-400">Live filter by title or artist</div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              ${ownedCards || ownedEmpty}
             </div>
           </div>
-          <div class="flex gap-3 flex-wrap">
-            <button onclick="saveProfileSettings()" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Save Profile</button>
-            <button onclick="switchView('browser')" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
-          </div>
-          <div id="profileStatus" class="text-sm text-cyan-200"></div>
         </div>`;
     }
 
@@ -1652,7 +1711,7 @@ function render(){
   if(!isAdmin() && adminMenuOpen){
     adminMenuOpen = false;
   }
-  const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
+  const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
   const ownedCount = displayTracks.length;
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
@@ -1676,7 +1735,7 @@ function render(){
         <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
       </div>
     </div>`;
-  const signedLabel = viewingMember ? `Viewing ${viewingMember.djName}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}`;
+  const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}`;
   const authButtonLabel = firebaseAuth?.currentUser ? 'Logout' : 'Sign In';
   const authButtonAction = firebaseAuth?.currentUser ? 'logoutUser()' : 'showLoginScreen()';
   document.getElementById('app').innerHTML = `
@@ -1692,7 +1751,7 @@ function render(){
           </div>
           <div class="flex items-center gap-3 flex-wrap justify-end">
             <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
-            ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
+            ${viewingProfile?`<button onclick="exitProfileViewMode()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
             ${isAdmin()?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
                   <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
                 </div>`:''}</div>`:''}
@@ -1720,7 +1779,7 @@ function render(){
               <div class="panel space-y-3">
                 <div class="flex items-center justify-between">
                   <div class="font-bold text-white">Controls</div>
-                  <span class="text-xs text-gray-300">${viewingMember ? 'Band library' : 'Your library'}</span>
+                  <span class="text-xs text-gray-300">${viewingProfile ? 'Shared profile (view only)' : 'Your library'}</span>
                 </div>
                 <div class="relative">
                   <input type="text" id="searchInput" value="${searchTerm || ''}" placeholder="🔍 Search songs" class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
@@ -1731,12 +1790,11 @@ function render(){
                   <button id="ownedFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
                   <button id="controlClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
-                ${!viewingMember?`<div class="flex flex-wrap gap-2">
+                ${!viewingProfile?`<div class="flex flex-wrap gap-2">
                   <button id="markAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
                   <button id="clearAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
                 </div>`:''}
               </div>
-
               <div class="panel space-y-3">
                 <div class="flex items-center justify-between">
                   <div class="font-bold text-white">Mix Logic</div>
@@ -1770,15 +1828,6 @@ function render(){
                 </div>
                 <div id="sandbox" class="sandbox-drop bg-black/40"></div>
                 <div id="sandboxInfo" class="small-muted"></div>
-              </div>
-
-              <div class="panel space-y-2">
-                <div class="flex items-center justify-between">
-                  <div class="font-bold text-white">Band Members</div>
-                  ${!viewingMember?`<button onclick="addBandMember()" class="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-sm">+ Add</button>`:''}
-                </div>
-                ${bandMembers.length>0 ? `<div class="flex flex-wrap gap-2">${bandMembers.map(member=>`<button onclick="viewBandMember('${member.username}')" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">${member.djName}</button>`).join('')}</div>` : `<div class="text-xs text-gray-400">${viewingMember ? 'Viewing band library' : 'No band members yet. Add one to browse their tracks.'}</div>`}
-                ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">← Back to my collection</button>`:''}
               </div>
             </div>
 
@@ -1880,7 +1929,8 @@ function render(){
       document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
       document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
       const auditInput = document.getElementById('auditSearchInput'); if(auditInput){ auditInput.oninput = (e)=>{ auditSearch = e.target.value; renderAuditView(); }; }
-      if(!viewingMember){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
+      const ownedSearchInput = document.getElementById('ownedSearchInput'); if(ownedSearchInput){ ownedSearchInput.oninput = (e)=>{ profileOwnedSearch = e.target.value; renderProfile(); setupEventListeners(); }; }
+      if(!viewingProfile){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
       if(isAdmin()){
         const adminBtn = document.getElementById('adminToolsBtn');
@@ -1952,12 +2002,18 @@ function render(){
     };
 
     window.toggleOwned = (id) => {
-      if(viewingMember){ alert("You can't edit other people's collections!"); return; }
+      if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
       if(ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t=>t!==id); else ownedTracks.push(id);
       persistNamespacedState();
       saveUserProfile();
       updateOwnedCount();
       renderSongList();
+    };
+
+    window.exitProfileViewMode = () => {
+      clearViewedProfile();
+      render();
+      setupEventListeners();
     };
 
     window.addToSetlist = (id) => {
@@ -2017,7 +2073,7 @@ function render(){
     };
 
     window.markAllOwned = () => {
-      if(viewingMember) return;
+      if(viewingProfile) return;
       if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
       ownedTracks = songs.map(s=>s.id);
       persistNamespacedState();
@@ -2025,23 +2081,24 @@ function render(){
     };
 
     window.clearAllOwned = () => {
-      if(viewingMember) return;
+      if(viewingProfile) return;
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length; ownedTracks = []; persistNamespacedState(); saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
     };
 
     async function addBandMember(){
-      const username = prompt('Enter bandmate username:'); if(!username) return;
-      const memberProfile = await loadUserProfile(username); if(!memberProfile){ alert(`❌ User "${username}" not found!`); return; }
-      if(bandMembers.find(m=>m.username===username)){ alert('This person is already in your band!'); return; }
-      bandMembers.push({ username: memberProfile.username, djName: memberProfile.djName }); await saveUserProfile(); alert(`✅ Added ${memberProfile.djName} (@${username}) to your band!`); render(); setupEventListeners();
+      alert('Band Members is temporarily disabled.');
+      return;
     }
 
     async function viewBandMember(username){
-      const memberProfile = await loadUserProfile(username); if(!memberProfile) return alert('Could not load member profile');
-      viewingMember = memberProfile; render(); setupEventListeners();
+      alert('Band Members is temporarily disabled.');
+      return;
     }
-    function backToMyProfile(){ viewingMember=null; render(); setupEventListeners(); }
+    function backToMyProfile(){
+      alert('Band Members is temporarily disabled.');
+      return;
+    }
 
     // --------------------- Preview & two-track (simple) ---------------
     function onPreviewClick(id){
@@ -2081,6 +2138,16 @@ function render(){
       modal.setAttribute('aria-hidden','true');
     }
 
+    async function maybeLoadSharedProfile(){
+      if(!profileParam){ viewingProfile = null; return; }
+      if(currentUser && (currentUser.username === profileParam || currentUser.uid === profileParam)){
+        viewingProfile = null;
+        return;
+      }
+      await loadProfileForViewing(profileParam);
+      if(viewingProfile) view = 'profile';
+    }
+
     const helpModal = document.getElementById('helpModal');
     if(helpModal){
       helpModal.addEventListener('click',(e)=>{ if(e.target === helpModal) closeHelp(); });
@@ -2101,7 +2168,7 @@ function render(){
         const localId = localStorage.getItem('localDeviceUserId');
         if(savedUsername && savedUsername === localId){
           const profile = await loadUserProfile(savedUsername);
-          if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); loadSongs(); return; }
+          if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
         }
         showLoginScreen();
         return;
@@ -2109,7 +2176,7 @@ function render(){
       const savedUsername = localStorage.getItem('currentUser');
       if(savedUsername){
         const profile = await loadUserProfile(savedUsername);
-        if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); loadSongs(); return; }
+        if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
       }
       showLoginScreen();
     }
