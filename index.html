@@ -1286,8 +1286,6 @@ window.handleLogin = async (event) => {
           <div class="panel p-3 space-y-3">
             <div class="flex flex-wrap gap-2 items-center">
               <input id="auditSearchInput" value="${auditSearch}" placeholder="Search title or artist" class="flex-1 min-w-[200px] px-3 py-2 bg-black/40 border border-white/10 rounded" />
-              <button onclick="exportFlaggedJson(true)" class="px-3 py-2 bg-blue-500/20 rounded border border-blue-400/50">Export Flagged JSON</button>
-              <button onclick="exportFlaggedJson(false)" class="px-3 py-2 bg-white/10 rounded border border-white/20">Export Full Audit JSON</button>
             </div>
             <div class="flex flex-wrap gap-2 text-xs">
               <button class="px-3 py-1 rounded ${auditFilters.flaggedOnly?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('flaggedOnly')">Show flagged only</button>
@@ -1551,11 +1549,6 @@ window.handleLogin = async (event) => {
     };
 
     function toggleAuditFilter(key){ auditFilters[key] = !auditFilters[key]; renderAuditView(); }
-    function exportFlaggedJson(flaggedOnly){
-      const list = songs.filter(s=> flaggedOnly ? (s.flags&&s.flags.length) : true).map(t=>({ id:t.id, title:t.title, artist:t.artist, rawMk:t.rawKey, rawMm:t.rawMode, rawMt:t.rawBpm, derivedCamelot:t.derivedCamelot, camelot:t.camelot, bpmRaw:t.rawBpm, bpm:t.bpm, flags:t.flags||[] }));
-      const blob = new Blob([JSON.stringify(list,null,2)], {type:'application/json'});
-      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download = flaggedOnly? 'flagged-tracks.json':'audit-tracks.json'; a.click(); URL.revokeObjectURL(url);
-    }
     function closeOverrideModal(){ const m=document.getElementById('overrideModal'); if(m) m.remove(); }
     function openOverrideModal(type, trackId){
       if(!isAdmin()) return alert('Admin only');
