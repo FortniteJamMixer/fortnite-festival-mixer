@@ -90,6 +90,22 @@
       line-height:1.45;
       font-size:14px;
     }
+    .helpSection { margin-bottom: 18px; }
+    .helpSection h3 { font-size: 16px; margin-bottom: 6px; font-weight: 800; color: #fff; }
+    .helpSection h4 { font-size: 14px; margin-bottom: 6px; font-weight: 800; color: #9fe8ff; }
+    .helpSection p, .helpSection ul, .helpSection ol { margin-bottom: 8px; }
+    .helpSection ul { margin-left: 16px; }
+    .helpSection ol { margin-left: 18px; }
+    .helpDivider { margin: 14px 0; border-color: rgba(0,217,255,0.08); }
+    .anchorGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .anchorLink { display: block; padding: 10px 12px; border-radius: 10px; background: rgba(0,217,255,0.06); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; text-decoration: none; font-weight: 700; }
+    .anchorLink:hover { border-color: rgba(255,107,157,0.35); box-shadow: 0 0 12px rgba(255,107,157,0.18); }
+    .callout { padding: 12px; border-radius: 10px; border: 1px solid rgba(0,217,255,0.14); background: rgba(0,217,255,0.05); margin-bottom: 10px; }
+    .calloutTitle { font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; color: #9fe8ff; text-transform: uppercase; letter-spacing: 0.3px; font-size: 12px; }
+    .tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: rgba(0,217,255,0.12); color: #bdeeff; font-weight: 700; font-size: 12px; }
+    .camelot-wheel { width: 100%; max-width: 520px; margin: 10px auto; display: flex; justify-content: center; }
+    .camelot-caption { text-align: center; color: #e6f7ff; font-size: 13px; margin-top: 6px; }
+    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
 
     /* Custom neon scrollbar for helpContent */
@@ -148,80 +164,245 @@
       </div>
 
       <div class="helpContent" id="helpContent">
-        <h3 style="font-weight:800;margin-bottom:6px;color:#fff;font-size:16px">Welcome — Quick Overview</h3>
-        <p class="small-muted">This panel holds the same guidance as the landing page, plus details about new mashup tools. Open it anytime by clicking the ❓ Help button in the header.</p>
-
-        <hr style="margin:12px 0;border-color:rgba(0,217,255,0.06)">
-
-        <h4 style="margin-top:8px;font-weight:800;color:#ffb3d1">Mixer Basics</h4>
-        <ul style="margin-left:16px;margin-top:6px">
-          <li><strong>Mark Owned</strong> — Click <em>Mark Owned</em> on a track to mark it in your collection.</li>
-          <li><strong>Setlist</strong> — Use <em>+ Set</em> to add a track to your setlist. Open the Setlist view to see and reorder your picks.</li>
-          <li><strong>Search & Filters</strong> — Use the search box, <em>Show Mixable</em> and <em>Show All / ✓ Owned Only</em> to filter tracks.</li>
-          <li><strong>Band Members</strong> — Add bandmates to view and combine collections. You cannot edit other members' libraries.</li>
-        </ul>
-
-        <h4 style="margin-top:12px;font-weight:800;color:#9fe8ff">Camelot Key & BPM</h4>
-        <p class="small-muted">We use the Camelot Wheel for harmonic mixing. Each track shows its Camelot code (e.g., <span style="font-weight:700">8B</span>) and a colored pill. Compatible keys and ±1/±11 steps blend well.</p>
-        <p class="small-muted">BPM is shown on each card. The tool can recommend a BPM shift like <em>+3 BPM = Perfect Match</em>.</p>
-
-        <h4 style="margin-top:12px;font-weight:800;color:#ffd7a6">What is Mixable?</h4>
-        <p class="small-muted">Toggling <strong>Show Mixable</strong> filters to tracks compatible with your selected track by key and (optionally) BPM range. Selecting a track does <em>not</em> force the filter — you toggle it on/off.</p>
-
-        <h4 style="margin-top:12px;font-weight:800;color:#b0ffc8">Setlist & Sandbox</h4>
-        <ul style="margin-left:16px;margin-top:6px">
-          <li><strong>Add to setlist</strong> — Click <em>+ Set</em>. The Setlist view shows your list. Removing works with the ✕ button.</li>
-          <li><strong>Sandbox</strong> — Drag tracks into the sandbox to visualize BPM differences and compatible keys (limit 4 tracks).</li>
-        </ul>
-
-        <h4 style="margin-top:12px;font-weight:800;color:#ffd3e0">New Mashup Tools</h4>
-        <ul style="margin-left:16px;margin-top:6px">
-          <li><strong>Mash-up Compatibility Score</strong> — Shows a combined compatibility score (0–100%) using key (0–40), BPM (0–40), and genre (0–20).</li>
-          <li><strong>Auto BPM Suggestion</strong> — Displays <em>+N BPM = Perfect Match</em> calculated as otherBpm - selectedBpm.</li>
-          <li><strong>Two-Track Preview Panel</strong> — Compare two tracks: keys, BPM, tips, and a suggested mash-up recipe.</li>
-          <li><strong>Auto-Suggest Transitions</strong> — Based on key/BPM/genre, suggestions like <em>Filter sweep + reverb tail → chorus</em>.</li>
-          <li><strong>Mash-up Recipe Generator</strong> — Recommends starting BPM, key-change advice, bars to mix, and techniques.</li>
-          <li><strong>AI Mash-up Naming</strong> — Fun name suggestions for your mashups.</li>
-        </ul>
-
-        <h4 style="margin-top:12px;font-weight:800;color:#c5f1ff">Official Festival Jam Mixer Guide</h4>
-        <ol style="margin-left:18px;margin-top:6px;line-height:1.6">
-          <li><strong>Pick your anchor track</strong> — Click a card to lock it in. The list instantly prioritizes the closest matches.</li>
-          <li><strong>Choose a priority mode</strong> — Use the three Smart Match buttons: BPM, Camelot, or Genre. These act as tiebreakers while keeping the best compatibility score on top.</li>
-          <li><strong>Toggle Mixable</strong> — Want strict key/BPM filtering? Hit “🎧 Mixable Only.”</li>
-          <li><strong>Refine</strong> — Search, Owned/All, and Genre tags stack with Smart Match to dial in your set.</li>
-          <li><strong>Sandbox it</strong> — Drag top picks into the Sandbox to visualize compatibility before performing.</li>
-        </ol>
-
-        <div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(0,217,255,0.06);border:1px solid rgba(0,217,255,0.12)">
-          <div style="font-weight:800;color:#9fe8ff;margin-bottom:6px">Smart Matching Explained</div>
-          <p class="small-muted">Every track gets a compatibility score (key > BPM > genre). Switching modes <em>never</em> breaks that order; it only decides the tie-break. Expect the closest harmonic matches first, then tempo closeness, then genre cohesion.</p>
+        <div class="helpSection" id="welcome">
+          <h3>Festival Pro Mixer Help</h3>
+          <p class="small-muted">A complete, beginner-to-pro guide for every tool in Festival Pro Mixer. Open this help anytime with the ❓ button in the header.</p>
+          <div class="anchorGrid">
+            <a class="anchorLink" href="#quickstart">Quick Start</a>
+            <a class="anchorLink" href="#browse">Browse, Search & Filter</a>
+            <a class="anchorLink" href="#select">Select a Track & Mixable Only</a>
+            <a class="anchorLink" href="#priority">Priority Modes & Strength</a>
+            <a class="anchorLink" href="#setlist">Setlist & Set view</a>
+            <a class="anchorLink" href="#band">Band Members</a>
+            <a class="anchorLink" href="#sandbox">Sandbox</a>
+            <a class="anchorLink" href="#camelot">Camelot Wheel & Harmonic Mixing</a>
+            <a class="anchorLink" href="#internalCamelot">How Festival Pro Mixer uses Camelot</a>
+            <a class="anchorLink" href="#admin">Admin Tools</a>
+          </div>
         </div>
 
-        <h4 style="margin-top:12px;font-weight:800;color:#ffe3b8">Troubleshooting & Tips</h4>
-        <ul style="margin-left:16px;margin-top:6px">
-          <li><strong>Help won’t close?</strong> Click outside the panel or press Esc.</li>
-          <li><strong>Reset a view</strong> — Clear search, toggle filters off, or hit “Show Mixable” again.</li>
-          <li><strong>Bandmates</strong> — You can browse band collections but can’t edit their owned list.</li>
-        </ul>
+        <div class="helpSection" id="quickstart">
+          <h3>Quick Start</h3>
+          <ol style="line-height:1.6">
+            <li><strong>Browse or search</strong> the song cards. Hovering shows genre, BPM, Camelot key, and ownership.</li>
+            <li><strong>Select a track</strong> (click any card). It becomes the anchor; matching songs bubble to the top.</li>
+            <li><strong>Choose a Priority Mode</strong> (Tempo, Camelot, or Genre) and adjust <strong>Priority Strength</strong> (Low/Medium/High) to steer the tie-breakers.</li>
+            <li><strong>Toggle Mixable Only</strong> when you want strict harmonic/tempo filtering instead of broad suggestions.</li>
+            <li><strong>Add to Set</strong> to start a setlist, or <strong>drag into Sandbox</strong> to experiment with up to four tracks.</li>
+          </ol>
+          <div class="callout">
+            <div class="calloutTitle">💡 Beginner Tip</div>
+            <p class="small-muted">Start with Camelot Priority + Mixable Only. You’ll see the safest harmonic picks immediately.</p>
+          </div>
+        </div>
 
-        <h4 style="margin-top:12px;font-weight:800;color:#b6e0ff">Admin & Genre Overrides</h4>
-        <p class="small-muted">Admin (user <strong>BattleNeBody</strong>) can correct genre tags by clicking the genre pill. This opens the genre menu for corrections.</p>
+        <div class="helpSection" id="browse">
+          <h3>Browse, Search & Filter</h3>
+          <ul>
+            <li><strong>Browse songs</strong> in the main grid. Use the <span class="pill" style="background:rgba(255,107,157,0.18);border:1px solid rgba(255,107,157,0.4);color:#fff;">Genre</span> and <span class="pill" style="background:rgba(0,217,255,0.15);border:1px solid rgba(0,217,255,0.4);color:#fff;">Camelot key</span> pills for quick scanning.</li>
+            <li><strong>Search</strong> by title or artist in the header bar.</li>
+            <li><strong>Filter</strong> with <em>Show All / ✓ Owned Only</em> to narrow to your library.</li>
+            <li><strong>Show Mixable</strong> can stack with search/owned filters to narrow to harmonically compatible songs.</li>
+          </ul>
+          <div class="callout">
+            <div class="calloutTitle">🎚️ Pro Tip</div>
+            <p class="small-muted">Use search to find a vibe (e.g., “synthwave”), then toggle Mixable Only to keep only the compatible cuts.</p>
+          </div>
+        </div>
 
-        <h4 style="margin-top:12px;font-weight:800;color:#ffe29a">Profiles & Sync</h4>
-        <p class="small-muted">Profiles save automatically. When Firebase is enabled, your data syncs securely to your account. Otherwise, everything is stored locally in your browser.</p>
+        <div class="helpSection" id="select">
+          <h3>Selecting a Track & Mixable Only</h3>
+          <ul>
+            <li><strong>Select a track</strong> by clicking its card. A <span class="selected-badge">Selected</span> badge appears and compatibility scores recalc around it.</li>
+            <li><strong>Mixable Only</strong> (🎧) filters the grid to keys that match the anchor (Camelot match or ±1 number same letter) and sensible BPM ranges. Turn it off to explore looser options.</li>
+            <li><strong>Compatibility pills</strong> show why a song is ranked (key match, BPM delta, genre cohesion).</li>
+          </ul>
+          <div class="callout">
+            <div class="calloutTitle">🔍 Why it matters</div>
+            <p class="small-muted">Mixable Only is perfect before a live transition; turn it off when crate-digging for creative curveballs.</p>
+          </div>
+        </div>
 
-        <hr style="margin:12px 0;border-color:rgba(0,217,255,0.06)">
+        <div class="helpSection" id="priority">
+          <h3>Priority Modes & Strength</h3>
+          <p>Festival Pro Mixer always calculates a blended compatibility score (Key → BPM → Genre). Priority modes only decide how ties are broken, not the overall score.</p>
+          <ul>
+            <li><span class="tag">Tempo Priority</span> Pushes closer BPM tracks up when scores are similar.</li>
+            <li><span class="tag">Camelot Priority</span> Prefers the strongest harmonic matches first.</li>
+            <li><span class="tag">Genre Priority</span> Boosts songs that share the current track’s genre family.</li>
+          </ul>
+          <p><strong>Priority Strength</strong> (Low / Medium / High) controls how aggressively the chosen mode nudges the order. High = strong tie-break, Low = gentle shuffle.</p>
+          <div class="callout">
+            <div class="calloutTitle">🧭 Cue-building idea</div>
+            <p class="small-muted">Use Camelot Priority + High to plan tight harmonic sections, then switch to Tempo Priority when you want to accelerate energy.</p>
+          </div>
+        </div>
 
-        <h4 style="margin-top:12px;font-weight:800;color:#ffd0ff">Tips & Pro Tricks</h4>
-        <ul style="margin-left:16px;margin-top:6px">
-          <li>Mix on phrase boundaries (8/16 bars).</li>
-          <li>Use FX (filter/reverb) to hide key clashes on cross-genre mixes.</li>
-          <li>When BPM differs by >6, consider tempo ramp or resampling for smoothness.</li>
-          <li>Use the sandbox to pre-visualize transitions and reorder for build-ups.</li>
-        </ul>
+        <div class="helpSection" id="setlist">
+          <h3>Owned Tracks, Setlist & Set view</h3>
+          <ul>
+            <li><strong>Mark Owned</strong> on any card to tag it as part of your library. The <em>Owned Only</em> filter shows just these tracks.</li>
+            <li><strong>+ Set</strong> adds the song to your setlist. Open <strong>Set view</strong> to see, reorder, and remove selections with the ✕ button.</li>
+            <li><strong>Setlist sorting</strong> mirrors your order; reorder inside Set view to shape your show.</li>
+            <li><strong>Profiles & sync</strong> save automatically. With Firebase enabled, your owned list and setlist sync to your account; otherwise they’re stored locally.</li>
+          </ul>
+          <div class="callout">
+            <div class="calloutTitle">🎯 Beginner Tip</div>
+            <p class="small-muted">Curate your first 5 songs with Owned Only + Camelot Priority. Add them to Set, then drag two into Sandbox to rehearse.</p>
+          </div>
+        </div>
 
-        <p class="small-muted" style="margin-top:10px">That's it — open this panel anytime via the ❓ Help button. Stay in theme and keep the groove alive. 🎧</p>
+        <div class="helpSection" id="band">
+          <h3>Band Members</h3>
+          <p>Band members let you view and combine collections without editing anyone else’s library.</p>
+          <ul>
+            <li><strong>Add bandmates</strong> to browse their owned tracks alongside yours.</li>
+            <li><strong>Selections stay yours</strong>: you can’t toggle Owned for another member, but you can put their songs into your Sandbox or Setlist for planning.</li>
+            <li><strong>Great for squads</strong> who split duties (e.g., one player handles vocals, another the drums).</li>
+          </ul>
+        </div>
+
+        <div class="helpSection" id="sandbox">
+          <h3>Sandbox (Drag & Drop Lab)</h3>
+          <ul>
+            <li><strong>Drag any card</strong> into the Sandbox area (max 4 tracks). It shows BPM difference, Camelot compatibility, and quick mix notes.</li>
+            <li><strong>Reorder</strong> inside the Sandbox to visualize transition flow.</li>
+            <li><strong>Remove</strong> with the ✕ control when you want to swap ideas.</li>
+          </ul>
+          <div class="callout">
+            <div class="calloutTitle">🧪 Pro Tip</div>
+            <p class="small-muted">Line up four tracks that climb +1 Camelot number clockwise. It’s a smooth, rising-energy mini-set.</p>
+          </div>
+        </div>
+
+        <div class="helpSection" id="camelot">
+          <h3>Camelot Wheel: Colors, Numbers & Keys</h3>
+          <p>The Camelot system labels keys with a number (1–12) and letter (A = minor, B = major). Colors below follow the industry-standard Mixed In Key palette so you can recognize keys at a glance.</p>
+          <div class="camelot-wheel" aria-label="Camelot wheel diagram">
+            <svg viewBox="0 0 520 520" width="100%" role="img" aria-labelledby="camelotTitle camelotDesc">
+              <title id="camelotTitle">Camelot Wheel</title>
+              <desc id="camelotDesc">Numbers 1-12 with A minor inner ring and B major outer ring using industry-standard colors.</desc>
+              <defs>
+                <circle id="arc" cx="260" cy="260" r="120" fill="none" stroke-width="70" stroke-linecap="butt" />
+              </defs>
+              <g>
+                <!-- Outer B (major) ring colors -->
+                <g stroke-width="70" stroke-linecap="butt">
+                  <use href="#arc" stroke="#13b981" transform="rotate(0 260 260)" />
+                  <use href="#arc" stroke="#0fb9c2" transform="rotate(30 260 260)" />
+                  <use href="#arc" stroke="#1ea7ff" transform="rotate(60 260 260)" />
+                  <use href="#arc" stroke="#4b5efc" transform="rotate(90 260 260)" />
+                  <use href="#arc" stroke="#a445f5" transform="rotate(120 260 260)" />
+                  <use href="#arc" stroke="#e63ca4" transform="rotate(150 260 260)" />
+                  <use href="#arc" stroke="#f05454" transform="rotate(180 260 260)" />
+                  <use href="#arc" stroke="#f27c38" transform="rotate(210 260 260)" />
+                  <use href="#arc" stroke="#f7c247" transform="rotate(240 260 260)" />
+                  <use href="#arc" stroke="#c5e348" transform="rotate(270 260 260)" />
+                  <use href="#arc" stroke="#6fdb5e" transform="rotate(300 260 260)" />
+                  <use href="#arc" stroke="#35c07d" transform="rotate(330 260 260)" />
+                </g>
+                <!-- Inner A (minor) ring colors -->
+                <g stroke-width="70" stroke-linecap="butt" transform="scale(0.63 0.63) translate(97 97)">
+                  <use href="#arc" stroke="#0e9f6e" transform="rotate(0 260 260)" />
+                  <use href="#arc" stroke="#0ea5b9" transform="rotate(30 260 260)" />
+                  <use href="#arc" stroke="#1b9bff" transform="rotate(60 260 260)" />
+                  <use href="#arc" stroke="#3f51ff" transform="rotate(90 260 260)" />
+                  <use href="#arc" stroke="#9543f2" transform="rotate(120 260 260)" />
+                  <use href="#arc" stroke="#d13ab0" transform="rotate(150 260 260)" />
+                  <use href="#arc" stroke="#e2385e" transform="rotate(180 260 260)" />
+                  <use href="#arc" stroke="#ed6b2e" transform="rotate(210 260 260)" />
+                  <use href="#arc" stroke="#f3ad32" transform="rotate(240 260 260)" />
+                  <use href="#arc" stroke="#bdda35" transform="rotate(270 260 260)" />
+                  <use href="#arc" stroke="#5dc947" transform="rotate(300 260 260)" />
+                  <use href="#arc" stroke="#2bb86e" transform="rotate(330 260 260)" />
+                </g>
+              </g>
+              <!-- Labels -->
+              <g font-family="'Segoe UI', sans-serif" font-weight="800" fill="#fff" text-anchor="middle" font-size="16">
+                <!-- B ring numbers -->
+                <g>
+                  <text x="260" y="38">1B = B major</text>
+                  <text x="409" y="78" transform="rotate(30 409 78)">2B = F♯ major</text>
+                  <text x="474" y="195" transform="rotate(60 474 195)">3B = D♭ major</text>
+                  <text x="450" y="326" transform="rotate(90 450 326)">4B = A♭ major</text>
+                  <text x="350" y="425" transform="rotate(120 350 425)">5B = E♭ major</text>
+                  <text x="220" y="450" transform="rotate(150 220 450)">6B = B♭ major</text>
+                  <text x="90" y="410" transform="rotate(180 90 410)">7B = F major</text>
+                  <text x="36" y="295" transform="rotate(210 36 295)">8B = C major</text>
+                  <text x="60" y="165" transform="rotate(240 60 165)">9B = G major</text>
+                  <text x="158" y="66" transform="rotate(270 158 66)">10B = D major</text>
+                  <text x="290" y="40" transform="rotate(300 290 40)">11B = A major</text>
+                  <text x="408" y="85" transform="rotate(330 408 85)">12B = E major</text>
+                </g>
+                <!-- A ring numbers -->
+                <g font-size="14">
+                  <text x="260" y="125">1A = A♭ minor</text>
+                  <text x="350" y="135" transform="rotate(30 350 135)">2A = E♭ minor</text>
+                  <text x="390" y="210" transform="rotate(60 390 210)">3A = B♭ minor</text>
+                  <text x="370" y="285" transform="rotate(90 370 285)">4A = F minor</text>
+                  <text x="315" y="340" transform="rotate(120 315 340)">5A = C minor</text>
+                  <text x="245" y="360" transform="rotate(150 245 360)">6A = G minor</text>
+                  <text x="170" y="340" transform="rotate(180 170 340)">7A = D minor</text>
+                  <text x="125" y="270" transform="rotate(210 125 270)">8A = A minor</text>
+                  <text x="140" y="195" transform="rotate(240 140 195)">9A = E minor</text>
+                  <text x="200" y="135" transform="rotate(270 200 135)">10A = B minor</text>
+                  <text x="275" y="120" transform="rotate(300 275 120)">11A = F♯ minor</text>
+                  <text x="340" y="145" transform="rotate(330 340 145)">12A = C♯ minor</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+          <div class="camelot-caption">Colors: green → teal → blue → purple → magenta → red → orange → yellow → lime (industry-standard Camelot palette). A = minor (inner ring), B = major (outer ring).</div>
+          <h4 style="color:#ffd7a6">Harmonic Mixing Rules</h4>
+          <ul>
+            <li><strong>Perfect match:</strong> same number + same letter (e.g., 8A → 8A).</li>
+            <li><strong>Energy switch:</strong> same number, different letter (e.g., 8A → 8B) for a happy/somber contrast with stable harmony.</li>
+            <li><strong>Smooth move:</strong> +1 or -1 number, same letter (e.g., 8A → 9A or 7A) for gradual energy lifts or drops.</li>
+            <li><strong>Avoid far jumps:</strong> skipping several numbers or flipping both number and letter usually clashes unless you use heavy FX.</li>
+          </ul>
+          <div class="callout">
+            <div class="calloutTitle">🎛️ DJ Tip</div>
+            <p class="small-muted">Ride the wheel clockwise for rising energy. Hop between inner/outer rings on the same number when you want a brighter (major) or moodier (minor) take.</p>
+          </div>
+        </div>
+
+        <div class="helpSection" id="internalCamelot">
+          <h3>How Festival Pro Mixer Uses Camelot</h3>
+          <ul>
+            <li><strong>Accurate keys:</strong> Tracks display Camelot values aligned to real song keys. Example: “Don’t Fear the Reaper” is <strong>8A</strong> because the song is in A minor; earlier incorrect tags were fixed in the dataset.</li>
+            <li><strong>Color pills</strong> on each card mirror the Camelot wheel colors so you can glance-match without reading numbers.</li>
+            <li><strong>Unknown keys</strong> show a <strong>?</strong>. They stay visible for discovery, but Mixable Only will skip them because harmonic certainty is missing.</li>
+            <li><strong>Compatibility scoring</strong> prioritizes exact Camelot matches, then ±1 number same letter, then broader tempo/genre factors.</li>
+          </ul>
+          <div class="callout">
+            <div class="calloutTitle">ℹ️ Note</div>
+            <p class="small-muted">If you ever spot a wrong key, admins can retag it (see Admin Tools). Once corrected, the Mixable filter and color pill update instantly.</p>
+          </div>
+        </div>
+
+        <div class="helpSection" id="admin">
+          <h3>Admin Tools (admin-only)</h3>
+          <p>Admins (e.g., <strong>BattleNeBody</strong>) can click the genre pill to open the correction menu, fix tags, and keep compatibility suggestions accurate. Non-admin users won’t see these edit controls.</p>
+        </div>
+
+        <div class="helpSection" id="troubleshoot">
+          <h3>Troubleshooting & Closing</h3>
+          <ul>
+            <li><strong>Help controls:</strong> Click outside the panel or press Esc to close. Reopening keeps your scroll position so you can resume where you left off.</li>
+            <li><strong>Reset filters:</strong> Clear search, toggle Mixable Only off/on, or switch Priority Strength back to Medium for balanced results.</li>
+            <li><strong>Data storage:</strong> If Firebase is disabled, everything saves locally in your browser; no internet required.</li>
+          </ul>
+        </div>
+
+        <div class="helpSection" id="tips">
+          <h3>Performance Tips</h3>
+          <ul>
+            <li>Enter transitions on phrase boundaries (8 or 16 bars) for cleaner swaps.</li>
+            <li>When BPM differs by more than 6, try a tempo ramp or half-time FX to bridge the gap.</li>
+            <li>Filter sweeps and reverb tails can hide brief key shifts if you intentionally break Camelot rules.</li>
+            <li>Use the Sandbox to rehearse a 3–4 song story: start on a perfect match, climb +1, then flip to the major on the same number for a finale.</li>
+          </ul>
+        </div>
       </div>
 
       <div class="helpFooter">
