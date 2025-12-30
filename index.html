@@ -45,9 +45,9 @@
     .selected-card { border: 2px solid rgba(0,217,255,0.8); box-shadow: 0 0 26px rgba(0,217,255,0.45), 0 0 12px rgba(236,72,153,0.25); }
     #adminToolsBtn { pointer-events: auto; cursor: pointer; }
     .admin-tools-menu { z-index: 6000; pointer-events: auto; position: absolute; }
-    .song-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
-    @media (min-width: 1280px) {
-      .song-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); }
+    .song-grid { grid-template-columns: 1fr; }
+    @media (min-width: 768px) {
+      .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     /* Help modal */
@@ -1545,7 +1545,7 @@ function render(){
                 <div class="text-xl font-bold text-white">Song Browser</div>
                 <div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>
               </div>
-              <div id="songList" class="grid gap-4 sm:grid-cols-1 md:grid-cols-2"></div>
+              <div id="songList" class="space-y-4"></div>
             </div>
           </div>
         </div>
