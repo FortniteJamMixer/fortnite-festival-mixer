@@ -45,6 +45,10 @@
     .selected-card { border: 2px solid rgba(0,217,255,0.8); box-shadow: 0 0 26px rgba(0,217,255,0.45), 0 0 12px rgba(236,72,153,0.25); }
     #adminToolsBtn { pointer-events: auto; cursor: pointer; }
     .admin-tools-menu { z-index: 6000; pointer-events: auto; position: absolute; }
+    .song-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+    @media (min-width: 1280px) {
+      .song-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); }
+    }
 
     /* Help modal */
     #helpModal {
@@ -1146,7 +1150,7 @@ window.handleLogin = async (event) => {
         <div class="text-xs text-gray-300 mb-4">${priorityDescriptions[sortMode] || priorityDescriptions.bpm} Top matches are sorted by compatibility first, then the priority boost (showing strongest ~10 results up top).</div>
       ` : '';
 
-      songListEl.innerHTML = priorityHeader + `<div class="grid gap-4 sm:grid-cols-1 md:grid-cols-2">` + scored.map(entry=>{
+      songListEl.innerHTML = priorityHeader + `<div class="song-grid grid gap-4">` + scored.map(entry=>{
         const song = entry.song;
         const isSelected = selectedSong && song.id === selectedSong.id;
         const isOwned = displayTracks.includes(song.id);
@@ -1436,7 +1440,7 @@ function render(){
   document.getElementById('app').innerHTML = `
     <div class="min-h-screen">
       <header class="bg-black/70 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+        <div class="max-w-[1400px] mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-3">
             <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
             <div>
@@ -1457,7 +1461,7 @@ function render(){
         </div>
       </header>
 
-      <main class="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-4">
+      <main class="max-w-[1400px] mx-auto px-4 py-6 pb-20 space-y-4">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div class="flex gap-2 flex-wrap">
             <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
