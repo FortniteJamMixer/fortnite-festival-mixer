@@ -1146,7 +1146,7 @@ window.handleLogin = async (event) => {
         <div class="text-xs text-gray-300 mb-4">${priorityDescriptions[sortMode] || priorityDescriptions.bpm} Top matches are sorted by compatibility first, then the priority boost (showing strongest ~10 results up top).</div>
       ` : '';
 
-      songListEl.innerHTML = priorityHeader + scored.map(entry=>{
+      songListEl.innerHTML = priorityHeader + `<div class="grid gap-4 sm:grid-cols-1 md:grid-cols-2">` + scored.map(entry=>{
         const song = entry.song;
         const isSelected = selectedSong && song.id === selectedSong.id;
         const isOwned = displayTracks.includes(song.id);
@@ -1194,14 +1194,16 @@ window.handleLogin = async (event) => {
                 ${priorityLabel ? `<div class="text-xs text-cyan-200 mt-1">${priorityLabel}</div>` : ''}
               </div>
             </div>
-            <div class="flex gap-2">
-              <button onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
+            <div class="flex flex-wrap gap-2 items-center">
+              <button onclick="selectSong('${song.id}')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
+              <button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-id="${song.id}">Preview</button>
+              <button onclick="toggleOwned('${song.id}')" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
               <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}">+ Set</button>
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
           </div>
         `;
-      }).join('');
+      }).join('') + `</div>`;
       // attach right-click genre handlers
       document.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
         btn.addEventListener('click',(e)=>{ e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); });
@@ -1395,131 +1397,166 @@ window.handleLogin = async (event) => {
       }catch(e){ const statusEl = document.getElementById('profileStatus'); if(statusEl) statusEl.textContent = 'Error saving profile: ' + (e.message||e); }
     }
 
-    function render(){
-      if(view === 'audit' && !isAdmin()){
-        alert('Admin only');
-        view = 'browser';
-      }
-      if(!isAdmin() && adminMenuOpen){
-        adminMenuOpen = false;
-      }
-      const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
-      const ownedCount = displayTracks.length;
-      const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
-      const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
-      const selectedPanel = `
-        <div class="selected-panel rounded-xl p-4 flex flex-col gap-3">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div class="flex items-start gap-3">
-              <div class="w-14 h-14 rounded-lg flex items-center justify-center text-lg font-bold" style="background:${selectedSong ? (camelotColors[selectedSong.camelot] || '#0ea5e9') : 'rgba(255,255,255,0.08)'};color:#fff;">${selectedSong ? selectedSong.camelot : '—'}</div>
-              <div>
-                <div class="selected-badge inline-flex items-center gap-2 mb-1">${selectedSong ? 'Selected Track' : 'No track selected'}</div>
-                <div class="text-white font-bold text-lg leading-tight">${selectedSong ? selectedSong.title : 'Choose a track to pin it here'}</div>
-                <div class="text-gray-300 text-sm">${selectedSong ? selectedSong.artist : 'Click any card to keep it in view while filtering.'}</div>
-                <div class="text-xs text-cyan-100 font-semibold mt-1">${selectedSong ? `BPM: ${selectedSong.bpm} • Camelot: ${selectedSong.camelot}` : 'Panel stays visible even if filters hide your pick.'}</div>
-              </div>
-            </div>
-            <div class="flex gap-2 flex-wrap">
-              <button id="panelClearSelectionBtn" onclick="clearSelection()" class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
-              <button id="panelClearSearchBtn" onclick="clearSearch()" class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
-              <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-4 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
+
+function render(){
+  if(view === 'audit' && !isAdmin()){
+    alert('Admin only');
+    view = 'browser';
+  }
+  if(!isAdmin() && adminMenuOpen){
+    adminMenuOpen = false;
+  }
+  const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
+  const ownedCount = displayTracks.length;
+  const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
+  const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
+  const selectedPanel = `
+    <div class="panel ${selectedSong ? 'selected-panel' : ''} space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="font-bold text-white">Selection</div>
+        <span class="text-xs text-cyan-100">${selectedSong ? 'Pinned track' : 'No track selected'}</span>
+      </div>
+      <div class="flex items-start gap-3">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold" style="background:${selectedSong ? (camelotColors[selectedSong.camelot] || '#0ea5e9') : 'rgba(255,255,255,0.08)'};color:#fff;">${selectedSong ? selectedSong.camelot : '—'}</div>
+        <div class="flex-1">
+          <div class="font-bold text-white">${selectedSong ? selectedSong.title : 'Select a track to pin it'}</div>
+          <div class="text-sm text-gray-300">${selectedSong ? selectedSong.artist : 'Songs stay visible while you filter.'}</div>
+          <div class="text-xs text-cyan-100 font-semibold mt-1">${selectedSong ? `BPM: ${selectedSong.bpm} • Camelot: ${selectedSong.camelot}` : 'Click any card or Select to choose.'}</div>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button id="panelClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
+        <button id="panelClearSearchBtn" onclick="clearSearch()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
+        <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
+      </div>
+    </div>`;
+  const signedLabel = viewingMember ? `Viewing ${viewingMember.djName}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}`;
+  const authButtonLabel = firebaseAuth?.currentUser ? 'Logout' : 'Sign In';
+  const authButtonAction = firebaseAuth?.currentUser ? 'logoutUser()' : 'showLoginScreen()';
+  document.getElementById('app').innerHTML = `
+    <div class="min-h-screen">
+      <header class="bg-black/70 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
+            <div>
+              <h1 class="text-2xl font-bold text-white graffiti-text">FESTIVAL PRO MIXER</h1>
+              <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
             </div>
           </div>
-        </div>`;
-      document.getElementById('app').innerHTML = `
-        <div class="min-h-screen">
-          <div class="bg-black/60 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg">
-            <div class="max-w-7xl mx-auto px-6 py-4">
-              <div class="flex items-center justify-between gap-4 mb-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
-                  <div>
-                    <h1 class="text-2xl font-bold text-white graffiti-text">FESTIVAL PRO MIXER</h1>
-                    <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">${viewingMember?viewingMember.djName:'You'} own ${ownedCount}/${songs.length} tracks</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3">
-                  ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm">← Back</button>`:`
-                    <div class="text-right"><div class="text-sm text-pink-300 font-bold">${currentUser?currentUser.djName:''}${adminBadge}</div><div class="text-xs text-gray-400">@${currentUser?currentUser.username:''}${Object.keys(genreOverrides).length>0?` • ${Object.keys(genreOverrides).length} corrections`:''}</div></div>
-                    ${isAdmin()?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;"> 
-                      <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
-                    </div>`:''}</div>`:''}
-                    <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
-                    <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
-                    <button onclick="logoutUser()" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">Logout</button>
-                  `}
-                </div>
-              </div>
-
-              ${!viewingMember && bandMembers.length>0 ? `<div class="mb-4"><div class="text-sm text-purple-300 mb-2 font-bold">🎸 Band Members:</div><div class="flex gap-2 flex-wrap">${bandMembers.map(member=>`<button onclick="viewBandMember('${member.username}')" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">${member.djName}</button>`).join('')}<button onclick="addBandMember()" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm">+ Add Member</button></div></div>` : !viewingMember?`<div class="mb-4"><button onclick="addBandMember()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">🎸 + Add Band Member</button></div>` : ''}
-
-              <div class="flex gap-2">
-                <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
-                <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
-                <button id="profileBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="max-w-7xl mx-auto px-6 py-6 pb-20">
-            ${regressionBanner}
-            <div id="browserView" style="display:${view==='browser'?'block':'none'}">
-              <div class="mb-6 space-y-4">
-                <div class="relative">
-                  <input type="text" id="searchInput" value="${searchTerm || ''}" placeholder="🔍 Quick search (optional)..." class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
-                  <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
-                </div>
-                <div class="flex flex-wrap gap-3">
-                  <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
-                  <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
-                  ${!viewingMember?`<button id="markAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button><button id="clearAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>`:''}
-                </div>
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-black/30 border border-cyan-500/10 rounded-xl p-3">
-                  <div>
-                    <div class="text-sm text-cyan-200 font-semibold">Smart Match Priority</div>
-                    <div class="text-xs text-gray-400">Best matches stay on top. Choose what to emphasize as a tiebreaker.</div>
-                    ${selectedSong?`<div class="text-xs text-pink-200 mt-1">Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM</div>`:''}
-                  </div>
-                  <div class="flex flex-col gap-2 items-start">
-                    <div class="flex flex-wrap gap-2">
-                      <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
-                      <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
-                      <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
-                    </div>
-                    <div class="flex items-center gap-2 w-full">
-                      <div class="text-xs text-gray-300 font-semibold">Priority Strength</div>
-                      <div class="flex items-center gap-2 flex-1 max-w-xs">
-                        <span class="text-[11px] text-gray-500">Low</span>
-                        <input type="range" min="0" max="2" step="1" value="${priorityStrength==='low'?0:priorityStrength==='high'?2:1}" class="flex-1 accent-cyan-400" oninput="setPriorityStrength(this.value)" aria-label="Priority Strength" />
-                        <span class="text-[11px] text-gray-500">High</span>
-                      </div>
-                      <div class="text-[11px] px-2 py-1 rounded bg-white/10 border border-white/10 text-cyan-200 font-semibold">${priorityStrength==='low'?'Low':priorityStrength==='high'?'High':'Medium'}</div>
-                    </div>
-                  </div>
-                </div>
-                ${selectedPanel}
-                <div class="panel">
-                  <div class="flex items-center justify-between mb-2">
-                    <div class="font-bold text-white">Sandbox (drag tracks here)</div>
-                    <div class="text-xs text-gray-300">Limit 4 • persists locally</div>
-                  </div>
-                  <div id="sandbox" class="sandbox-drop bg-black/40"></div>
-                  <div id="sandboxInfo" class="small-muted mt-2"></div>
-                </div>
-              </div>
-              <div id="songList"></div>
-            </div>
-
-            <div id="setlistView" style="display:${view==='setlist'?'block':'none'}">
-              <div id="setlistContent"></div>
-            </div>
-            <div id="profileView" style="display:${view==='profile'?'block':'none'}"></div>
-            <div id="auditView" style="display:${view==='audit'?'block':'none'}"></div>
+          <div class="flex items-center gap-3 flex-wrap justify-end">
+            <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
+            ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
+            ${isAdmin()?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
+                  <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
+                </div>`:''}</div>`:''}
+            <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
+            <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
+            <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
           </div>
         </div>
-      `;
-      if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
-    }
+      </header>
+
+      <main class="max-w-7xl mx-auto px-4 py-6 pb-20 space-y-4">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex gap-2 flex-wrap">
+            <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
+            <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
+            <button id="profileBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
+          </div>
+          ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
+        </div>
+
+        ${regressionBanner}
+        <div id="browserView" style="display:${view==='browser'?'block':'none'}">
+          <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
+            <div class="space-y-4">
+              <div class="panel space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white">Controls</div>
+                  <span class="text-xs text-gray-300">${viewingMember ? 'Band library' : 'Your library'}</span>
+                </div>
+                <div class="relative">
+                  <input type="text" id="searchInput" value="${searchTerm || ''}" placeholder="🔍 Search songs" class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                  <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button id="mixableFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
+                  <button id="ownedFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
+                  <button id="controlClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
+                </div>
+                ${!viewingMember?`<div class="flex flex-wrap gap-2">
+                  <button id="markAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
+                  <button id="clearAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
+                </div>`:''}
+              </div>
+
+              <div class="panel space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white">Mix Logic</div>
+                  <span class="text-xs text-gray-300">Priority selector</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Tempo (BPM)</button>
+                  <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                  <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="text-xs text-gray-300 font-semibold">Priority Strength</div>
+                  <div class="flex items-center gap-2 flex-1">
+                    <span class="text-[11px] text-gray-500">Low</span>
+                    <input type="range" min="0" max="2" step="1" value="${priorityStrength==='low'?0:priorityStrength==='high'?2:1}" class="flex-1 accent-cyan-400" oninput="setPriorityStrength(this.value)" aria-label="Priority Strength" />
+                    <span class="text-[11px] text-gray-500">High</span>
+                  </div>
+                  <div class="text-[11px] px-2 py-1 rounded bg-white/10 border border-white/10 text-cyan-200 font-semibold">${priorityStrength==='low'?'Low':priorityStrength==='high'?'High':'Medium'}</div>
+                </div>
+              </div>
+
+              ${selectedPanel}
+
+              <div class="panel space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white">Sandbox (Drag tracks here)</div>
+                  <div class="flex items-center gap-2 text-xs text-gray-300">
+                    <span>Limit 4</span>
+                    <button onclick="clearSandbox()" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10">Clear</button>
+                  </div>
+                </div>
+                <div id="sandbox" class="sandbox-drop bg-black/40"></div>
+                <div id="sandboxInfo" class="small-muted"></div>
+              </div>
+
+              <div class="panel space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white">Band Members</div>
+                  ${!viewingMember?`<button onclick="addBandMember()" class="px-3 py-1 bg-white/10 hover:bg-white/20 rounded text-sm">+ Add</button>`:''}
+                </div>
+                ${bandMembers.length>0 ? `<div class="flex flex-wrap gap-2">${bandMembers.map(member=>`<button onclick="viewBandMember('${member.username}')" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">${member.djName}</button>`).join('')}</div>` : `<div class="text-xs text-gray-400">${viewingMember ? 'Viewing band library' : 'No band members yet. Add one to browse their tracks.'}</div>`}
+                ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">← Back to my collection</button>`:''}
+              </div>
+            </div>
+
+            <div class="space-y-4">
+              <div class="flex items-center justify-between flex-wrap gap-3">
+                <div class="text-xl font-bold text-white">Song Browser</div>
+                <div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>
+              </div>
+              <div id="songList" class="grid gap-4 sm:grid-cols-1 md:grid-cols-2"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="setlistView" style="display:${view==='setlist'?'block':'none'}">
+          <div id="setlistContent"></div>
+        </div>
+        <div id="profileView" style="display:${view==='profile'?'block':'none'}"></div>
+        <div id="auditView" style="display:${view==='audit'?'block':'none'}"></div>
+      </main>
+    </div>
+  `;
+  if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
+}
+
 
     // ------------------ Genre context menu ------------------------
     function showGenreMenu(songId,event){
@@ -1775,6 +1812,7 @@ window.handleLogin = async (event) => {
     function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds)); }
     function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
+    function clearSandbox(){ sandboxTracks=[]; sandboxIds=[]; renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
 
     // NOTE:
