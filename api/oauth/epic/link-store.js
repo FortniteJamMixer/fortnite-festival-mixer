@@ -29,16 +29,44 @@ function toTimestamp(value) {
   return date.toISOString();
 }
 
+function buildArrayField(values = []) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  return { arrayValue: { values: values.map((v) => ({ stringValue: v })) } };
+}
+
 function toFirestorePayload(payload) {
+  const providerUserId = payload.providerUserId || payload.epicAccountId || "";
+  const scopesField = buildArrayField(payload.scopes);
   const fields = {
-    linked: { booleanValue: true },
-    epicAccountId: { stringValue: payload.epicAccountId || "" },
+    provider: { stringValue: payload.provider || "epic" },
+    providerUserId: { stringValue: providerUserId },
+    epicAccountId: { stringValue: providerUserId },
+    linked: { booleanValue: payload.linked !== false },
+    status: { stringValue: payload.status || "linked" },
     linkedAt: { timestampValue: toTimestamp(payload.linkedAt) },
     lastValidatedAt: { timestampValue: toTimestamp(payload.lastValidatedAt) },
+    lastUpdatedAt: { timestampValue: toTimestamp(payload.lastUpdatedAt) },
   };
+
   if (payload.displayName) {
     fields.displayName = { stringValue: payload.displayName };
   }
+  if (scopesField) {
+    fields.scopes = scopesField;
+  }
+  if (payload.metadata && typeof payload.metadata === "object") {
+    fields.metadata = {
+      mapValue: {
+        fields: Object.fromEntries(
+          Object.entries(payload.metadata).map(([key, value]) => [
+            key,
+            { stringValue: String(value) },
+          ])
+        ),
+      },
+    };
+  }
+
   return { fields };
 }
 
@@ -46,12 +74,28 @@ function fromFirestoreDocument(doc) {
   if (!doc?.fields) return null;
   const f = doc.fields;
   const parseTime = (ts) => (ts?.timestampValue ? Date.parse(ts.timestampValue) : null);
+  const parseArray = (arr) =>
+    arr?.arrayValue?.values?.map((v) => v.stringValue).filter(Boolean) || [];
+
   return {
+    provider: f.provider?.stringValue || "epic",
     linked: !!f.linked?.booleanValue,
+    status: f.status?.stringValue || "linked",
     epicAccountId: f.epicAccountId?.stringValue || null,
+    providerUserId: f.providerUserId?.stringValue || f.epicAccountId?.stringValue || null,
     displayName: f.displayName?.stringValue || null,
+    scopes: parseArray(f.scopes),
     linkedAt: parseTime(f.linkedAt),
     lastValidatedAt: parseTime(f.lastValidatedAt),
+    lastUpdatedAt: parseTime(f.lastUpdatedAt),
+    metadata: f.metadata?.mapValue?.fields
+      ? Object.fromEntries(
+          Object.entries(f.metadata.mapValue.fields).map(([key, value]) => [
+            key,
+            value.stringValue,
+          ])
+        )
+      : undefined,
   };
 }
 

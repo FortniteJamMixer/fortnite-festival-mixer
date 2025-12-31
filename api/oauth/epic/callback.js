@@ -164,6 +164,7 @@ export default async function handler(req, res) {
 
     const epicAccountId = data.account_id || data.sub || data.accountId || null;
     const displayName = data.display_name || data.displayName || null;
+    const scopes = ["basic_profile"]; // limited, future providers can expand
     const now = Date.now();
 
     if (!epicAccountId) {
@@ -172,11 +173,17 @@ export default async function handler(req, res) {
     }
 
     const linkPayload = {
+      provider: "epic",
       linked: true,
       epicAccountId,
+      providerUserId: epicAccountId,
       displayName,
+      scopes,
+      status: "linked",
       linkedAt: now,
       lastValidatedAt: now,
+      lastUpdatedAt: now,
+      metadata: { oauthVersion: "pkce" },
     };
     try {
       await setEpicLink(firebaseUser.uid, linkPayload, idToken);

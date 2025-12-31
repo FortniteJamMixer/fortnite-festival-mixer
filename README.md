@@ -42,3 +42,5 @@ Notes:
 - The OAuth cookie is cleared on every success/failure attempt to enforce single-use.
 - The redirect URI is restricted to `APP_ORIGIN` to prevent code exfiltration.
 - Firebase sign-in flows continue to work unchanged; OAuth is only for optional Epic account linking.
+- Firestore shape is provider-agnostic under `users/{uid}/integrations/{provider}`; see `docs/epic-oauth-firestore.md` for
+  the canonical schema and operational guardrails.
