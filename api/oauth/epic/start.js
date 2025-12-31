@@ -1,8 +1,5 @@
 import crypto from "crypto";
-
-const COOKIE_NAME = "epic_oauth";
-// Short-lived window (10m) keeps state + PKCE single-use and limits replay risk
-const COOKIE_MAX_AGE = 600; // seconds
+import { buildSessionCookie } from "./constants";
 
 function base64UrlEncode(buffer) {
   return buffer
@@ -17,10 +14,6 @@ function getOrigin(req) {
   const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
   const host = req.headers.host;
   return `${proto}://${host}`;
-}
-
-function buildSessionCookie(payload) {
-  return `${COOKIE_NAME}=${payload}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
 }
 
 export default async function handler(req, res) {
