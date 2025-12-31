@@ -20,11 +20,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const cleared = await clearEpicLink(firebaseUser.uid, idToken);
+    const revokedAt = Date.now();
+    const cleared = await clearEpicLink(firebaseUser.uid, idToken, { revokedAt });
     if (!cleared) {
       return res.status(500).json({ ok: false, error: "Failed to unlink Epic" });
     }
-    return res.status(200).json({ ok: true, linked: false });
+    return res.status(200).json({ ok: true, linked: false, revokedAt });
   } catch (e) {
     return res.status(500).json({ ok: false, error: "Failed to unlink Epic" });
   }

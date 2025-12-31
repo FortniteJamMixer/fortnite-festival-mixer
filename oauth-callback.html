@@ -96,42 +96,23 @@
       }
     }
 
-    async function handleOAuthCallback() {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      const state = params.get('state');
-      const error = params.get('error');
+    function deriveClientMessage(payload) {
+      const code = payload?.errorCode;
+      const messageMap = {
+        OAUTH_ACCESS_DENIED: 'Epic sign-in was cancelled. Restart linking from your profile when ready.',
+        OAUTH_SESSION_MISSING: 'Epic sign-in timed out. Restart linking from your profile.',
+        OAUTH_EXPIRED: 'Epic sign-in expired. Restart linking from your profile.',
+        OAUTH_STATE_MISMATCH: 'Epic sign-in could not be verified. Restart linking from your profile.',
+        OAUTH_REDIRECT_MISMATCH: 'Epic redirect URI mismatch. Confirm the configured callback matches exactly.',
+        OAUTH_AUTH_REQUIRED: 'Please sign in to your account, then restart the Epic link.',
+        OAUTH_CODE_REPLAY: 'That Epic sign-in link was already used or expired. Restart the link from your profile.',
+        TOKEN_EXCHANGE_FAILED: 'Epic rejected the request. Verify your account is signed in and try again.'
+      };
+      if (code && messageMap[code]) return messageMap[code];
+      return payload?.error || 'Epic account could not be linked. Try again from your profile settings.';
+    }
 
-      scrubUrl();
-
-      if (error) {
-        updateStatus('Authorization failed', 'Epic reported an error. Please try linking again from your profile settings.', true);
-        showReturnButton();
-        return;
-      }
-
-      if (!code || !state) {
-        updateStatus('Missing details', 'No Epic authorization details were found. Restart the Epic link flow from your profile.', true);
-        showReturnButton();
-        return;
-      }
-
-      const firebaseReady = initFirebase();
-      if (!firebaseReady) {
-        updateStatus('Firebase missing', 'Firebase is required to complete Epic linking. Return to the app and sign in.', true);
-        showReturnButton();
-        return;
-      }
-
-      const idToken = await getIdToken();
-      if (!idToken) {
-        updateStatus('Sign in required', 'Please sign in to your Festival Mixer account, then restart the Epic link.', true);
-        showReturnButton();
-        return;
-      }
-
-      updateStatus('Linking Epic account…', 'Finishing secure Epic link. Do not close this tab.');
-
+    async function sendCallbackRequest(body, idToken) {
       let response;
       let payload = null;
       try {
@@ -139,22 +120,27 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${idToken}`
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {})
           },
           credentials: 'same-origin',
-          body: JSON.stringify({ code, state })
+          body: JSON.stringify(body)
         });
         payload = await response.json().catch(() => null);
       } catch (_) {
-        updateStatus('Network issue', 'Could not reach Epic link service. Please try again.', true);
-        showReturnButton();
-        return;
+        return { response: null, payload: null };
       }
+      return { response, payload };
+    }
 
+    function handleResult({ response, payload }) {
       if (!response?.ok || !payload?.ok) {
-        updateStatus('Linking failed', 'Epic account could not be linked. Try again from your profile settings.', true);
+        const friendlyMessage = deriveClientMessage(payload);
+        updateStatus('Linking failed', friendlyMessage, true);
         showReturnButton();
-        return;
+        if (payload?.redirect) {
+          setTimeout(() => { window.location.href = payload.redirect; }, 1200);
+        }
+        return false;
       }
 
       try {
@@ -165,6 +151,54 @@
 
       updateStatus('Epic account linked!', 'You will be returned to your profile shortly.');
       setTimeout(() => { window.location.href = redirectTarget; }, 1200);
+      return true;
+    }
+
+    async function handleOAuthCallback() {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const state = params.get('state');
+      const error = params.get('error');
+
+      scrubUrl();
+
+      const firebaseReady = initFirebase();
+      const idToken = firebaseReady ? await getIdToken() : null;
+
+      if (!firebaseReady) {
+        updateStatus('Firebase missing', 'Firebase is required to complete Epic linking. Return to the app and sign in.', true);
+        showReturnButton();
+        return;
+      }
+
+      if (error) {
+        const result = await sendCallbackRequest({ error, state }, idToken);
+        handleResult(result);
+        return;
+      }
+
+      if (!code || !state) {
+        updateStatus('Missing details', 'No Epic authorization details were found. Restart the Epic link flow from your profile.', true);
+        showReturnButton();
+        return;
+      }
+
+      if (!idToken) {
+        updateStatus('Sign in required', 'Please sign in to your Festival Mixer account, then restart the Epic link.', true);
+        showReturnButton();
+        return;
+      }
+
+      updateStatus('Linking Epic account…', 'Finishing secure Epic link. Do not close this tab.');
+
+      const result = await sendCallbackRequest({ code, state }, idToken);
+      if (!result.response && !result.payload) {
+        updateStatus('Network issue', 'Could not reach Epic link service. Please try again.', true);
+        showReturnButton();
+        return;
+      }
+
+      handleResult(result);
     }
 
     handleOAuthCallback();

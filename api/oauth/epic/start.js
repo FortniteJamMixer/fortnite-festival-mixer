@@ -29,6 +29,17 @@ export default async function handler(req, res) {
   }
 
   const origin = getOrigin(req);
+  const configuredOrigin = process.env.APP_ORIGIN?.replace(/\/$/, "") || null;
+  const requestOrigin = origin.replace(/\/$/, "");
+  if (configuredOrigin && configuredOrigin !== requestOrigin) {
+    if (process.env.ALLOW_PREVIEW_OAUTH !== "true") {
+      res
+        .status(400)
+        .json({ error: "Preview OAuth is disabled; use the production origin redirect URI" });
+      return;
+    }
+  }
+
   const redirectParam = req.query.redirect_uri;
   let proposedRedirect;
   try {
@@ -40,11 +51,15 @@ export default async function handler(req, res) {
     return;
   }
   const allowedOrigin = origin.replace(/\/$/, "");
+  const allowedRedirect = `${allowedOrigin}/oauth-callback.html?oauth=epic`;
   // Only allow redirecting back to the same origin so the auth code cannot be sent elsewhere.
-  if (!proposedRedirect.startsWith(allowedOrigin)) {
+  if (proposedRedirect !== allowedRedirect) {
     res
       .status(400)
-      .json({ error: "Redirect URI must stay on the app origin" });
+      .json({
+        error:
+          "Redirect URI must match the configured Epic callback exactly, including path and query string",
+      });
     return;
   }
   const redirectUri = proposedRedirect;

@@ -43,17 +43,19 @@ export default async function handler(req, res) {
     const link = await getEpicLink(firebaseUser.uid, idToken);
     clearSessionCookieIfPresent(req, res);
 
-    if (!link) {
+    if (!link || !link.linked) {
       return res.status(200).json({ linked: false });
     }
 
     return res.status(200).json({
       linked: true,
       provider: link.provider || "epic",
+      accountId: link.accountId || link.epicAccountId || null,
       epicAccountId: link.epicAccountId || null,
       displayName: link.displayName || null,
       linkedAt: link.linkedAt || null,
       lastValidatedAt: link.lastValidatedAt || null,
+      revokedAt: link.revokedAt || null,
       scopes: link.scopes || [],
     });
   } catch (e) {

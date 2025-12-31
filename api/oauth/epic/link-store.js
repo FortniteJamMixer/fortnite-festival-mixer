@@ -24,9 +24,10 @@ function buildCollectionPath(projectId, uid) {
   )}/integrations`;
 }
 
-function toTimestamp(value) {
+function buildTimestampField(value, { defaultNow = false } = {}) {
+  if (!value && !defaultNow) return null;
   const date = value ? new Date(value) : new Date();
-  return date.toISOString();
+  return { timestampValue: date.toISOString() };
 }
 
 function buildArrayField(values = []) {
@@ -35,18 +36,39 @@ function buildArrayField(values = []) {
 }
 
 function toFirestorePayload(payload) {
-  const providerUserId = payload.providerUserId || payload.epicAccountId || "";
+  const providerUserId =
+    payload.accountId || payload.providerUserId || payload.epicAccountId || "";
   const scopesField = buildArrayField(payload.scopes);
   const fields = {
     provider: { stringValue: payload.provider || "epic" },
+    accountId: { stringValue: providerUserId },
     providerUserId: { stringValue: providerUserId },
     epicAccountId: { stringValue: providerUserId },
     linked: { booleanValue: payload.linked !== false },
     status: { stringValue: payload.status || "linked" },
-    linkedAt: { timestampValue: toTimestamp(payload.linkedAt) },
-    lastValidatedAt: { timestampValue: toTimestamp(payload.lastValidatedAt) },
-    lastUpdatedAt: { timestampValue: toTimestamp(payload.lastUpdatedAt) },
+    lastUpdatedAt: buildTimestampField(payload.lastUpdatedAt, { defaultNow: true }),
   };
+
+  const linkedAtField = buildTimestampField(payload.linkedAt, {
+    defaultNow: payload.linked !== false,
+  });
+  if (linkedAtField) {
+    fields.linkedAt = linkedAtField;
+  }
+
+  const lastValidatedField = buildTimestampField(payload.lastValidatedAt, {
+    defaultNow: payload.linked !== false,
+  });
+  if (lastValidatedField) {
+    fields.lastValidatedAt = lastValidatedField;
+  }
+
+  const revokedField = buildTimestampField(payload.revokedAt, {
+    defaultNow: payload.linked === false,
+  });
+  if (revokedField) {
+    fields.revokedAt = revokedField;
+  }
 
   if (payload.displayName) {
     fields.displayName = { stringValue: payload.displayName };
@@ -81,13 +103,16 @@ function fromFirestoreDocument(doc) {
     provider: f.provider?.stringValue || "epic",
     linked: !!f.linked?.booleanValue,
     status: f.status?.stringValue || "linked",
+    accountId: f.accountId?.stringValue || null,
     epicAccountId: f.epicAccountId?.stringValue || null,
-    providerUserId: f.providerUserId?.stringValue || f.epicAccountId?.stringValue || null,
+    providerUserId:
+      f.providerUserId?.stringValue || f.epicAccountId?.stringValue || f.accountId?.stringValue || null,
     displayName: f.displayName?.stringValue || null,
     scopes: parseArray(f.scopes),
     linkedAt: parseTime(f.linkedAt),
     lastValidatedAt: parseTime(f.lastValidatedAt),
     lastUpdatedAt: parseTime(f.lastUpdatedAt),
+    revokedAt: parseTime(f.revokedAt),
     metadata: f.metadata?.mapValue?.fields
       ? Object.fromEntries(
           Object.entries(f.metadata.mapValue.fields).map(([key, value]) => [
@@ -151,16 +176,42 @@ export async function getEpicLink(uid, idToken) {
   return fromFirestoreDocument(data);
 }
 
-export async function clearEpicLink(uid, idToken) {
+export async function clearEpicLink(uid, idToken, options = {}) {
   const projectId = requireEnv("FIREBASE_PROJECT_ID");
   if (!uid || !idToken || !projectId) return false;
 
   const docUrl = buildDocPath(projectId, uid);
+  const revokedAt = options.revokedAt || Date.now();
+  const body = JSON.stringify(
+    toFirestorePayload({
+      provider: "epic",
+      linked: false,
+      status: "revoked",
+      revokedAt,
+      lastUpdatedAt: revokedAt,
+      accountId: "",
+      providerUserId: "",
+      epicAccountId: "",
+      scopes: [],
+      metadata: { unlinkReason: "user_action" },
+    })
+  );
+
   const resp = await fetch(docUrl, {
-    method: "DELETE",
+    method: "PATCH",
     headers: buildHeaders(idToken),
+    body,
   });
 
-  if (resp.status === 404) return true;
+  if (resp.status === 404) {
+    const collectionUrl = `${buildCollectionPath(projectId, uid)}?documentId=epic`;
+    const createResp = await fetch(collectionUrl, {
+      method: "POST",
+      headers: buildHeaders(idToken),
+      body,
+    });
+    return createResp.ok;
+  }
+
   return resp.ok;
 }

@@ -30,6 +30,13 @@ Add the following redirect URI to your Epic Developer Portal configuration (must
 
 - `<APP_ORIGIN>/oauth-callback.html?oauth=epic`
 
+Redirect discipline:
+
+- Register separate, exact redirect entries for production and preview domains (no wildcards, protocol/path/query must match
+  exactly).
+- Preview OAuth is blocked unless `ALLOW_PREVIEW_OAUTH=true` is set.
+- Keep trailing-slash behavior identical to the configured callback above.
+
 Flow overview (security-first):
 
 1. `/api/oauth/epic/start` generates PKCE values + CSRF state, stores them in a short-lived, HttpOnly, Secure, SameSite=Lax cookie, and redirects to Epic.
@@ -44,3 +51,4 @@ Notes:
 - Firebase sign-in flows continue to work unchanged; OAuth is only for optional Epic account linking.
 - Firestore shape is provider-agnostic under `users/{uid}/integrations/{provider}`; see `docs/epic-oauth-firestore.md` for
   the canonical schema and operational guardrails.
+- Jam Track ownership remains manual; OAuth links only record Epic account ids for potential future entitlement APIs.
