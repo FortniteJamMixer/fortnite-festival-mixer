@@ -8,11 +8,20 @@ const ERROR_CODES = {
   expired: "OAUTH_EXPIRED",
   stateMismatch: "OAUTH_STATE_MISMATCH",
   redirectMismatch: "OAUTH_REDIRECT_MISMATCH",
+  accessDenied: "OAUTH_ACCESS_DENIED",
+  codeReplay: "OAUTH_CODE_REPLAY",
   incomplete: "OAUTH_SESSION_INCOMPLETE",
   unauthenticated: "OAUTH_AUTH_REQUIRED",
   exchangeFailed: "TOKEN_EXCHANGE_FAILED",
   generic: "OAUTH_CALLBACK_FAILED",
 };
+
+function buildProfileRedirect(req) {
+  const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
+  const host = req.headers.host;
+  const origin = process.env.APP_ORIGIN || `${proto}://${host}`;
+  return `${origin.replace(/\/$/, "")}/?view=profile`;
+}
 
 function parseCookies(cookieHeader = "") {
   return cookieHeader.split(";").reduce((acc, part) => {
@@ -58,7 +67,7 @@ function extractRequestValues(req) {
 
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
-    sendError(res, 405, "Method not allowed", ERROR_CODES.badRequest);
+    sendError(res, 405, "Method not allowed", ERROR_CODES.badRequest, buildProfileRedirect(req));
     return;
   }
 
@@ -68,21 +77,47 @@ export default async function handler(req, res) {
   const code = values.code;
   const state = values.state;
   const redirectParam = values.redirect_uri;
+  const reportedError = values.error;
+  const redirectBack = buildProfileRedirect(req);
+
+  if (reportedError === "access_denied") {
+    sendError(
+      res,
+      400,
+      "Epic sign-in was cancelled. Restart linking from your profile when ready.",
+      ERROR_CODES.accessDenied,
+      redirectBack
+    );
+    return;
+  }
+
   if (!code || !state) {
-    sendError(res, 400, "Missing code or state", ERROR_CODES.badRequest);
+    sendError(
+      res,
+      400,
+      "Missing Epic authorization details. Restart the link from your profile.",
+      ERROR_CODES.badRequest,
+      redirectBack
+    );
     return;
   }
 
   const clientId = process.env.EPIC_CLIENT_ID;
   if (!clientId) {
-    sendError(res, 500, "Missing EPIC_CLIENT_ID env", ERROR_CODES.generic);
+    sendError(res, 500, "Missing EPIC_CLIENT_ID env", ERROR_CODES.generic, redirectBack);
     return;
   }
 
   const cookies = parseCookies(req.headers.cookie || "");
   const oauthCookie = cookies[COOKIE_NAME] ? decodeURIComponent(cookies[COOKIE_NAME]) : null;
   if (!oauthCookie) {
-    sendError(res, 400, "Missing OAuth session", ERROR_CODES.noSession, buildRedirectUri(req, redirectParam));
+    sendError(
+      res,
+      400,
+      "Epic sign-in timed out. Please try linking again.",
+      ERROR_CODES.noSession,
+      redirectBack
+    );
     return;
   }
 
@@ -90,17 +125,35 @@ export default async function handler(req, res) {
   try {
     parsed = JSON.parse(oauthCookie);
   } catch (e) {
-    sendError(res, 400, "Invalid OAuth session", ERROR_CODES.noSession, buildRedirectUri(req, redirectParam));
+    sendError(
+      res,
+      400,
+      "Epic sign-in session was invalid. Please restart the link.",
+      ERROR_CODES.noSession,
+      redirectBack
+    );
     return;
   }
 
   if (!parsed.issuedAt || Date.now() - parsed.issuedAt > COOKIE_MAX_AGE * 1000) {
-    sendError(res, 400, "OAuth session expired", ERROR_CODES.expired, buildRedirectUri(req, redirectParam));
+    sendError(
+      res,
+      400,
+      "Epic sign-in expired. Restart the link from your profile.",
+      ERROR_CODES.expired,
+      redirectBack
+    );
     return;
   }
 
   if (!parsed.state || parsed.state !== state) {
-    sendError(res, 400, "State mismatch", ERROR_CODES.stateMismatch, buildRedirectUri(req, redirectParam));
+    sendError(
+      res,
+      400,
+      "Epic sign-in could not be verified. Restart the link from your profile.",
+      ERROR_CODES.stateMismatch,
+      redirectBack
+    );
     return;
   }
 
@@ -108,21 +161,39 @@ export default async function handler(req, res) {
   if (redirectParam) {
     const provided = decodeURIComponent(redirectParam);
     if (storedRedirectUri && provided !== storedRedirectUri) {
-      sendError(res, 400, "Redirect mismatch", ERROR_CODES.redirectMismatch, storedRedirectUri);
+      sendError(
+        res,
+        400,
+        "Epic redirect URI mismatch. Ensure the configured URI matches exactly.",
+        ERROR_CODES.redirectMismatch,
+        redirectBack
+      );
       return;
     }
   }
   const redirectUri = storedRedirectUri;
 
   if (!redirectUri || !parsed.codeVerifier) {
-    sendError(res, 400, "OAuth session incomplete", ERROR_CODES.incomplete, redirectUri);
+    sendError(
+      res,
+      400,
+      "Epic session incomplete. Restart the link from your profile.",
+      ERROR_CODES.incomplete,
+      redirectBack
+    );
     return;
   }
 
   const idToken = extractIdToken(req);
   const firebaseUser = await verifyFirebaseIdToken(idToken);
   if (!firebaseUser?.uid) {
-    sendError(res, 401, "Authentication required", ERROR_CODES.unauthenticated, redirectUri);
+    sendError(
+      res,
+      401,
+      "Please sign in before linking your Epic account.",
+      ERROR_CODES.unauthenticated,
+      redirectBack
+    );
     return;
   }
 
@@ -152,12 +223,30 @@ export default async function handler(req, res) {
 
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
+      const isCodeReplay = data.error === "invalid_grant";
+      if (isCodeReplay) {
+        sendError(
+          res,
+          resp.status,
+          "That Epic sign-in link was already used or expired. Restart the link from your profile.",
+          ERROR_CODES.codeReplay,
+          redirectBack
+        );
+        return;
+      }
+      const clientMismatch = data.error === "invalid_client" || data.error === "unauthorized_client";
+      const redirectMismatch = data.error === "invalid_request" && data.error_description?.includes("redirect");
+      const message = clientMismatch
+        ? "Epic rejected the app credentials. Verify the client id/secret and redirect URI."
+        : redirectMismatch
+        ? "Epic rejected the redirect URI. Ensure it matches the configured callback exactly."
+        : "Epic token exchange failed. Please retry linking.";
       sendError(
         res,
         resp.status,
-        data.error_description || data.error || "Token exchange failed",
+        message,
         ERROR_CODES.exchangeFailed,
-        redirectUri
+        redirectBack
       );
       return;
     }
@@ -168,13 +257,16 @@ export default async function handler(req, res) {
     const now = Date.now();
 
     if (!epicAccountId) {
-      sendError(res, 400, "Epic account identifier missing", ERROR_CODES.exchangeFailed, redirectUri);
+      sendError(res, 400, "Epic account identifier missing", ERROR_CODES.exchangeFailed, redirectBack);
       return;
     }
 
+    // OAuth linking does not grant Jam Track ownership. Account identifiers are kept solely
+    // for future entitlement checks if Epic later allows them. Do not assume ownership today.
     const linkPayload = {
       provider: "epic",
       linked: true,
+      accountId: epicAccountId,
       epicAccountId,
       providerUserId: epicAccountId,
       displayName,
@@ -188,7 +280,7 @@ export default async function handler(req, res) {
     try {
       await setEpicLink(firebaseUser.uid, linkPayload, idToken);
     } catch (err) {
-      sendError(res, 500, "Failed to store Epic link", ERROR_CODES.generic, redirectUri);
+      sendError(res, 500, "Failed to store Epic link", ERROR_CODES.generic, redirectBack);
       return;
     }
 
@@ -197,6 +289,6 @@ export default async function handler(req, res) {
       .status(200)
       .json({ ok: true, linked: true, epicAccountId, displayName, linkedAt: now, lastValidatedAt: now });
   } catch (e) {
-    sendError(res, 500, "OAuth callback failed", ERROR_CODES.generic, redirectUri);
+    sendError(res, 500, "OAuth callback failed", ERROR_CODES.generic, redirectBack);
   }
 }
