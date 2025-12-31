@@ -5,132 +5,96 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Epic OAuth Callback</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="/api/firebase-config"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-black via-slate-900 to-indigo-950 text-white flex items-center justify-center p-4">
   <div class="w-full max-w-xl bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md" id="statusBox">
-    <div class="text-lg font-bold mb-2">Linking Epic account…</div>
-    <p class="text-sm text-cyan-100" id="statusMessage">Checking OAuth response.</p>
+    <div class="text-lg font-bold mb-2" id="statusHeading">Completing Epic link…</div>
+    <p class="text-sm text-cyan-100" id="statusMessage">Processing your Epic authorization safely.</p>
+    <div class="mt-4 flex items-center gap-2">
+      <button id="returnButton" class="hidden px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-sm hover:bg-white/20 transition-colors" type="button">Return to app</button>
+    </div>
   </div>
 
   <script>
-    function updateStatus(message, isError) {
-      const box = document.getElementById('statusBox');
-      const msg = document.getElementById('statusMessage');
-      if (msg) msg.textContent = message;
-      if (isError && box) box.classList.add('border-red-500/50', 'bg-red-500/10');
-      if (!isError && box) box.classList.add('border-emerald-500/40', 'bg-emerald-500/5');
+    const statusHeading = document.getElementById('statusHeading');
+    const statusMessage = document.getElementById('statusMessage');
+    const statusBox = document.getElementById('statusBox');
+    const returnButton = document.getElementById('returnButton');
+    const redirectTarget = '/?view=profile';
+
+    function scrubUrl() {
+      const cleanPath = `${window.location.pathname}${window.location.hash || ''}`;
+      history.replaceState({}, '', cleanPath);
     }
 
-    async function waitForAuth(auth) {
-      return new Promise((resolve) => {
-        const unsub = auth.onAuthStateChanged((user) => {
-          unsub();
-          resolve(user);
-        });
-      });
+    function updateStatus(heading, message, isError = false) {
+      if (statusHeading) statusHeading.textContent = heading;
+      if (statusMessage) statusMessage.textContent = message;
+      if (isError && statusBox) {
+        statusBox.classList.add('border-red-500/50', 'bg-red-500/10');
+      }
+    }
+
+    function showReturnButton() {
+      if (!returnButton) return;
+      returnButton.classList.remove('hidden');
+      returnButton.addEventListener('click', () => {
+        window.location.href = redirectTarget;
+      }, { once: true });
     }
 
     async function handleOAuthCallback() {
       const params = new URLSearchParams(window.location.search);
-      const provider = params.get('oauth');
       const code = params.get('code');
       const state = params.get('state');
       const error = params.get('error');
 
+      scrubUrl();
+
       if (error) {
-        updateStatus(`Epic OAuth returned an error: ${error}`, true);
-        return;
-      }
-      if (provider !== 'epic' || !code || !state) {
-        updateStatus('Missing OAuth parameters. Please restart the Epic link flow.', true);
-        return;
-      }
-      if (!window.firebaseConfig || !window.firebaseConfig.apiKey) {
-        updateStatus('Firebase config missing. Please redeploy with Firebase env vars.', true);
+        updateStatus('Authorization failed', 'Epic reported an error. Please try linking again from your profile settings.', true);
+        showReturnButton();
         return;
       }
 
-      if (!window.firebase || !firebase.initializeApp) {
-        updateStatus('Firebase SDK unavailable.', true);
+      if (!code || !state) {
+        updateStatus('Missing details', 'No Epic authorization details were found. Restart the Epic link flow from your profile.', true);
+        showReturnButton();
         return;
       }
 
-      firebase.apps?.length ? firebase.app() : firebase.initializeApp(window.firebaseConfig);
-      const auth = firebase.auth();
-      const currentUser = await waitForAuth(auth);
-      if (!currentUser) {
-        updateStatus('Sign in first, then retry linking Epic.', true);
-        return;
-      }
+      updateStatus('Linking Epic account…', 'Finishing secure Epic link. Do not close this tab.');
 
-      let idToken;
+      let response;
+      let payload = null;
       try {
-        idToken = await currentUser.getIdToken();
-      } catch (e) {
-        updateStatus('Could not verify your login. Please sign in again.', true);
-        return;
-      }
-
-      updateStatus('Exchanging code server-side…');
-
-      let payload;
-      try {
-        const response = await fetch('/api/oauth/epic/callback', {
+        response = await fetch('/api/oauth/epic/callback', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            code,
-            state,
-            idToken,
-            redirect_uri: window.location.origin + '/oauth-callback.html?oauth=epic'
-          })
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ code, state })
         });
-        payload = await response.json();
-      } catch (e) {
-        updateStatus('Network error contacting callback endpoint.', true);
+        payload = await response.json().catch(() => null);
+      } catch (_) {
+        updateStatus('Network issue', 'Could not reach Epic link service. Please try again.', true);
+        showReturnButton();
         return;
       }
 
-      if (!payload || !payload.ok) {
-        updateStatus(payload?.error || 'Epic link failed. Try again.', true);
-        setTimeout(() => { window.location.href = '/?view=profile&oauthError=epic'; }, 1200);
+      if (!response?.ok || !payload?.ok) {
+        updateStatus('Linking failed', 'Epic account could not be linked. Try again from your profile settings.', true);
+        showReturnButton();
         return;
       }
 
       try {
-        const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-        const existing = profiles[currentUser.uid] || {};
-        profiles[currentUser.uid] = {
-          ...existing,
-          oauth: {
-            ...(existing.oauth || {}),
-            epic: {
-              linked: true,
-              epicAccountId: payload.epicAccountId || null,
-              displayName: payload.displayName || null,
-              linkedAt: payload.linkedAt || Date.now(),
-              lastValidatedAt: payload.lastValidatedAt || Date.now()
-            }
-          }
-        };
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      } catch (e) {
-        // non-fatal client cache update failure
+        sessionStorage.setItem('epicLinkedHint', '1');
+      } catch (_) {
+        // Cosmetic hint only; ignore failures.
       }
 
-      sessionStorage.setItem('oauthSuccess', 'Epic account linked!');
-      updateStatus('Epic account linked. Redirecting…');
-      setTimeout(() => {
-        window.location.href = '/?view=profile';
-      }, 900);
+      updateStatus('Epic account linked!', 'You will be returned to your profile shortly.');
+      setTimeout(() => { window.location.href = redirectTarget; }, 1200);
     }
 
     handleOAuthCallback();
