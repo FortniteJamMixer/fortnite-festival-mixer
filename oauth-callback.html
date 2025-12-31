@@ -59,60 +59,71 @@
         return;
       }
 
-      const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(window.firebaseConfig);
+      firebase.apps?.length ? firebase.app() : firebase.initializeApp(window.firebaseConfig);
       const auth = firebase.auth();
-      const db = firebase.firestore();
       const currentUser = await waitForAuth(auth);
       if (!currentUser) {
         updateStatus('Sign in first, then retry linking Epic.', true);
         return;
       }
 
-      updateStatus('Exchanging code for Epic token…');
-
-      let response;
+      let idToken;
       try {
-        const qs = new URLSearchParams({ code, state, redirect_uri: window.location.origin + '/oauth-callback.html?oauth=epic' });
-        response = await fetch(`/api/oauth/epic/callback?${qs.toString()}`, { credentials: 'include' });
+        idToken = await currentUser.getIdToken();
+      } catch (e) {
+        updateStatus('Could not verify your login. Please sign in again.', true);
+        return;
+      }
+
+      updateStatus('Exchanging code server-side…');
+
+      let payload;
+      try {
+        const response = await fetch('/api/oauth/epic/callback', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            code,
+            state,
+            idToken,
+            redirect_uri: window.location.origin + '/oauth-callback.html?oauth=epic'
+          })
+        });
+        payload = await response.json();
       } catch (e) {
         updateStatus('Network error contacting callback endpoint.', true);
         return;
       }
 
-      let payload;
-      try {
-        payload = await response.json();
-      } catch (e) {
-        updateStatus('Invalid response from callback endpoint.', true);
-        return;
-      }
-
-      if (!payload.ok) {
-        updateStatus(payload.error || 'Epic link failed. Try again.', true);
-        return;
-      }
-
-      const epicLink = {
-        linked: true,
-        epicAccountId: payload.epicAccountId || null,
-        displayName: payload.displayName || null,
-        linkedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      };
-
-      try {
-        await db.collection('users').doc(currentUser.uid).set({ oauth: { epic: epicLink } }, { merge: true });
-      } catch (e) {
-        updateStatus('Could not save Epic link to profile.', true);
+      if (!payload || !payload.ok) {
+        updateStatus(payload?.error || 'Epic link failed. Try again.', true);
+        setTimeout(() => { window.location.href = '/?view=profile&oauthError=epic'; }, 1200);
         return;
       }
 
       try {
         const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
         const existing = profiles[currentUser.uid] || {};
-        profiles[currentUser.uid] = { ...existing, oauth: { ...(existing.oauth || {}), epic: { ...epicLink, linkedAt: new Date().toISOString() } } };
+        profiles[currentUser.uid] = {
+          ...existing,
+          oauth: {
+            ...(existing.oauth || {}),
+            epic: {
+              linked: true,
+              epicAccountId: payload.epicAccountId || null,
+              displayName: payload.displayName || null,
+              linkedAt: payload.linkedAt || Date.now(),
+              lastValidatedAt: payload.lastValidatedAt || Date.now()
+            }
+          }
+        };
         localStorage.setItem('userProfiles', JSON.stringify(profiles));
       } catch (e) {
-        // non-fatal
+        // non-fatal client cache update failure
       }
 
       sessionStorage.setItem('oauthSuccess', 'Epic account linked!');

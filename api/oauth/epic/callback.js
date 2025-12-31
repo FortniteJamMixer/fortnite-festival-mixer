@@ -1,5 +1,18 @@
-const COOKIE_MAX_AGE = 600; // seconds, must match start endpoint TTL
-const COOKIE_NAME = "epic_oauth";
+import { COOKIE_MAX_AGE, COOKIE_NAME, buildClearCookie } from "./constants";
+import { verifyFirebaseIdToken } from "./firebase-auth";
+import { setEpicLink } from "./link-store";
+
+const ERROR_CODES = {
+  badRequest: "OAUTH_MISSING_PARAMS",
+  noSession: "OAUTH_SESSION_MISSING",
+  expired: "OAUTH_EXPIRED",
+  stateMismatch: "OAUTH_STATE_MISMATCH",
+  redirectMismatch: "OAUTH_REDIRECT_MISMATCH",
+  incomplete: "OAUTH_SESSION_INCOMPLETE",
+  unauthenticated: "OAUTH_AUTH_REQUIRED",
+  exchangeFailed: "TOKEN_EXCHANGE_FAILED",
+  generic: "OAUTH_CALLBACK_FAILED",
+};
 
 function parseCookies(cookieHeader = "") {
   return cookieHeader.split(";").reduce((acc, part) => {
@@ -19,42 +32,58 @@ function buildRedirectUri(req, provided) {
 }
 
 function clearCookie(res) {
-  res.setHeader(
-    "Set-Cookie",
-    `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
-  );
+  res.setHeader("Set-Cookie", buildClearCookie());
 }
 
-function sendError(res, status, message) {
+function sendError(res, status, message, code = ERROR_CODES.generic, redirectUri) {
   clearCookie(res);
-  res.status(status).json({ ok: false, error: message });
+  const payload = { ok: false, error: message, errorCode: code };
+  if (redirectUri) payload.redirect = redirectUri;
+  res.status(status).json(payload);
+}
+
+function extractIdToken(req, body) {
+  const authHeader = req.headers.authorization || "";
+  if (authHeader.startsWith("Bearer ")) return authHeader.slice(7).trim();
+  if (body?.idToken) return body.idToken;
+  return null;
+}
+
+function extractRequestValues(req) {
+  const method = req.method || "GET";
+  if (method === "POST") {
+    return req.body || {};
+  }
+  return req.query || {};
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    sendError(res, 405, "Method not allowed");
+  if (req.method !== "GET" && req.method !== "POST") {
+    sendError(res, 405, "Method not allowed", ERROR_CODES.badRequest);
     return;
   }
 
   res.setHeader("Cache-Control", "no-store");
 
-  const { code, state, redirect_uri: redirectParam } = req.query || {};
+  const values = extractRequestValues(req);
+  const code = values.code;
+  const state = values.state;
+  const redirectParam = values.redirect_uri;
   if (!code || !state) {
-    sendError(res, 400, "Missing code or state");
+    sendError(res, 400, "Missing code or state", ERROR_CODES.badRequest);
     return;
   }
 
   const clientId = process.env.EPIC_CLIENT_ID;
-  const clientSecret = process.env.EPIC_CLIENT_SECRET;
   if (!clientId) {
-    sendError(res, 500, "Missing EPIC_CLIENT_ID env");
+    sendError(res, 500, "Missing EPIC_CLIENT_ID env", ERROR_CODES.generic);
     return;
   }
 
   const cookies = parseCookies(req.headers.cookie || "");
   const oauthCookie = cookies[COOKIE_NAME] ? decodeURIComponent(cookies[COOKIE_NAME]) : null;
   if (!oauthCookie) {
-    sendError(res, 400, "Missing OAuth session");
+    sendError(res, 400, "Missing OAuth session", ERROR_CODES.noSession, buildRedirectUri(req, redirectParam));
     return;
   }
 
@@ -62,40 +91,39 @@ export default async function handler(req, res) {
   try {
     parsed = JSON.parse(oauthCookie);
   } catch (e) {
-    sendError(res, 400, "Invalid OAuth session");
+    sendError(res, 400, "Invalid OAuth session", ERROR_CODES.noSession, buildRedirectUri(req, redirectParam));
     return;
   }
 
-  // Enforce a server-side TTL so replayed cookies cannot be abused even if the browser kept them.
   if (!parsed.issuedAt || Date.now() - parsed.issuedAt > COOKIE_MAX_AGE * 1000) {
-    sendError(res, 400, "OAuth session expired");
+    sendError(res, 400, "OAuth session expired", ERROR_CODES.expired, buildRedirectUri(req, redirectParam));
     return;
   }
 
   if (!parsed.state || parsed.state !== state) {
-    sendError(res, 400, "State mismatch");
+    sendError(res, 400, "State mismatch", ERROR_CODES.stateMismatch, buildRedirectUri(req, redirectParam));
     return;
   }
 
-  // Only allow the original redirect target to be used for token exchange to prevent swapping
-  // the code onto a different redirect URI.
   const storedRedirectUri = parsed.redirectUri || buildRedirectUri(req, redirectParam);
   if (redirectParam) {
     const provided = decodeURIComponent(redirectParam);
     if (storedRedirectUri && provided !== storedRedirectUri) {
-      sendError(res, 400, "Redirect mismatch");
+      sendError(res, 400, "Redirect mismatch", ERROR_CODES.redirectMismatch, storedRedirectUri);
       return;
     }
   }
   const redirectUri = storedRedirectUri;
 
   if (!redirectUri || !parsed.codeVerifier) {
-    sendError(res, 400, "OAuth session incomplete");
+    sendError(res, 400, "OAuth session incomplete", ERROR_CODES.incomplete, redirectUri);
     return;
   }
 
-  if (!clientSecret) {
-    sendError(res, 500, "Missing EPIC_CLIENT_SECRET env");
+  const idToken = extractIdToken(req, values);
+  const firebaseUser = await verifyFirebaseIdToken(idToken);
+  if (!firebaseUser?.uid) {
+    sendError(res, 401, "Authentication required", ERROR_CODES.unauthenticated, redirectUri);
     return;
   }
 
@@ -107,30 +135,52 @@ export default async function handler(req, res) {
     code_verifier: parsed.codeVerifier,
   });
 
-  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const headers = { "Content-Type": "application/x-www-form-urlencoded" };
+  const clientSecret = process.env.EPIC_CLIENT_SECRET;
+  if (clientSecret) {
+    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    headers.Authorization = `Basic ${basicAuth}`;
+  } else {
+    form.set("client_id", clientId);
+  }
 
   try {
     const resp = await fetch(tokenEndpoint, {
       method: "POST",
-      headers: {
-        Authorization: `Basic ${basicAuth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers,
       body: form.toString(),
     });
 
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      sendError(res, resp.status, data.error_description || data.error || "Token exchange failed");
+      sendError(
+        res,
+        resp.status,
+        data.error_description || data.error || "Token exchange failed",
+        ERROR_CODES.exchangeFailed,
+        redirectUri
+      );
       return;
     }
 
-    const epicAccountId = data.account_id || data.sub || null;
+    const epicAccountId = data.account_id || data.sub || data.accountId || null;
     const displayName = data.display_name || data.displayName || null;
+    const now = Date.now();
+
+    const linkPayload = {
+      linked: true,
+      epicAccountId,
+      displayName,
+      linkedAt: now,
+      lastValidatedAt: now,
+    };
+    setEpicLink(firebaseUser.uid, linkPayload);
 
     clearCookie(res);
-    res.status(200).json({ ok: true, linked: true, epicAccountId, displayName });
+    res
+      .status(200)
+      .json({ ok: true, linked: true, epicAccountId, displayName, linkedAt: now, lastValidatedAt: now });
   } catch (e) {
-    sendError(res, 500, "OAuth callback failed");
+    sendError(res, 500, "OAuth callback failed", ERROR_CODES.generic, redirectUri);
   }
 }

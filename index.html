@@ -1204,6 +1204,53 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return window.location.origin;
     }
 
+    function cacheEpicLink(linkData){
+      if(!firebaseAuth?.currentUser) return;
+      try{
+        const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+        const uid = firebaseAuth.currentUser.uid;
+        const existing = profiles[uid] || {};
+        if(linkData){
+          profiles[uid] = { ...existing, oauth: { ...(existing.oauth || {}), epic: linkData } };
+        } else if(existing.oauth && existing.oauth.epic){
+          delete existing.oauth.epic;
+          profiles[uid] = { ...existing, oauth: { ...(existing.oauth || {}) } };
+        }
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      }catch(e){ /* non-fatal cache failure */ }
+    }
+
+    async function fetchEpicLinkStatus(){
+      if(!firebaseAuth?.currentUser) return null;
+      let idToken;
+      try{ idToken = await firebaseAuth.currentUser.getIdToken(); } catch(e){ return null; }
+      try{
+        const resp = await fetch('/api/oauth/epic/status', {
+          headers: { 'Authorization': `Bearer ${idToken}` },
+          credentials: 'include'
+        });
+        if(!resp.ok) return null;
+        const data = await resp.json();
+        currentUser = currentUser || {};
+        currentUser.oauth = currentUser.oauth || {};
+        if(data.linked){
+          const epicData = {
+            linked: true,
+            epicAccountId: data.epicAccountId || null,
+            displayName: data.displayName || null,
+            linkedAt: data.linkedAt || Date.now(),
+            lastValidatedAt: data.lastValidatedAt || Date.now()
+          };
+          currentUser.oauth.epic = epicData;
+          cacheEpicLink(epicData);
+        } else if(currentUser.oauth.epic){
+          delete currentUser.oauth.epic;
+          cacheEpicLink(null);
+        }
+        return data;
+      }catch(e){ console.warn('Epic status fetch failed', e); return null; }
+    }
+
     window.startOAuth = (provider) => {
       if(!firebaseAuth?.currentUser){ alert('Sign in first to link accounts.'); return; }
       if(provider === 'epic'){
@@ -1224,6 +1271,12 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if(currentUser.uid && profiles[currentUser.uid]){
         if(profiles[currentUser.uid].oauth){ delete profiles[currentUser.uid].oauth.epic; }
         localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      }
+      if(firebaseAuth?.currentUser){
+        try{
+          const token = await firebaseAuth.currentUser.getIdToken();
+          await fetch('/api/oauth/epic/status', { method:'DELETE', headers:{ 'Authorization': `Bearer ${token}` } });
+        }catch(err){ console.warn('Server unlink epic failed', err); }
       }
       try{
         if(firestore){
@@ -1334,6 +1387,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         setlist = currentUser.setlist || currentUser.setlists || [];
         bandMembers = currentUser.bandMembers || [];
         genreOverrides = currentUser.genreOverrides || {};
+        await fetchEpicLinkStatus();
         localStorage.setItem('currentUser', firebaseUser.uid);
         await saveUserProfile();
         await maybeLoadSharedProfile();
