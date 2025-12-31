@@ -1,7 +1,8 @@
 import crypto from "crypto";
 
 const COOKIE_NAME = "epic_oauth";
-const COOKIE_MAX_AGE = 600; // 10 minutes
+// Short-lived window (10m) keeps state + PKCE single-use and limits replay risk
+const COOKIE_MAX_AGE = 600; // seconds
 
 function base64UrlEncode(buffer) {
   return buffer
@@ -19,7 +20,7 @@ function getOrigin(req) {
 }
 
 function buildSessionCookie(payload) {
-  return `${COOKIE_NAME}=${payload}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${COOKIE_MAX_AGE}`;
+  return `${COOKIE_NAME}=${payload}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${COOKIE_MAX_AGE}`;
 }
 
 export default async function handler(req, res) {
@@ -36,9 +37,24 @@ export default async function handler(req, res) {
 
   const origin = getOrigin(req);
   const redirectParam = req.query.redirect_uri;
-  const redirectUri = redirectParam
-    ? decodeURIComponent(redirectParam)
-    : `${origin}/oauth-callback.html?oauth=epic`;
+  let proposedRedirect;
+  try {
+    proposedRedirect = redirectParam
+      ? decodeURIComponent(redirectParam)
+      : `${origin}/oauth-callback.html?oauth=epic`;
+  } catch (e) {
+    res.status(400).json({ error: "Invalid redirect URI" });
+    return;
+  }
+  const allowedOrigin = origin.replace(/\/$/, "");
+  // Only allow redirecting back to the same origin so the auth code cannot be sent elsewhere.
+  if (!proposedRedirect.startsWith(allowedOrigin)) {
+    res
+      .status(400)
+      .json({ error: "Redirect URI must stay on the app origin" });
+    return;
+  }
+  const redirectUri = proposedRedirect;
 
   const codeVerifier = base64UrlEncode(crypto.randomBytes(64));
   const codeChallenge = base64UrlEncode(
@@ -46,8 +62,10 @@ export default async function handler(req, res) {
   );
   const state = base64UrlEncode(crypto.randomBytes(24));
 
+  // Persist PKCE verifier + CSRF state in an HttpOnly, Secure cookie so the browser
+  // cannot leak them to client JS. Issued-at is stored to enforce a short TTL server-side.
   const cookiePayload = encodeURIComponent(
-    JSON.stringify({ state, codeVerifier, redirectUri })
+    JSON.stringify({ state, codeVerifier, redirectUri, issuedAt: Date.now() })
   );
   res.setHeader("Set-Cookie", buildSessionCookie(cookiePayload));
   res.setHeader("Cache-Control", "no-store");

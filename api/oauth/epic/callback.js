@@ -1,3 +1,4 @@
+const COOKIE_MAX_AGE = 600; // seconds, must match start endpoint TTL
 const COOKIE_NAME = "epic_oauth";
 
 function parseCookies(cookieHeader = "") {
@@ -20,7 +21,7 @@ function buildRedirectUri(req, provided) {
 function clearCookie(res) {
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`
+    `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
   );
 }
 
@@ -65,12 +66,33 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Enforce a server-side TTL so replayed cookies cannot be abused even if the browser kept them.
+  if (!parsed.issuedAt || Date.now() - parsed.issuedAt > COOKIE_MAX_AGE * 1000) {
+    sendError(res, 400, "OAuth session expired");
+    return;
+  }
+
   if (!parsed.state || parsed.state !== state) {
     sendError(res, 400, "State mismatch");
     return;
   }
 
-  const redirectUri = buildRedirectUri(req, redirectParam || parsed.redirectUri);
+  // Only allow the original redirect target to be used for token exchange to prevent swapping
+  // the code onto a different redirect URI.
+  const storedRedirectUri = parsed.redirectUri || buildRedirectUri(req, redirectParam);
+  if (redirectParam) {
+    const provided = decodeURIComponent(redirectParam);
+    if (storedRedirectUri && provided !== storedRedirectUri) {
+      sendError(res, 400, "Redirect mismatch");
+      return;
+    }
+  }
+  const redirectUri = storedRedirectUri;
+
+  if (!redirectUri || !parsed.codeVerifier) {
+    sendError(res, 400, "OAuth session incomplete");
+    return;
+  }
 
   if (!clientSecret) {
     sendError(res, 500, "Missing EPIC_CLIENT_SECRET env");
