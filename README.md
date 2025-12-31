@@ -17,3 +17,24 @@ Steps:
 3. Redeploy the project so `/api/firebase-config.js` serves the config before the app initializes Firebase.
 
 For local-only testing, you may copy `firebase-config.example.js` to `firebase-config.js` and fill in your keys, but production builds should rely on the Vercel environment variables.
+
+## Epic OAuth setup
+
+The app keeps Firebase email/password as the primary login but now includes an Epic-link flow. Configure these Vercel env vars:
+
+- `EPIC_CLIENT_ID`
+- `EPIC_CLIENT_SECRET`
+- `APP_ORIGIN` (optional; falls back to the current host)
+
+Add the following redirect URI to your Epic Developer Portal configuration:
+
+- `<APP_ORIGIN>/oauth-callback.html?oauth=epic`
+
+Flow overview:
+
+1. `/api/oauth/epic/start` generates PKCE values and redirects the user to Epic’s authorize URL.
+2. Epic returns to `/oauth-callback.html` with `code` and `state`.
+3. The callback page calls `/api/oauth/epic/callback` to exchange the code using the secret (server-side only).
+4. On success, the user’s Firestore profile gets `oauth.epic = { linked: true, epicAccountId, displayName, linkedAt }`.
+
+Secrets stay server-side; no client bundles contain the Epic secret.

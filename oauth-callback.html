@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Epic OAuth Callback</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/api/firebase-config"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-black via-slate-900 to-indigo-950 text-white flex items-center justify-center p-4">
+  <div class="w-full max-w-xl bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-md" id="statusBox">
+    <div class="text-lg font-bold mb-2">Linking Epic account…</div>
+    <p class="text-sm text-cyan-100" id="statusMessage">Checking OAuth response.</p>
+  </div>
+
+  <script>
+    function updateStatus(message, isError) {
+      const box = document.getElementById('statusBox');
+      const msg = document.getElementById('statusMessage');
+      if (msg) msg.textContent = message;
+      if (isError && box) box.classList.add('border-red-500/50', 'bg-red-500/10');
+      if (!isError && box) box.classList.add('border-emerald-500/40', 'bg-emerald-500/5');
+    }
+
+    async function waitForAuth(auth) {
+      return new Promise((resolve) => {
+        const unsub = auth.onAuthStateChanged((user) => {
+          unsub();
+          resolve(user);
+        });
+      });
+    }
+
+    async function handleOAuthCallback() {
+      const params = new URLSearchParams(window.location.search);
+      const provider = params.get('oauth');
+      const code = params.get('code');
+      const state = params.get('state');
+      const error = params.get('error');
+
+      if (error) {
+        updateStatus(`Epic OAuth returned an error: ${error}`, true);
+        return;
+      }
+      if (provider !== 'epic' || !code || !state) {
+        updateStatus('Missing OAuth parameters. Please restart the Epic link flow.', true);
+        return;
+      }
+      if (!window.firebaseConfig || !window.firebaseConfig.apiKey) {
+        updateStatus('Firebase config missing. Please redeploy with Firebase env vars.', true);
+        return;
+      }
+
+      if (!window.firebase || !firebase.initializeApp) {
+        updateStatus('Firebase SDK unavailable.', true);
+        return;
+      }
+
+      const app = firebase.apps?.length ? firebase.app() : firebase.initializeApp(window.firebaseConfig);
+      const auth = firebase.auth();
+      const db = firebase.firestore();
+      const currentUser = await waitForAuth(auth);
+      if (!currentUser) {
+        updateStatus('Sign in first, then retry linking Epic.', true);
+        return;
+      }
+
+      updateStatus('Exchanging code for Epic token…');
+
+      let response;
+      try {
+        const qs = new URLSearchParams({ code, state, redirect_uri: window.location.origin + '/oauth-callback.html?oauth=epic' });
+        response = await fetch(`/api/oauth/epic/callback?${qs.toString()}`, { credentials: 'include' });
+      } catch (e) {
+        updateStatus('Network error contacting callback endpoint.', true);
+        return;
+      }
+
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (e) {
+        updateStatus('Invalid response from callback endpoint.', true);
+        return;
+      }
+
+      if (!payload.ok) {
+        updateStatus(payload.error || 'Epic link failed. Try again.', true);
+        return;
+      }
+
+      const epicLink = {
+        linked: true,
+        epicAccountId: payload.epicAccountId || null,
+        displayName: payload.displayName || null,
+        linkedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+
+      try {
+        await db.collection('users').doc(currentUser.uid).set({ oauth: { epic: epicLink } }, { merge: true });
+      } catch (e) {
+        updateStatus('Could not save Epic link to profile.', true);
+        return;
+      }
+
+      try {
+        const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+        const existing = profiles[currentUser.uid] || {};
+        profiles[currentUser.uid] = { ...existing, oauth: { ...(existing.oauth || {}), epic: { ...epicLink, linkedAt: new Date().toISOString() } } };
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      } catch (e) {
+        // non-fatal
+      }
+
+      sessionStorage.setItem('oauthSuccess', 'Epic account linked!');
+      updateStatus('Epic account linked. Redirecting…');
+      setTimeout(() => {
+        window.location.href = '/?view=profile';
+      }, 900);
+    }
+
+    handleOAuthCallback();
+  </script>
+</body>
+</html>
