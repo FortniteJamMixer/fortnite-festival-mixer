@@ -1,5 +1,8 @@
 import crypto from "crypto";
 
+const COOKIE_NAME = "epic_oauth";
+const COOKIE_MAX_AGE = 600; // 10 minutes
+
 function base64UrlEncode(buffer) {
   return buffer
     .toString("base64")
@@ -8,17 +11,15 @@ function base64UrlEncode(buffer) {
     .replace(/=+$/, "");
 }
 
-function isSecure(req) {
-  const protoHeader = (req.headers["x-forwarded-proto"] || "").split(",")[0];
-  if (protoHeader) return protoHeader === "https";
-  return !!req.connection?.encrypted;
-}
-
 function getOrigin(req) {
   if (process.env.APP_ORIGIN) return process.env.APP_ORIGIN.replace(/\/$/, "");
   const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
   const host = req.headers.host;
   return `${proto}://${host}`;
+}
+
+function buildSessionCookie(payload) {
+  return `${COOKIE_NAME}=${payload}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${COOKIE_MAX_AGE}`;
 }
 
 export default async function handler(req, res) {
@@ -48,11 +49,7 @@ export default async function handler(req, res) {
   const cookiePayload = encodeURIComponent(
     JSON.stringify({ state, codeVerifier, redirectUri })
   );
-  const secureFlag = isSecure(req) ? " Secure;" : "";
-  res.setHeader(
-    "Set-Cookie",
-    `epic_oauth=${cookiePayload}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600;${secureFlag}`
-  );
+  res.setHeader("Set-Cookie", buildSessionCookie(cookiePayload));
   res.setHeader("Cache-Control", "no-store");
 
   const authorizeUrl = new URL(

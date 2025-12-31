@@ -1,3 +1,5 @@
+const COOKIE_NAME = "epic_oauth";
+
 function parseCookies(cookieHeader = "") {
   return cookieHeader.split(";").reduce((acc, part) => {
     const [key, ...rest] = part.trim().split("=");
@@ -15,19 +17,21 @@ function buildRedirectUri(req, provided) {
   return `${origin.replace(/\/$/, "")}/oauth-callback.html?oauth=epic`;
 }
 
-function clearCookie(req, res) {
-  const secureFlag = (req.headers["x-forwarded-proto"] || "").includes("https")
-    ? " Secure;"
-    : "";
+function clearCookie(res) {
   res.setHeader(
     "Set-Cookie",
-    `epic_oauth=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0;${secureFlag}`
+    `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`
   );
+}
+
+function sendError(res, status, message) {
+  clearCookie(res);
+  res.status(status).json({ ok: false, error: message });
 }
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
-    res.status(405).json({ ok: false, error: "Method not allowed" });
+    sendError(res, 405, "Method not allowed");
     return;
   }
 
@@ -35,21 +39,21 @@ export default async function handler(req, res) {
 
   const { code, state, redirect_uri: redirectParam } = req.query || {};
   if (!code || !state) {
-    res.status(400).json({ ok: false, error: "Missing code or state" });
+    sendError(res, 400, "Missing code or state");
     return;
   }
 
   const clientId = process.env.EPIC_CLIENT_ID;
   const clientSecret = process.env.EPIC_CLIENT_SECRET;
   if (!clientId) {
-    res.status(500).json({ ok: false, error: "Missing EPIC_CLIENT_ID env" });
+    sendError(res, 500, "Missing EPIC_CLIENT_ID env");
     return;
   }
 
   const cookies = parseCookies(req.headers.cookie || "");
-  const oauthCookie = cookies["epic_oauth"] ? decodeURIComponent(cookies["epic_oauth"]) : null;
+  const oauthCookie = cookies[COOKIE_NAME] ? decodeURIComponent(cookies[COOKIE_NAME]) : null;
   if (!oauthCookie) {
-    res.status(400).json({ ok: false, error: "Missing OAuth session" });
+    sendError(res, 400, "Missing OAuth session");
     return;
   }
 
@@ -57,20 +61,19 @@ export default async function handler(req, res) {
   try {
     parsed = JSON.parse(oauthCookie);
   } catch (e) {
-    res.status(400).json({ ok: false, error: "Invalid OAuth session" });
+    sendError(res, 400, "Invalid OAuth session");
     return;
   }
 
   if (!parsed.state || parsed.state !== state) {
-    clearCookie(req, res);
-    res.status(400).json({ ok: false, error: "State mismatch" });
+    sendError(res, 400, "State mismatch");
     return;
   }
 
   const redirectUri = buildRedirectUri(req, redirectParam || parsed.redirectUri);
 
   if (!clientSecret) {
-    res.status(500).json({ ok: false, error: "Missing EPIC_CLIENT_SECRET env" });
+    sendError(res, 500, "Missing EPIC_CLIENT_SECRET env");
     return;
   }
 
@@ -96,18 +99,16 @@ export default async function handler(req, res) {
 
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      clearCookie(req, res);
-      res.status(resp.status).json({ ok: false, error: data.error_description || data.error || "Token exchange failed" });
+      sendError(res, resp.status, data.error_description || data.error || "Token exchange failed");
       return;
     }
 
     const epicAccountId = data.account_id || data.sub || null;
     const displayName = data.display_name || data.displayName || null;
 
-    clearCookie(req, res);
+    clearCookie(res);
     res.status(200).json({ ok: true, linked: true, epicAccountId, displayName });
   } catch (e) {
-    clearCookie(req, res);
-    res.status(500).json({ ok: false, error: "OAuth callback failed" });
+    sendError(res, 500, "OAuth callback failed");
   }
 }
