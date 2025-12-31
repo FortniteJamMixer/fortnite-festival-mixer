@@ -49,10 +49,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       linked: true,
+      provider: link.provider || "epic",
       epicAccountId: link.epicAccountId || null,
       displayName: link.displayName || null,
       linkedAt: link.linkedAt || null,
       lastValidatedAt: link.lastValidatedAt || null,
+      scopes: link.scopes || [],
     });
   } catch (e) {
     return res.status(500).json({ linked: false, error: "Failed to fetch Epic status" });
