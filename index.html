@@ -503,7 +503,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       const username = profile.username || fallbackId || profile.uid || '';
       const djName = profile.djName || username;
       const email = profile.email || profile.mail || '';
-      return { ...profile, username, djName, email, ownedTracks: ownedArray };
+      const oauth = profile.oauth || {};
+      return { ...profile, username, djName, email, ownedTracks: ownedArray, oauth };
     }
     function buildOwnedMap(ids){
       const map = {};
@@ -632,6 +633,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let adminMenuListenersBound = false;
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
     const profileParam = new URLSearchParams(window.location.search).get('profile');
+    const pendingOAuthToast = sessionStorage.getItem('oauthSuccess');
+    if(pendingOAuthToast){ sessionStorage.removeItem('oauthSuccess'); setTimeout(()=>alert(pendingOAuthToast), 500); }
 
     // ---------------------- Admin & identity helpers -----------------------
     function ensureLocalDeviceId(){
@@ -909,7 +912,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         setlists: currentUser.setlists || setlist || [],
         setlist: setlist || [],
         bandMembers,
-        genreOverrides
+        genreOverrides,
+        oauth: currentUser.oauth || {}
       };
       currentUser = mergedProfile;
       persistNamespacedState();
@@ -1195,6 +1199,46 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       }
     };
 
+    function getOAuthCallbackUrl(provider){
+      if(provider === 'epic') return `${window.location.origin}/oauth-callback.html?oauth=epic`;
+      return window.location.origin;
+    }
+
+    window.startOAuth = (provider) => {
+      if(!firebaseAuth?.currentUser){ alert('Sign in first to link accounts.'); return; }
+      if(provider === 'epic'){
+        const redirect = encodeURIComponent(getOAuthCallbackUrl(provider));
+        window.location.href = `/api/oauth/epic/start?redirect_uri=${redirect}`;
+        return;
+      }
+      alert('Unsupported OAuth provider.');
+    };
+
+    window.unlinkOAuth = async (provider) => {
+      if(provider !== 'epic') return alert('Unsupported OAuth provider.');
+      if(!firebaseAuth?.currentUser){ alert('Sign in first to unlink.'); return; }
+      currentUser = currentUser || {};
+      currentUser.oauth = currentUser.oauth || {};
+      delete currentUser.oauth.epic;
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      if(currentUser.uid && profiles[currentUser.uid]){
+        if(profiles[currentUser.uid].oauth){ delete profiles[currentUser.uid].oauth.epic; }
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      }
+      try{
+        if(firestore){
+          const payload = firebase?.firestore?.FieldValue?.delete ? { oauth: { epic: firebase.firestore.FieldValue.delete() } } : { oauth: { epic: null } };
+          await firestore.collection('users').doc(firebaseAuth.currentUser.uid).set(payload, { merge: true });
+        }
+        await saveUserProfile();
+        alert('Epic account unlinked.');
+        renderProfile(); setupEventListeners();
+      }catch(err){
+        console.warn('Unlink epic failed', err);
+        alert('Could not unlink Epic right now.');
+      }
+    };
+
     function hasMeaningfulData(profile){
       if(!profile) return false;
       return (profile.ownedTracks && profile.ownedTracks.length) ||
@@ -1280,7 +1324,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           setlists: importedProfile?.setlists || profile.setlists || setlist || [],
           setlist: importedProfile?.setlist || profile.setlist || profile.setlists || setlist || [],
           bandMembers: importedProfile?.bandMembers || profile.bandMembers || bandMembers || [],
-          genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {}
+          genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {},
+          oauth: profile.oauth || {}
         };
         loadNamespacedState();
         loadOverridesFromStorage();
@@ -1575,6 +1620,10 @@ window.handleLogin = async (event) => {
       const djVal = profileOwner?.djName || usernameVal;
       const ownedIds = profileOwner?.ownedTracks || [];
       const viewOnly = !!viewingProfile;
+      const epicLink = profileOwner?.oauth?.epic || null;
+      const epicLinked = !!epicLink?.linked;
+      const epicDisplay = epicLink?.displayName || epicLink?.epicAccountId || '';
+      const showConnectedAccounts = !!firebaseAuth?.currentUser && !viewOnly;
       const friendError = friendLookupError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-500/40 rounded px-3 py-2">${friendLookupError}</div>` : '';
       const friendList = friendLookupResults.length ? `<div class="space-y-2">
         <div class="text-xs text-gray-300">Multiple matches found. Pick one:</div>
@@ -1637,6 +1686,31 @@ window.handleLogin = async (event) => {
             </div>
             <div id="profileStatus" class="text-sm text-cyan-200"></div>
           </div>
+
+          ${showConnectedAccounts ? `
+          <div class="panel space-y-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <div class="text-lg font-bold text-white">Connected Accounts</div>
+                <p class="text-sm text-gray-300">Link Epic to get ready for Epic account login later.</p>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-3 flex-wrap bg-white/5 border border-white/10 rounded-lg p-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xl">🎮</div>
+                <div>
+                  <div class="font-semibold text-white">Epic Games</div>
+                  <div class="text-xs text-gray-300">${epicLinked ? `Linked${epicDisplay ? ` • ${epicDisplay}` : ''}` : 'Not linked yet'}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold px-2 py-1 rounded-full ${epicLinked ? 'bg-emerald-500/20 text-emerald-100 border border-emerald-400/40' : 'bg-white/10 text-gray-200 border border-white/20'}">${epicLinked ? 'Linked' : 'Not linked'}</span>
+                ${epicLinked ? `<button onclick="unlinkOAuth('epic')" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-sm">Unlink</button>` : `<button onclick="startOAuth('epic')" class="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg text-sm font-semibold">Link Epic</button>`}
+              </div>
+            </div>
+            <p class="text-xs text-gray-400">Redirects through Epic, then returns here to store a link in your profile. Firebase email/password stays your primary sign-in.</p>
+          </div>
+          ` : ''}
 
           <div class="panel space-y-4">
             <div class="flex items-start justify-between gap-3 flex-wrap">
