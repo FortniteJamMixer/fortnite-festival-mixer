@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Epic OAuth Callback</title>
+  <script src="/api/firebase-config"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-black via-slate-900 to-indigo-950 text-white flex items-center justify-center p-4">
@@ -21,6 +24,9 @@
     const statusBox = document.getElementById('statusBox');
     const returnButton = document.getElementById('returnButton');
     const redirectTarget = '/?view=profile';
+
+    let firebaseApp = null;
+    let firebaseAuth = null;
 
     function scrubUrl() {
       const cleanPath = `${window.location.pathname}${window.location.hash || ''}`;
@@ -43,6 +49,53 @@
       }, { once: true });
     }
 
+    function initFirebase() {
+      const config = (window.firebaseConfig && window.firebaseConfig.apiKey)
+        ? window.firebaseConfig
+        : null;
+      if (!config || !window.firebase?.initializeApp) return false;
+      try {
+        firebaseApp = firebase.initializeApp(config);
+        firebaseAuth = firebase.auth();
+        return true;
+      } catch (e) {
+        console.warn('Firebase init failed in callback', e);
+        firebaseApp = null;
+        firebaseAuth = null;
+        return false;
+      }
+    }
+
+    function waitForAuthReady(timeoutMs = 5000) {
+      return new Promise((resolve) => {
+        if (!firebaseAuth) return resolve(null);
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (!settled) resolve(firebaseAuth.currentUser || null);
+          settled = true;
+        }, timeoutMs);
+        const unsub = firebaseAuth.onAuthStateChanged((user) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          unsub?.();
+          resolve(user || null);
+        });
+      });
+    }
+
+    async function getIdToken() {
+      if (!firebaseAuth) return null;
+      const user = firebaseAuth.currentUser || (await waitForAuthReady());
+      if (!user) return null;
+      try {
+        return await user.getIdToken(false);
+      } catch (e) {
+        console.warn('Failed to get ID token', e);
+        return null;
+      }
+    }
+
     async function handleOAuthCallback() {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
@@ -63,6 +116,20 @@
         return;
       }
 
+      const firebaseReady = initFirebase();
+      if (!firebaseReady) {
+        updateStatus('Firebase missing', 'Firebase is required to complete Epic linking. Return to the app and sign in.', true);
+        showReturnButton();
+        return;
+      }
+
+      const idToken = await getIdToken();
+      if (!idToken) {
+        updateStatus('Sign in required', 'Please sign in to your Festival Mixer account, then restart the Epic link.', true);
+        showReturnButton();
+        return;
+      }
+
       updateStatus('Linking Epic account…', 'Finishing secure Epic link. Do not close this tab.');
 
       let response;
@@ -70,7 +137,10 @@
       try {
         response = await fetch('/api/oauth/epic/callback', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`
+          },
           credentials: 'same-origin',
           body: JSON.stringify({ code, state })
         });

@@ -1,6 +1,6 @@
 import { buildClearCookie, COOKIE_NAME } from "./constants";
 import { verifyFirebaseIdToken } from "./firebase-auth";
-import { clearEpicLink, getEpicLink } from "./link-store";
+import { getEpicLink } from "./link-store";
 
 function parseCookies(cookieHeader = "") {
   return cookieHeader.split(";").reduce((acc, part) => {
@@ -21,15 +21,12 @@ function clearSessionCookieIfPresent(req, res) {
 function extractIdToken(req) {
   const header = req.headers.authorization || "";
   if (header.startsWith("Bearer ")) return header.slice(7).trim();
-  if (req.method === "POST" || req.method === "DELETE") {
-    return req.body?.idToken || null;
-  }
-  return req.query?.idToken || null;
+  return null;
 }
 
 export default async function handler(req, res) {
-  if (!req.method || !["GET", "DELETE"].includes(req.method)) {
-    res.setHeader("Allow", "GET, DELETE");
+  if (!req.method || req.method !== "GET") {
+    res.setHeader("Allow", "GET");
     return res.status(405).json({ linked: false, error: "Method not allowed" });
   }
 
@@ -42,24 +39,22 @@ export default async function handler(req, res) {
     return res.status(401).json({ linked: false, error: "Authentication required" });
   }
 
-  if (req.method === "DELETE") {
-    clearEpicLink(firebaseUser.uid);
+  try {
+    const link = await getEpicLink(firebaseUser.uid, idToken);
     clearSessionCookieIfPresent(req, res);
-    return res.status(200).json({ linked: false });
-  }
 
-  const link = getEpicLink(firebaseUser.uid);
-  if (!link) {
-    clearSessionCookieIfPresent(req, res);
-    return res.status(200).json({ linked: false });
-  }
+    if (!link) {
+      return res.status(200).json({ linked: false });
+    }
 
-  clearSessionCookieIfPresent(req, res);
-  return res.status(200).json({
-    linked: true,
-    epicAccountId: link.epicAccountId || null,
-    displayName: link.displayName || null,
-    linkedAt: link.linkedAt || null,
-    lastValidatedAt: link.lastValidatedAt || null,
-  });
+    return res.status(200).json({
+      linked: true,
+      epicAccountId: link.epicAccountId || null,
+      displayName: link.displayName || null,
+      linkedAt: link.linkedAt || null,
+      lastValidatedAt: link.lastValidatedAt || null,
+    });
+  } catch (e) {
+    return res.status(500).json({ linked: false, error: "Failed to fetch Epic status" });
+  }
 }

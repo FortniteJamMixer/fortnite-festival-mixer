@@ -42,10 +42,9 @@ function sendError(res, status, message, code = ERROR_CODES.generic, redirectUri
   res.status(status).json(payload);
 }
 
-function extractIdToken(req, body) {
+function extractIdToken(req) {
   const authHeader = req.headers.authorization || "";
   if (authHeader.startsWith("Bearer ")) return authHeader.slice(7).trim();
-  if (body?.idToken) return body.idToken;
   return null;
 }
 
@@ -120,7 +119,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const idToken = extractIdToken(req, values);
+  const idToken = extractIdToken(req);
   const firebaseUser = await verifyFirebaseIdToken(idToken);
   if (!firebaseUser?.uid) {
     sendError(res, 401, "Authentication required", ERROR_CODES.unauthenticated, redirectUri);
@@ -167,6 +166,11 @@ export default async function handler(req, res) {
     const displayName = data.display_name || data.displayName || null;
     const now = Date.now();
 
+    if (!epicAccountId) {
+      sendError(res, 400, "Epic account identifier missing", ERROR_CODES.exchangeFailed, redirectUri);
+      return;
+    }
+
     const linkPayload = {
       linked: true,
       epicAccountId,
@@ -174,7 +178,12 @@ export default async function handler(req, res) {
       linkedAt: now,
       lastValidatedAt: now,
     };
-    setEpicLink(firebaseUser.uid, linkPayload);
+    try {
+      await setEpicLink(firebaseUser.uid, linkPayload, idToken);
+    } catch (err) {
+      sendError(res, 500, "Failed to store Epic link", ERROR_CODES.generic, redirectUri);
+      return;
+    }
 
     clearCookie(res);
     res

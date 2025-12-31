@@ -1229,6 +1229,11 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           headers: { 'Authorization': `Bearer ${idToken}` },
           credentials: 'include'
         });
+        if(resp.status === 401){
+          currentUser = currentUser || {};
+          if(currentUser.oauth?.epic){ delete currentUser.oauth.epic; cacheEpicLink(null); }
+          return { linked: false, error: 'Authentication required' };
+        }
         if(!resp.ok) return null;
         const data = await resp.json();
         currentUser = currentUser || {};
@@ -1264,25 +1269,18 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     window.unlinkOAuth = async (provider) => {
       if(provider !== 'epic') return alert('Unsupported OAuth provider.');
       if(!firebaseAuth?.currentUser){ alert('Sign in first to unlink.'); return; }
-      currentUser = currentUser || {};
-      currentUser.oauth = currentUser.oauth || {};
-      delete currentUser.oauth.epic;
-      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      if(currentUser.uid && profiles[currentUser.uid]){
-        if(profiles[currentUser.uid].oauth){ delete profiles[currentUser.uid].oauth.epic; }
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      }
-      if(firebaseAuth?.currentUser){
-        try{
-          const token = await firebaseAuth.currentUser.getIdToken();
-          await fetch('/api/oauth/epic/status', { method:'DELETE', headers:{ 'Authorization': `Bearer ${token}` } });
-        }catch(err){ console.warn('Server unlink epic failed', err); }
-      }
       try{
-        if(firestore){
-          const payload = firebase?.firestore?.FieldValue?.delete ? { oauth: { epic: firebase.firestore.FieldValue.delete() } } : { oauth: { epic: null } };
-          await firestore.collection('users').doc(firebaseAuth.currentUser.uid).set(payload, { merge: true });
+        const token = await firebaseAuth.currentUser.getIdToken();
+        const resp = await fetch('/api/oauth/epic/unlink', {
+          method:'POST',
+          headers:{ 'Authorization': `Bearer ${token}` },
+          credentials: 'include'
+        });
+        if(!resp.ok){
+          alert('Could not unlink Epic right now.');
+          return;
         }
+        await fetchEpicLinkStatus();
         await saveUserProfile();
         alert('Epic account unlinked.');
         renderProfile(); setupEventListeners();
