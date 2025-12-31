@@ -496,19 +496,45 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
 
     // Backend save/load wrappers (Firestore or localStorage)
+    function normalizeProfileShape(profile, fallbackId){
+      if(!profile) return null;
+      const ownedFromMap = Object.keys(profile.ownedMap || {});
+      const ownedArray = Array.isArray(profile.ownedTracks) ? profile.ownedTracks : ownedFromMap;
+      const username = profile.username || fallbackId || profile.uid || '';
+      const djName = profile.djName || username;
+      const email = profile.email || profile.mail || '';
+      return { ...profile, username, djName, email, ownedTracks: ownedArray };
+    }
+    function buildOwnedMap(ids){
+      const map = {};
+      (ids||[]).forEach(id=>{ map[id] = true; });
+      return map;
+    }
     async function saveUserProfileToBackend(profile) {
       if (!profile) return;
       const firebaseUser = firebaseAuth?.currentUser;
       const profileKey = profile.uid || firebaseUser?.uid || profile.username;
+      const ownedIds = profile.ownedTracks || [];
+      const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+      const payload = {
+        ...profile,
+        uid: profileKey,
+        username: profile.username || profileKey,
+        djName: profile.djName || profile.username || profileKey,
+        email: profile.email || firebaseUser?.email || '',
+        ownedTracks: ownedIds,
+        ownedMap: buildOwnedMap(ownedIds),
+        updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+      };
       if (firestore && firebaseUser && profileKey) {
         try {
-          await firestore.collection('users').doc(profileKey).set({ ...profile, uid: profileKey }, { merge: true });
+          await firestore.collection('users').doc(profileKey).set(payload, { merge: true });
           return true;
         } catch (e) { console.warn('Firestore save failed', e); return false; }
       } else {
         const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-        if (profile.username) profiles[profile.username] = profile;
-        if (profileKey) profiles[profileKey] = profile;
+        if (payload.username) profiles[payload.username] = payload;
+        if (profileKey) profiles[profileKey] = payload;
         localStorage.setItem('userProfiles', JSON.stringify(profiles));
         return true;
       }
@@ -520,24 +546,24 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if (firestore && lookupKey) {
         try {
           const doc = await firestore.collection('users').doc(lookupKey).get();
-          if (doc.exists) return doc.data();
+          if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
           if (firebaseUser?.email) {
             const emailKey = firebaseUser.email.split('@')[0];
             if (emailKey && emailKey !== lookupKey) {
               const legacyDoc = await firestore.collection('users').doc(emailKey).get();
-              if (legacyDoc.exists) return legacyDoc.data();
+              if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), emailKey);
             }
           }
         } catch (e) { console.warn('Firestore load failed', e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      if (lookupKey && profiles[lookupKey]) return profiles[lookupKey];
-      if (firebaseUser?.uid && profiles[firebaseUser.uid]) return profiles[firebaseUser.uid];
+      if (lookupKey && profiles[lookupKey]) return normalizeProfileShape(profiles[lookupKey], lookupKey);
+      if (firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
       if (firebaseUser?.email) {
         const fallbackName = firebaseUser.email.split('@')[0];
-        if (profiles[fallbackName]) return profiles[fallbackName];
+        if (profiles[fallbackName]) return normalizeProfileShape(profiles[fallbackName], fallbackName);
       }
-      return identifier ? profiles[identifier] || null : null;
+      return identifier ? normalizeProfileShape(profiles[identifier], identifier) || null : null;
     }
 
     // ---------------------------- Data ------------------------------
@@ -590,6 +616,9 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let bandMembers = [];
     let viewingProfile = null;
     let profileOwnedSearch = '';
+    let friendSearchTerm = '';
+    let friendLookupError = '';
+    let friendLookupResults = [];
     let genreOverrides = {};
     let sandboxTracks = [];
     let sandboxIds = [];
@@ -896,12 +925,12 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if(firestore && (firebaseUser || username)){
         try{
           const doc = await firestore.collection('users').doc(firebaseUser?.uid || username).get();
-          if(doc.exists) return doc.data();
+          if(doc.exists) return normalizeProfileShape(doc.data(), firebaseUser?.uid || username);
         }catch(e){ console.warn('Firestore load failed',e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      if(firebaseUser?.uid && profiles[firebaseUser.uid]) return profiles[firebaseUser.uid];
-      return profiles[username] || null;
+      if(firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
+      return normalizeProfileShape(profiles[username], username) || null;
     }
 
     async function loadProfileForViewing(username){
@@ -911,14 +940,80 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return viewingProfile;
     }
 
-    function clearViewedProfile(){
-      viewingProfile = null;
+    async function fetchProfilesByField(field, value){
+      if(!firestore || !value) return [];
+      try{
+        const snap = await firestore.collection('users').where(field,'==',value).get();
+        return snap.docs.map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id));
+      }catch(err){ console.warn('profile lookup failed', err); return []; }
+    }
+
+    function openFriendProfile(profile){
+      if(!profile) return;
+      viewingProfile = normalizeProfileShape(profile, profile.uid || profile.username || '');
       profileOwnedSearch = '';
+      setProfileQueryParam(viewingProfile?.username || viewingProfile?.uid || '');
+      friendLookupResults = [];
+      friendLookupError = '';
+      view = 'profile';
+      render();
+      setupEventListeners();
+      updateOwnedCount();
+    }
+
+    window.selectFriendProfile = (username)=>{
+      const pick = friendLookupResults.find(p=>p.username === username || p.uid === username);
+      if(!pick){ friendLookupError = 'Profile not available anymore.'; renderProfile(); setupEventListeners(); return; }
+      openFriendProfile(pick);
+    };
+
+    async function viewFriendProfile(){
+      const input = (document.getElementById('friendSearchInput')?.value || '').trim();
+      friendSearchTerm = input;
+      friendLookupError = '';
+      friendLookupResults = [];
+      if(!firebaseAuth?.currentUser){
+        friendLookupError = 'Sign in required to view other profiles.';
+        renderProfile(); setupEventListeners(); return;
+      }
+      if(!input){ friendLookupError = 'Enter a DJ name or username to view.'; renderProfile(); setupEventListeners(); return; }
+      const tryMatches = async (field)=> await fetchProfilesByField(field, input);
+      try{
+        const usernameHits = await tryMatches('username');
+        if(usernameHits.length === 1) return openFriendProfile(usernameHits[0]);
+        if(usernameHits.length > 1){ friendLookupResults = usernameHits; renderProfile(); setupEventListeners(); return; }
+
+        const djHits = await tryMatches('djName');
+        if(djHits.length === 1) return openFriendProfile(djHits[0]);
+        if(djHits.length > 1){ friendLookupResults = djHits; renderProfile(); setupEventListeners(); return; }
+
+        if(input.includes('@')){
+          const emailHits = await tryMatches('email');
+          if(emailHits.length === 1) return openFriendProfile(emailHits[0]);
+          if(emailHits.length > 1){ friendLookupResults = emailHits; renderProfile(); setupEventListeners(); return; }
+        }
+        friendLookupError = `No profile found for ‘${input}’`;
+      }catch(err){
+        friendLookupError = 'Lookup failed. Please try again.';
+      }
+      renderProfile();
+      setupEventListeners();
+    }
+
+    function setProfileQueryParam(value){
       const params = new URLSearchParams(window.location.search);
-      params.delete('profile');
+      if(value) params.set('profile', value); else params.delete('profile');
       const query = params.toString();
       const newUrl = `${location.pathname}${query ? `?${query}` : ''}${location.hash}`;
       window.history.replaceState({}, '', newUrl);
+    }
+    function clearViewedProfile(){
+      viewingProfile = null;
+      profileOwnedSearch = '';
+      friendLookupResults = [];
+      friendLookupError = '';
+      friendSearchTerm = '';
+      setProfileQueryParam(null);
     }
 
     // --------------------- UI: Landing / Auth ------------------------
@@ -1451,7 +1546,7 @@ window.handleLogin = async (event) => {
               <button onclick="selectSong('${song.id}')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
               <button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-id="${song.id}">Preview</button>
               <button onclick="toggleOwned('${song.id}')" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
-              <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}">+ Set</button>
+              <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Set</button>
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
           </div>
@@ -1480,6 +1575,11 @@ window.handleLogin = async (event) => {
       const djVal = profileOwner?.djName || usernameVal;
       const ownedIds = profileOwner?.ownedTracks || [];
       const viewOnly = !!viewingProfile;
+      const friendError = friendLookupError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-500/40 rounded px-3 py-2">${friendLookupError}</div>` : '';
+      const friendList = friendLookupResults.length ? `<div class="space-y-2">
+        <div class="text-xs text-gray-300">Multiple matches found. Pick one:</div>
+        ${friendLookupResults.map(p=>`<button onclick="selectFriendProfile('${p.username || p.uid || ''}')" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
+      </div>` : '';
       const ownedFiltered = songs
         .filter(s=>ownedIds.includes(s.id))
         .filter(s=>{
@@ -1533,7 +1633,7 @@ window.handleLogin = async (event) => {
             <div class="flex gap-3 flex-wrap">
               ${viewOnly ? '' : `<button onclick="saveProfileSettings()" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Save Profile</button>`}
               <button onclick="switchView('browser')" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
-              ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Exit view-only</button>` : ''}
+              ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Back to My Profile</button>` : ''}
             </div>
             <div id="profileStatus" class="text-sm text-cyan-200"></div>
           </div>
@@ -1546,9 +1646,23 @@ window.handleLogin = async (event) => {
               </div>
               <div class="text-sm text-cyan-200 font-semibold">${ownedIds.length} / ${songs.length}</div>
             </div>
-            <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-              <input id="ownedSearchInput" value="${profileOwnedSearch || ''}" placeholder="Search owned songs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
-              <div class="text-xs text-gray-400">Live filter by title or artist</div>
+            <div class="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+              <div class="flex-1 flex flex-col gap-2">
+                <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                  <input id="friendSearchInput" value="${friendSearchTerm || ''}" placeholder="Search DJ name…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+                  <button onclick="viewFriendProfile()" class="px-4 py-3 bg-purple-500/40 hover:bg-purple-500/50 border border-purple-400/50 rounded-lg font-semibold">View</button>
+                </div>
+                <div class="text-xs text-gray-400">Shows their owned songs (read-only)</div>
+                ${friendError}
+                ${friendList}
+              </div>
+              <div class="flex-1 flex flex-col gap-2">
+                <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                  <input id="ownedSearchInput" value="${profileOwnedSearch || ''}" placeholder="Search owned songs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+                  <div class="text-xs text-gray-400 sm:w-40">Live filter by title or artist</div>
+                </div>
+                ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to My Profile</button>` : ''}
+              </div>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               ${ownedCards || ownedEmpty}
@@ -1752,7 +1866,7 @@ function render(){
           <div class="flex items-center gap-3 flex-wrap justify-end">
             <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
             ${viewingProfile?`<button onclick="exitProfileViewMode()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
-            ${isAdmin()?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
+            ${(!viewingProfile && isAdmin())?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
                   <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
                 </div>`:''}</div>`:''}
             <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
@@ -1930,6 +2044,7 @@ function render(){
       document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
       const auditInput = document.getElementById('auditSearchInput'); if(auditInput){ auditInput.oninput = (e)=>{ auditSearch = e.target.value; renderAuditView(); }; }
       const ownedSearchInput = document.getElementById('ownedSearchInput'); if(ownedSearchInput){ ownedSearchInput.oninput = (e)=>{ profileOwnedSearch = e.target.value; renderProfile(); setupEventListeners(); }; }
+      const friendSearchInput = document.getElementById('friendSearchInput'); if(friendSearchInput){ friendSearchInput.onkeydown = (e)=>{ if(e.key === 'Enter'){ viewFriendProfile(); } }; }
       if(!viewingProfile){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
       if(isAdmin()){
@@ -2140,12 +2255,20 @@ function render(){
 
     async function maybeLoadSharedProfile(){
       if(!profileParam){ viewingProfile = null; return; }
+      friendSearchTerm = profileParam;
+      if(!firebaseAuth?.currentUser){ friendLookupError = 'Sign in required to view other profiles.'; return; }
       if(currentUser && (currentUser.username === profileParam || currentUser.uid === profileParam)){
-        viewingProfile = null;
-        return;
+        viewingProfile = null; setProfileQueryParam(null); return;
       }
-      await loadProfileForViewing(profileParam);
-      if(viewingProfile) view = 'profile';
+      const matches = await fetchProfilesByField('username', profileParam);
+      const profile = matches[0] || await loadProfileForViewing(profileParam);
+      if(profile){
+        viewingProfile = normalizeProfileShape(profile, profile.username || profile.uid);
+        setProfileQueryParam(viewingProfile.username || viewingProfile.uid || '');
+        view = 'profile';
+      } else {
+        friendLookupError = `No profile found for ‘${profileParam}’`;
+      }
     }
 
     const helpModal = document.getElementById('helpModal');
@@ -2188,7 +2311,7 @@ function render(){
     document.addEventListener('click', (e)=>{ const preview = e.target.closest('.previewBtn'); if(preview){ e.preventDefault(); onPreviewClick(preview.dataset.id); } const addSet = e.target.closest('.addSetBtn'); if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); } });
 
     // ---------------- Expose some helpers for debugging ----------------
-    window.openHelp = openHelp; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist;
+    window.openHelp = openHelp; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile;
   </script>
 </body>
 </html>
