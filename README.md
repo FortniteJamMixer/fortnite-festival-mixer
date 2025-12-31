@@ -20,21 +20,25 @@ For local-only testing, you may copy `firebase-config.example.js` to `firebase-c
 
 ## Epic OAuth setup
 
-The app keeps Firebase email/password as the primary login but now includes an Epic-link flow. Configure these Vercel env vars:
+The app keeps Firebase email/password as the primary login but now includes an Epic-link flow with server-side PKCE/state storage. Configure these Vercel env vars:
 
 - `EPIC_CLIENT_ID`
 - `EPIC_CLIENT_SECRET`
 - `APP_ORIGIN` (optional; falls back to the current host)
 
-Add the following redirect URI to your Epic Developer Portal configuration:
+Add the following redirect URI to your Epic Developer Portal configuration (must match `APP_ORIGIN` exactly):
 
 - `<APP_ORIGIN>/oauth-callback.html?oauth=epic`
 
-Flow overview:
+Flow overview (security-first):
 
-1. `/api/oauth/epic/start` generates PKCE values and redirects the user to Epic’s authorize URL.
+1. `/api/oauth/epic/start` generates PKCE values + CSRF state, stores them in a short-lived, HttpOnly, Secure, SameSite=Lax cookie, and redirects to Epic.
 2. Epic returns to `/oauth-callback.html` with `code` and `state`.
-3. The callback page calls `/api/oauth/epic/callback` to exchange the code using the secret (server-side only).
-4. On success, the user’s Firestore profile gets `oauth.epic = { linked: true, epicAccountId, displayName, linkedAt }`.
+3. The callback page calls `/api/oauth/epic/callback` (credentials included) to validate state, enforce the cookie TTL, and exchange the code using the stored `code_verifier` + server-only `client_secret`.
+4. On success, the user’s Firestore profile gets `oauth.epic = { linked: true, epicAccountId, displayName, linkedAt }`. Tokens are never returned to the client.
 
-Secrets stay server-side; no client bundles contain the Epic secret.
+Notes:
+
+- The OAuth cookie is cleared on every success/failure attempt to enforce single-use.
+- The redirect URI is restricted to `APP_ORIGIN` to prevent code exfiltration.
+- Firebase sign-in flows continue to work unchanged; OAuth is only for optional Epic account linking.
