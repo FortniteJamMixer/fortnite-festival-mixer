@@ -1,5 +1,5 @@
-# fortnite-festival-mixer
-🎵 DJ mixing tool for Fortnite Festival - Find harmonically compatible tracks using the Camelot Wheel system. Browse songs by BPM, key, and build perfect setlists.
+# Fortnite Jam Mixer
+🎵 DJ mixing tool for Fortnite Festival - Find harmonically compatible tracks using the Camelot Wheel system. Browse songs by BPM, key, and build perfect setlists in Fortnite Jam Mixer.
 
 ## Firebase config via Vercel env vars
 This app now loads Firebase configuration at runtime from the `/api/firebase-config.js` endpoint. Add the following Environment Variables in Vercel so the function can return a usable config:

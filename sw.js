@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'ffm-shell-v1';
-const RUNTIME_CACHE = 'ffm-runtime-v1';
+const APP_SHELL_CACHE = 'fortnite-jam-mixer-shell-v2';
+const RUNTIME_CACHE = 'fortnite-jam-mixer-runtime-v2';
 const APP_SHELL = ['/', '/index.html', '/offline.css', '/manifest.webmanifest'];
 const RUNTIME_PREFIXES = [
   'https://cdn.tailwindcss.com',
