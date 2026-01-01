@@ -660,6 +660,10 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let sandboxTracks = [];
     let sandboxIds = [];
     let priorityStrength = 'medium';
+    let keyMatchMode = (localStorage.getItem('jamMixer.keyMatchMode') || 'camelot') === 'semitone' ? 'semitone' : 'camelot';
+    let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
+    let includeOppositeMode = localStorage.getItem('jamMixer.includeOppositeMode');
+    includeOppositeMode = includeOppositeMode === null ? true : includeOppositeMode === 'true';
     let camelotOverridesStore = { ids: {}, names: {} };
     let bpmOverridesStore = { ids: {}, names: {} };
     let auditSearch = '';
@@ -972,6 +976,38 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       const rest = cleaned.slice(1).replace(/b/,'b').replace(/#/,'#');
       return (first + rest);
     }
+    const pitchClassMap = { C:0,'C#':1,Db:1,D:2,'D#':3,Eb:3,E:4,F:5,'F#':6,Gb:6,G:7,'G#':8,Ab:8,A:9,'A#':10,Bb:10,B:11 };
+    function parseKey(keyStr, modeStr){
+      const raw = (keyStr||'').trim();
+      let mode = normalizeMode(modeStr||'', keyStr||'') || null;
+      let root = null;
+      let pitchClass = null;
+      let label = raw || '';
+      const explicitMatch = raw.match(/^([A-Ga-g][#b]?)(?:\s*(major|minor))?$/i);
+      const shorthandMinor = raw.match(/^([A-Ga-g][#b]?)m$/i);
+      if(shorthandMinor){
+        root = normalizeKeyName(shorthandMinor[1]);
+        mode = mode || 'minor';
+      } else if(explicitMatch){
+        root = normalizeKeyName(explicitMatch[1]);
+        if(explicitMatch[2]) mode = explicitMatch[2].toLowerCase();
+      } else if(raw){
+        const simpleRoot = raw.match(/^([A-Ga-g][#b]?)/);
+        if(simpleRoot){ root = normalizeKeyName(simpleRoot[1]); }
+        if(/minor/i.test(raw)) mode = mode || 'minor';
+        if(/major/i.test(raw)) mode = mode || 'major';
+      }
+      if(root && Object.prototype.hasOwnProperty.call(pitchClassMap, root)){
+        pitchClass = pitchClassMap[root];
+      }
+      if(root){
+        const modeLabel = mode ? (mode === 'minor' ? 'Minor' : 'Major') : '';
+        label = modeLabel ? `${root} ${modeLabel}` : root;
+      } else {
+        label = label || '?';
+      }
+      return { root, pitchClass, mode, label };
+    }
     function convertToCamelot(key, mode) {
       if (!key && !mode) return '?';
       const modeNormalized = normalizeMode(mode,key);
@@ -993,6 +1029,19 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       const keyLabel = baseKey ? `${baseKey} ${fallbackMode}` : '?';
       return { camelot, keyLabel, mode: fallbackMode };
     }
+    function semitoneDistance(aPc,bPc){ if(aPc===null||aPc===undefined||bPc===null||bPc===undefined) return null; const d=Math.abs(aPc-bPc)%12; return Math.min(d,12-d); }
+    function signedSemitoneDelta(aPc,bPc){ if(aPc===null||aPc===undefined||bPc===null||bPc===undefined) return null; let diff=(bPc-aPc)%12; if(diff>6) diff-=12; if(diff<-6) diff+=12; return diff; }
+    function scoreSemitoneKeyMatch(a,b,maxRange, allowOpposite=true){
+      if(!a || !b || a.pitchClass===null || b.pitchClass===null) return { eligibleSameMode:false, eligibleOppMode:false, dist:null, scoreSameMode:0, scoreOppMode:0 };
+      const dist = semitoneDistance(a.pitchClass,b.pitchClass);
+      if(dist===null) return { eligibleSameMode:false, eligibleOppMode:false, dist:null, scoreSameMode:0, scoreOppMode:0 };
+      const sameMode = a.mode && b.mode && a.mode === b.mode;
+      const eligibleSameMode = !!(sameMode && dist <= maxRange);
+      const eligibleOppMode = !!(!sameMode && allowOpposite && dist <= maxRange);
+      const scoreSameMode = eligibleSameMode ? Math.max(0, 40 - (dist*4)) : 0;
+      const scoreOppMode = eligibleOppMode ? Math.max(4, 10 - dist) : 0;
+      return { eligibleSameMode, eligibleOppMode, dist, scoreSameMode, scoreOppMode };
+    }
     function getCompatibleKeys(camelot) {
       if (!camelot || camelot === '?') return [];
       const matches = camelot.match(/^(\d+)([AB])$/);
@@ -1003,22 +1052,48 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       compatible.push(`${nextNum}${letter}`); compatible.push(`${prevNum}${letter}`);
       return compatible;
     }
-    function isMixable(song1,song2){ if(!song1||!song2) return false; const compatible = getCompatibleKeys(song1.camelot); return compatible.includes(song2.camelot); }
+    function ensureKeyInfo(track){ if(!track) return { root:null, pitchClass:null, mode:null, label:'?' }; if(!track.keyInfo){ track.keyInfo = parseKey(track.rawKey || track.key || '', track.rawMode || track.mode || ''); } return track.keyInfo; }
+    function isMixable(song1,song2){
+      if(!song1||!song2) return false;
+      if(keyMatchMode === 'semitone'){
+        const aInfo = ensureKeyInfo(song1);
+        const bInfo = ensureKeyInfo(song2);
+        const match = scoreSemitoneKeyMatch(aInfo,bInfo,maxSemitoneRange, includeOppositeMode);
+        return match.eligibleSameMode || match.eligibleOppMode;
+      }
+      const compatible = getCompatibleKeys(song1.camelot);
+      return compatible.includes(song2.camelot);
+    }
+    function isMixableWithBpm(song1,song2){ if(!song1||!song2) return false; const bpmOk = Math.abs(song1.bpm - song2.bpm) <= 4; return bpmOk && isMixable(song1,song2); }
 
     function scoreKeyMatch(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 0; if(aCamelot===bCamelot) return 50; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 0; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; const ringDiff=Math.min(Math.abs(numA-numB),12-Math.abs(numA-numB)); if(numA===numB&&letterA!==letterB) return 42; if(letterA===letterB&&ringDiff===1) return 38; if(letterA!==letterB&&ringDiff===1) return 30; if(letterA===letterB&&ringDiff===2) return 26; return 14 - Math.min(ringDiff,6); }
     function scoreBpmMatch(aBpm,bBpm){ const diff=Math.abs(aBpm-bBpm); if(diff<=1) return 35; if(diff<=3) return 32; if(diff<=6) return 26; if(diff<=10) return 16; if(diff<=15) return 10; return 0; }
     function scoreGenreMatch(aGenre,bGenre){ if(!aGenre||!bGenre) return 0; return aGenre===bGenre?15:5; }
     function camelotDistance(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 99; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 99; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; const numDiff=Math.min(Math.abs(numA-numB),12-Math.abs(numA-numB)); const letterDiff = letterA===letterB ? 0 : 0.5; return numDiff + letterDiff; }
-    function mashupCompatibility(a,b){ const key=scoreKeyMatch(a.camelot,b.camelot); const bpm=scoreBpmMatch(a.bpm,b.bpm); const genre=scoreGenreMatch(a.genre,b.genre); const total=key+bpm+genre; return {total,breakdown:{key,bpm,genre}}; }
+    function mashupCompatibility(a,b){
+      let keyScore = 0;
+      if(keyMatchMode === 'semitone'){
+        const aInfo = ensureKeyInfo(a);
+        const bInfo = ensureKeyInfo(b);
+        const match = scoreSemitoneKeyMatch(aInfo,bInfo,maxSemitoneRange, includeOppositeMode);
+        keyScore = match.eligibleSameMode ? match.scoreSameMode : (match.eligibleOppMode ? match.scoreOppMode : 0);
+      } else {
+        keyScore = scoreKeyMatch(a.camelot,b.camelot);
+      }
+      const bpm=scoreBpmMatch(a.bpm,b.bpm); const genre=scoreGenreMatch(a.genre,b.genre); const total=keyScore+bpm+genre; return {total,breakdown:{key:keyScore,bpm,genre}};
+    }
     function getPriorityBoost(strength){ if(strength==='low') return 60; if(strength==='high') return 200; return 120; }
     function priorityRank(anchor, candidate, mode){
       const comp = mashupCompatibility(anchor, candidate);
       const bpmDiff = Math.abs(candidate.bpm - anchor.bpm);
-      const keyDist = camelotDistance(anchor.camelot, candidate.camelot);
+      const semitoneMatch = keyMatchMode==='semitone' ? (()=>{ const aInfo=ensureKeyInfo(anchor); const bInfo=ensureKeyInfo(candidate); const base=scoreSemitoneKeyMatch(aInfo,bInfo,maxSemitoneRange, includeOppositeMode); return { ...base, signedDelta: signedSemitoneDelta(aInfo.pitchClass,bInfo.pitchClass) }; })() : null;
+      const keyDist = keyMatchMode==='semitone' ? (semitoneMatch ? semitoneMatch.dist : null) : camelotDistance(anchor.camelot, candidate.camelot);
       const sameGenre = candidate.genre === anchor.genre;
 
       const bpmScore = Math.max(0, 1 - (bpmDiff / 10));
-      const keyScore = Math.max(0, 1 - (keyDist / 6));
+      const keyScore = keyMatchMode==='semitone'
+        ? Math.max(0, 1 - ((keyDist ?? 6) / 6))
+        : Math.max(0, 1 - (keyDist / 6));
       const genreScore = sameGenre ? 1 : 0;
 
       const boost = getPriorityBoost(priorityStrength);
@@ -1029,9 +1104,9 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if(mode === 'genre') rank += genreScore * boost;
 
       if(bpmDiff > 12) rank -= 40;
-      if(keyDist > 4) rank -= 40;
+      if(keyDist !== null && keyDist !== undefined && keyDist > 4) rank -= 40;
 
-      return { rank, comp, bpmDiff, keyDist, sameGenre };
+      return { rank, comp, bpmDiff, keyDist, sameGenre, semitoneMatch };
     }
     function bpmShiftSuggestion(aBpm,bBpm){ const shift=Math.round(bBpm-aBpm); if(shift===0) return 'No change'; return (shift>0?'+':'')+shift+' BPM = Perfect Match'; }
     function normalizeTitleArtist(title,artist){
@@ -1071,12 +1146,19 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       const camelotData = deriveCamelotForTrack({ mk: track.rawKey, mm: track.rawMode, key: track.key, title: track.title, artist: track.artist });
       const camelotApplied = applyCamelotOverride(track, camelotData.camelot);
       const bpmApplied = applyBpmOverride(track, track.rawBpm || track.bpm);
+      track.keyInfo = parseKey(track.rawKey || track.key || '', track.rawMode || track.mode || '');
+      track.key = track.keyInfo.label || camelotData.keyLabel || track.key;
       track.camelot = camelotApplied.camelot;
       track.camelotOverridden = camelotApplied.overridden;
       track.bpm = bpmApplied.bpm;
       track.bpmOverridden = bpmApplied.overridden;
       track.derivedCamelot = camelotData.camelot;
       track.flags = computeTrackFlags(track);
+    }
+    function hydrateKeyInfo(track){
+      if(!track) return;
+      track.keyInfo = parseKey(track.rawKey || track.key || '', track.rawMode || track.mode || '');
+      if(track.keyInfo.label) track.key = track.keyInfo.label;
     }
     // ----------------------- Genre detection -----------------------
     function detectGenre(artist, title){
@@ -1709,7 +1791,8 @@ window.handleLogin = async (event) => {
               const camelotData = deriveCamelotForTrack({ ...track, id });
               const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
               const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
-              const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden };
+              const keyInfo = parseKey(track.mk || camelotData.keyLabel || track.key || '', track.mm || camelotData.mode || track.mode || '');
+              const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: keyInfo.label || camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden, keyInfo };
               enriched.flags = computeTrackFlags(enriched);
               return enriched;
             }).filter(s=>s && s.bpm>0);
@@ -1731,12 +1814,14 @@ window.handleLogin = async (event) => {
       if(cachedTracks.length){
         console.warn('Using cached track data');
         songs = cachedTracks;
+        songs.forEach(hydrateKeyInfo);
         trackSource = 'cache';
         render(); setupEventListeners();
         return;
       }
       console.warn('endpoints failed, using fallback sample');
       songs = SAMPLE_TRACKS;
+      songs.forEach(hydrateKeyInfo);
       trackSource = 'fallback';
       render(); setupEventListeners();
     }
@@ -1789,7 +1874,7 @@ window.handleLogin = async (event) => {
         const isSelected = selectedSong && s.id === selectedSong.id;
         const matchesSearch = !searchTerm || s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
-        const matchesMixable = isSelected || !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+        const matchesMixable = isSelected || !showMixableOnly || !selectedSong || isMixableWithBpm(selectedSong, s);
         const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
         return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
       });
@@ -1803,11 +1888,31 @@ window.handleLogin = async (event) => {
       });
 
       if(selectedSong){
-        scored.sort((a,b)=>{
-          const scoreDiff = (b.rank ?? 0) - (a.rank ?? 0);
-          if(scoreDiff !== 0) return scoreDiff;
-          return a.song.title.localeCompare(b.song.title);
-        });
+        if(keyMatchMode === 'semitone'){
+          scored.sort((a,b)=>{
+            const aMatch = a.semitoneMatch || {};
+            const bMatch = b.semitoneMatch || {};
+            const aSame = aMatch.eligibleSameMode ? 1 : 0;
+            const bSame = bMatch.eligibleSameMode ? 1 : 0;
+            if(aSame !== bSame) return bSame - aSame;
+            const aOpp = aMatch.eligibleOppMode ? 1 : 0;
+            const bOpp = bMatch.eligibleOppMode ? 1 : 0;
+            if(aSame===0 && bSame===0 && aOpp !== bOpp) return bOpp - aOpp;
+            const aDist = (aMatch.eligibleSameMode || aMatch.eligibleOppMode) ? aMatch.dist ?? Infinity : Infinity;
+            const bDist = (bMatch.eligibleSameMode || bMatch.eligibleOppMode) ? bMatch.dist ?? Infinity : Infinity;
+            if(aDist !== bDist) return aDist - bDist;
+            const aBpm = a.bpmDiff ?? Infinity;
+            const bBpm = b.bpmDiff ?? Infinity;
+            if(aBpm !== bBpm) return aBpm - bBpm;
+            return a.song.title.localeCompare(b.song.title);
+          });
+        } else {
+          scored.sort((a,b)=>{
+            const scoreDiff = (b.rank ?? 0) - (a.rank ?? 0);
+            if(scoreDiff !== 0) return scoreDiff;
+            return a.song.title.localeCompare(b.song.title);
+          });
+        }
       } else {
         scored.sort((a,b)=> a.song.title.localeCompare(b.song.title));
       }
@@ -1837,6 +1942,11 @@ window.handleLogin = async (event) => {
         const hasOverride = genreOverrides[song.id];
         const glowClass = pct>=80 ? 'glow-perfect' : pct>=60 ? 'glow-good' : (pct!==null ? 'glow-bad' : '');
         const priorityLabel = selectedSong ? (()=>{
+          if(keyMatchMode === 'semitone'){
+            const distVal = entry.semitoneMatch?.dist ?? '—';
+            const modeLabel = entry.semitoneMatch?.eligibleSameMode ? 'same mode' : entry.semitoneMatch?.eligibleOppMode ? 'opposite mode' : 'out of range';
+            return `🎶 Semitone priority (Δ${distVal}, ${modeLabel})`;
+          }
           if(sortMode === 'bpm'){
             const delta = entry.bpmDiff !== null && entry.bpmDiff !== undefined ? Math.round(entry.bpmDiff) : '—';
             return `🔥 Closest BPM match (Δ${delta})`;
@@ -1850,11 +1960,14 @@ window.handleLogin = async (event) => {
           }
           return '';
         })() : '';
-        if(showMixableOnly && selectedSong){
-          const bpmOk = Math.abs(song.bpm - selectedSong.bpm) <= 4;
-          const keyOk = getCompatibleKeys(selectedSong.camelot).includes(song.camelot);
-          if(!bpmOk || !keyOk) return '';
-        }
+        const semitoneBadge = (selectedSong && keyMatchMode==='semitone') ? (()=>{
+          const match = entry.semitoneMatch;
+          if(!match || match.dist===null || match.dist===undefined) return '';
+          const deltaLabel = match.signedDelta===null || match.signedDelta===undefined ? `ΔKey: ${match.dist}` : `ΔKey: ${match.signedDelta>=0?'+':''}${match.signedDelta}`;
+          const modeLabel = match.eligibleSameMode ? 'Same Mode' : (match.eligibleOppMode ? 'Opp Mode' : 'Not in range');
+          return `<span class="px-2 py-1 bg-blue-500/20 border border-blue-400/40 rounded text-xs text-blue-100 font-semibold">${deltaLabel} • ${modeLabel}</span>`;
+        })() : '';
+        if(showMixableOnly && selectedSong){ if(!isMixableWithBpm(selectedSong, song)) return ''; }
         const selectedStyles = isSelected ? 'selected-card' : '';
         const genrePill = adminUser
           ? `<button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
@@ -1873,6 +1986,7 @@ window.handleLogin = async (event) => {
                   <span class="px-3 py-1 rounded-lg font-mono font-bold text-white" style="background:${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
                   <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key}</span>
                   <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
+                  ${semitoneBadge}
                   ${selectedSong && isMixable(selectedSong,song) ? `<span class="px-2 py-1 bg-purple-600/40 border border-purple-400/40 rounded text-xs text-purple-200 font-bold">±${Math.abs(song.bpm - selectedSong.bpm)} BPM</span>` : ''}
                   <span class="text-gray-400">${formatDuration(song.duration)}</span>
                 </div>
@@ -2305,6 +2419,37 @@ function render(){
                   <button id="markAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
                   <button id="clearAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
                 </div>`:''}
+                <div class="bg-black/40 border border-white/10 rounded-lg p-3 space-y-3">
+                  <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="text-sm font-semibold text-white">Key Mode</div>
+                    <span class="text-[11px] text-gray-400">Harmonic preference</span>
+                  </div>
+                  <div class="grid sm:grid-cols-2 gap-3">
+                    <label class="flex flex-col gap-1 text-xs text-gray-300">
+                      <span class="font-semibold text-white">Key Matching</span>
+                      <select id="keyMatchModeSelect" class="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white">
+                        <option value="camelot">Camelot (DJ Wheel)</option>
+                        <option value="semitone">Key (Same Mode ±0–6)</option>
+                      </select>
+                    </label>
+                    <label class="flex flex-col gap-1 text-xs text-gray-300">
+                      <span class="font-semibold text-white">± Range</span>
+                      <input id="semitoneRangeInput" type="range" min="1" max="6" step="1" value="${maxSemitoneRange}" class="accent-cyan-400" />
+                      <div id="semitoneRangeValue" class="text-[11px] text-cyan-200 font-semibold">±${maxSemitoneRange} semitones</div>
+                    </label>
+                  </div>
+                  <div class="flex items-center justify-between gap-2 flex-wrap text-sm text-gray-200">
+                    <div>
+                      <div class="font-semibold text-white">Include Opposite Mode</div>
+                      <div class="text-[11px] text-gray-400">Opposite mode ranks after all same-mode matches</div>
+                    </div>
+                    <label class="inline-flex items-center gap-2 text-xs">
+                      <input id="includeOppositeModeToggle" type="checkbox" class="w-5 h-5 accent-cyan-400" ${includeOppositeMode ? 'checked' : ''} />
+                      <span>Include</span>
+                    </label>
+                  </div>
+                  <p class="text-[11px] text-gray-400">Semitone mode prioritizes the most natural-sounding blends; Camelot is better for DJ-style key transitions.</p>
+                </div>
               </div>
               <div class="panel space-y-3">
                 <div class="flex items-center justify-between">
@@ -2475,6 +2620,9 @@ function render(){
       document.getElementById('profileBtn')?.addEventListener('click', ()=> switchView('profile'));
       document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
       document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
+      const keyModeSelect = document.getElementById('keyMatchModeSelect'); if(keyModeSelect){ keyModeSelect.value = keyMatchMode; keyModeSelect.onchange = (e)=> setKeyMatchMode(e.target.value); }
+      const semitoneRangeInput = document.getElementById('semitoneRangeInput'); if(semitoneRangeInput){ semitoneRangeInput.value = maxSemitoneRange; semitoneRangeInput.oninput = (e)=> setMaxSemitoneRange(e.target.value); }
+      const includeOppToggle = document.getElementById('includeOppositeModeToggle'); if(includeOppToggle){ includeOppToggle.onchange = (e)=> toggleIncludeOppositeMode(e.target.checked); }
       const auditInput = document.getElementById('auditSearchInput'); if(auditInput){ auditInput.oninput = (e)=>{ auditSearch = e.target.value; renderAuditView(); }; }
       const ownedSearchInput = document.getElementById('ownedSearchInput'); if(ownedSearchInput){ ownedSearchInput.oninput = (e)=>{ profileOwnedSearch = e.target.value; renderProfile(); setupEventListeners(); }; }
       const friendSearchInput = document.getElementById('friendSearchInput'); if(friendSearchInput){ friendSearchInput.onkeydown = (e)=>{ if(e.key === 'Enter'){ viewFriendProfile(); } }; }
@@ -2502,6 +2650,31 @@ function render(){
       priorityStrength = map[val] || 'medium';
       render();
       setupEventListeners();
+    };
+
+    function persistKeyMatchSettings(){
+      localStorage.setItem('jamMixer.keyMatchMode', keyMatchMode);
+      localStorage.setItem('jamMixer.maxSemitoneRange', String(maxSemitoneRange));
+      localStorage.setItem('jamMixer.includeOppositeMode', includeOppositeMode ? 'true' : 'false');
+    }
+    window.setKeyMatchMode = (mode) => {
+      keyMatchMode = mode === 'semitone' ? 'semitone' : 'camelot';
+      persistKeyMatchSettings();
+      render();
+      setupEventListeners();
+    };
+    window.setMaxSemitoneRange = (val) => {
+      const num = Math.min(6, Math.max(1, Number(val) || 6));
+      maxSemitoneRange = num;
+      persistKeyMatchSettings();
+      const rangeDisplay = document.getElementById('semitoneRangeValue');
+      if(rangeDisplay){ rangeDisplay.textContent = `±${num} semitones`; }
+      renderSongList();
+    };
+    window.toggleIncludeOppositeMode = (checked) => {
+      includeOppositeMode = !!checked;
+      persistKeyMatchSettings();
+      renderSongList();
     };
 
     window.setSortMode = (mode) => {
