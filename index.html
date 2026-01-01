@@ -661,8 +661,12 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let genreOverrides = {};
     let sandboxTracks = [];
     let sandboxIds = [];
+    const PAGE_SIZE_OPTIONS = [12,24,48];
+    const PAGE_SIZE_KEY = 'jamMixer.pageSize';
+    const CURRENT_PAGE_KEY = 'jamMixer.currentPage';
+    const DEFAULT_PAGE_SIZE = 24;
     let currentPage = 1;
-    const SONGS_PER_PAGE = 12;
+    let pageSize = DEFAULT_PAGE_SIZE;
     let priorityStrength = 'medium';
     let keyMatchMode = (localStorage.getItem('jamMixer.keyMatchMode') || 'camelot') === 'semitone' ? 'semitone' : 'camelot';
     let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
@@ -776,6 +780,17 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
       localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
     }
+    function loadPaginationPreferences(){
+      const storedSize = parseInt(localStorage.getItem(PAGE_SIZE_KEY) || '', 10);
+      if(PAGE_SIZE_OPTIONS.includes(storedSize)) pageSize = storedSize;
+      const storedPage = parseInt(sessionStorage.getItem(CURRENT_PAGE_KEY) || '', 10);
+      if(Number.isFinite(storedPage) && storedPage > 0) currentPage = storedPage;
+    }
+    function persistPaginationState(){
+      localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
+      sessionStorage.setItem(CURRENT_PAGE_KEY, String(currentPage));
+    }
+    loadPaginationPreferences();
     function cloneProfile(profile){
       if(!profile) return null;
       try { return structuredClone(profile); } catch(_) { return JSON.parse(JSON.stringify(profile)); }
@@ -2043,6 +2058,7 @@ window.handleLogin = async (event) => {
 
     function resetPagination(){
       currentPage = 1;
+      persistPaginationState();
     }
 
     const setCamelotOverride = async (trackId,value)=>{
@@ -2130,11 +2146,12 @@ window.handleLogin = async (event) => {
       }
 
       const songListEl = document.getElementById('songList'); if(!songListEl) return;
-      const totalPages = Math.max(1, Math.ceil(scored.length / SONGS_PER_PAGE));
+      const totalPages = Math.max(1, Math.ceil(scored.length / pageSize));
       if(currentPage > totalPages) currentPage = totalPages;
       if(currentPage < 1) currentPage = 1;
-      const startIndex = (currentPage - 1) * SONGS_PER_PAGE;
-      const pageEntries = scored.slice(startIndex, startIndex + SONGS_PER_PAGE);
+      persistPaginationState();
+      const startIndex = (currentPage - 1) * pageSize;
+      const pageEntries = scored.slice(startIndex, startIndex + pageSize);
       const showingStart = scored.length ? startIndex + 1 : 0;
       const showingEnd = scored.length ? Math.min(scored.length, startIndex + pageEntries.length) : 0;
 
@@ -2225,20 +2242,34 @@ window.handleLogin = async (event) => {
         `;
       }).join('');
 
-      const paginationControls = scored.length ? `
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-2">
-          <div class="text-sm text-gray-300">Showing ${showingStart}-${showingEnd} of ${scored.length} tracks</div>
-          <div class="flex items-center gap-2">
-            <button class="px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-sm ${currentPage===1?'opacity-50 cursor-not-allowed':''}" onclick="changePage(-1)" ${currentPage===1?'disabled':''}>Previous</button>
-            <div class="text-sm font-semibold text-white">Page ${currentPage} / ${totalPages}</div>
-            <button class="px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-sm ${currentPage===totalPages?'opacity-50 cursor-not-allowed':''}" onclick="changePage(1)" ${currentPage===totalPages?'disabled':''}>Next</button>
+      const buildPaginationControls = ()=>{
+        const pageSizeOptions = PAGE_SIZE_OPTIONS.map(size=>`<option value="${size}" ${pageSize===size?'selected':''}>${size} / page</option>`).join('');
+        return `
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-2 bg-black/30 border border-white/5 rounded-lg px-3 py-3">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-200">
+            <span class="font-semibold text-white">Showing ${showingStart}–${showingEnd} of ${scored.length} tracks</span>
+            <span class="text-xs text-gray-400">Page ${currentPage} of ${totalPages}</span>
           </div>
-        </div>
-      ` : '';
+          <div class="flex flex-wrap items-center gap-3">
+            <label class="flex items-center gap-2 text-sm text-gray-200">
+              <span>Page size</span>
+              <select class="pageSizeSelect bg-white/10 border border-white/10 rounded-lg px-3 py-2 min-h-[44px] text-white" onchange="setPageSize(this.value)">${pageSizeOptions}</select>
+            </label>
+            <div class="flex items-center gap-2">
+              <button class="px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${currentPage===1?'opacity-50 cursor-not-allowed':''}" onclick="changePage(-1)" ${currentPage===1?'disabled':''}>Previous</button>
+              <div class="text-sm font-semibold text-white px-2">Page ${currentPage} / ${totalPages}</div>
+              <button class="px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${currentPage===totalPages?'opacity-50 cursor-not-allowed':''}" onclick="changePage(1)" ${currentPage===totalPages?'disabled':''}>Next</button>
+            </div>
+          </div>
+        </div>`;
+      };
+
+      const paginationTop = scored.length ? buildPaginationControls() : '';
+      const paginationBottom = scored.length ? buildPaginationControls() : '';
 
       const listContent = scored.length
-        ? `<div class="song-grid grid gap-4">${cardGrid}</div>${paginationControls}`
-        : `<div class="panel p-6 text-center text-gray-300">No songs match your filters yet. Try clearing search or toggling filters.</div>`;
+        ? `${paginationTop}<div class="song-grid grid gap-4">${cardGrid}</div>${paginationBottom}`
+        : `<div class="panel p-6 text-center text-gray-300 space-y-3"><div>No songs match your filters yet.</div><button onclick="clearFilters()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-sm text-white">Clear filters</button></div>`;
 
       songListEl.innerHTML = priorityHeader + listContent;
       bindGenreEditors(songListEl);
@@ -2948,6 +2979,16 @@ function render(){
       setupEventListeners();
     };
 
+    window.setPageSize = (val) => {
+      const nextSize = Number(val);
+      if(!PAGE_SIZE_OPTIONS.includes(nextSize)) return;
+      if(nextSize === pageSize) return;
+      pageSize = nextSize;
+      resetPagination();
+      persistPaginationState();
+      renderSongList();
+    };
+
     window.selectSong = (id) => {
       selectedSong = songs.find(s=>s.id===id);
       resetPagination();
@@ -2978,7 +3019,18 @@ function render(){
       if(clearSearchBtn) clearSearchBtn.style.display = 'none';
       const panelClearBtn = document.getElementById('panelClearSearchBtn');
       if(panelClearBtn){ panelClearBtn.disabled = true; panelClearBtn.style.opacity = '0.55'; panelClearBtn.style.cursor = 'not-allowed'; }
+      resetPagination();
       renderSongList();
+    };
+
+    window.clearFilters = () => {
+      searchTerm = '';
+      showOwnedOnly = false;
+      showMixableOnly = false;
+      selectedGenre = 'All';
+      resetPagination();
+      render();
+      setupEventListeners();
     };
 
     window.openProfileView = () => {
@@ -3110,7 +3162,12 @@ function render(){
     function clearSandbox(){ sandboxTracks=[]; sandboxIds=[]; renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
 
-    function changePage(delta){ currentPage += delta; renderSongList(); }
+    function changePage(delta){
+      currentPage += delta;
+      if(currentPage < 1) currentPage = 1;
+      persistPaginationState();
+      renderSongList();
+    }
 
     // NOTE:
     // Import / Export was intentionally removed.
