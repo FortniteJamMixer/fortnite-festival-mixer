@@ -4,7 +4,8 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <meta name="theme-color" content="#0f1020" />
-  <title>Fortnite Festival Pro Mixer — Final</title>
+  <title>Fortnite Jam Mixer – Cross-Browser Edition</title>
+  <meta name="description" content="Fortnite Jam Mixer helps you build harmonious Fortnite Festival mashups with Camelot, BPM, and setlist tools." />
   <link rel="manifest" href="/manifest.webmanifest" />
   <script>document.documentElement.classList.add('tw-offline');</script>
   <link rel="stylesheet" href="/offline.css" />
@@ -147,7 +148,7 @@
       <div class="min-h-screen flex items-center justify-center">
         <div class="text-center">
           <div class="text-6xl mb-4 animate-pulse">🎵</div>
-          <div class="text-2xl font-bold text-white">Loading Festival Mixer...</div>
+          <div class="text-2xl font-bold text-white" data-brand="loading">Loading Fortnite Jam Mixer...</div>
         </div>
       </div>
     </div>
@@ -171,8 +172,8 @@
 
       <div class="helpContent" id="helpContent">
         <div class="helpSection" id="welcome">
-          <h3>Festival Pro Mixer Help</h3>
-          <p class="small-muted">A complete, beginner-to-pro guide for every tool in Festival Pro Mixer. Open this help anytime with the ❓ button in the header.</p>
+          <h3 data-brand="help-title">Fortnite Jam Mixer Help</h3>
+          <p class="small-muted" data-brand="help-intro">A complete, beginner-to-pro guide for every tool in Fortnite Jam Mixer. Open this help anytime with the ❓ button in the header.</p>
           <div class="anchorGrid">
             <a class="anchorLink" href="#quickstart">Quick Start</a>
             <a class="anchorLink" href="#browse">Browse, Search & Filter</a>
@@ -181,7 +182,7 @@
             <a class="anchorLink" href="#setlist">Setlist & Set view</a>
             <a class="anchorLink" href="#sandbox">Sandbox</a>
             <a class="anchorLink" href="#camelot">Camelot Wheel & Harmonic Mixing</a>
-            <a class="anchorLink" href="#internalCamelot">How Festival Pro Mixer uses Camelot</a>
+            <a class="anchorLink" href="#internalCamelot" data-brand="help-anchor-camelot">How Fortnite Jam Mixer uses Camelot</a>
           </div>
         </div>
 
@@ -229,7 +230,7 @@
 
         <div class="helpSection" id="priority">
           <h3>Priority Modes & Strength</h3>
-          <p>Festival Pro Mixer always calculates a blended compatibility score (Key → BPM → Genre). Priority modes only decide how ties are broken, not the overall score.</p>
+          <p data-brand="priority-desc">Fortnite Jam Mixer always calculates a blended compatibility score (Key → BPM → Genre). Priority modes only decide how ties are broken, not the overall score.</p>
           <ul>
             <li><span class="tag">Tempo Priority</span> Pushes closer BPM tracks up when scores are similar.</li>
             <li><span class="tag">Camelot Priority</span> Prefers the strongest harmonic matches first.</li>
@@ -428,7 +429,7 @@
         </div>
 
         <div class="helpSection" id="internalCamelot">
-          <h3>How Festival Pro Mixer Uses Camelot</h3>
+          <h3 data-brand="camelot-heading">How Fortnite Jam Mixer Uses Camelot</h3>
           <ul>
             <li><strong>Accurate keys:</strong> Tracks display Camelot values aligned to real song keys. Example: “Don’t Fear the Reaper” is <strong>8A</strong> because the song is in A minor; earlier incorrect tags were fixed in the dataset.</li>
             <li><strong>Color pills</strong> on each card mirror the Camelot wheel colors so you can glance-match without reading numbers.</li>
@@ -475,11 +476,41 @@
      * - Help modal integrated (manual open via header button)
      **************************************************************************/
 
+const BRAND = Object.freeze({
+  APP_NAME: 'Fortnite Jam Mixer',
+  SHORT_NAME: 'Jam Mixer',
+  EXPORT_PREFIX: 'fortnite-jam-mixer',
+  BROWSER_TITLE: 'Fortnite Jam Mixer – Cross-Browser Edition'
+});
+document.title = BRAND.BROWSER_TITLE;
+
     // -------------------- FIREBASE (auto-detect) ----------------------------
 // We auto-enable Firebase if /api/firebase-config injected window.firebaseConfig (Vercel env vars).
 // This prevents the "no signup option" problem when firebaseEnabled was left false.
 const firebaseConfig = (window.firebaseConfig && window.firebaseConfig.apiKey) ? window.firebaseConfig : null;
 const firebaseEnabled = !!firebaseConfig;
+
+function applyBrandingCopy(){
+  const loading = document.querySelector('[data-brand="loading"]');
+  if(loading) loading.textContent = `Loading ${BRAND.APP_NAME}...`;
+  const helpTitle = document.querySelector('[data-brand="help-title"]');
+  if(helpTitle) helpTitle.textContent = `${BRAND.APP_NAME} Help`;
+  const helpIntro = document.querySelector('[data-brand="help-intro"]');
+  if(helpIntro) helpIntro.textContent = `A complete, beginner-to-pro guide for every tool in ${BRAND.APP_NAME}. Open this help anytime with the ❓ button in the header.`;
+  const camelotAnchor = document.querySelector('[data-brand="help-anchor-camelot"]');
+  if(camelotAnchor) camelotAnchor.textContent = `How ${BRAND.APP_NAME} uses Camelot`;
+  const priorityDesc = document.querySelector('[data-brand="priority-desc"]');
+  if(priorityDesc) priorityDesc.textContent = `${BRAND.APP_NAME} always calculates a blended compatibility score (Key → BPM → Genre). Priority modes only decide how ties are broken, not the overall score.`;
+  const camelotHeading = document.querySelector('[data-brand="camelot-heading"]');
+  if(camelotHeading) camelotHeading.textContent = `How ${BRAND.APP_NAME} Uses Camelot`;
+}
+
+applyBrandingCopy();
+
+function buildExportFilename(username = 'profile'){
+  const safeName = (username || 'profile').trim() || 'profile';
+  return `${BRAND.EXPORT_PREFIX}-${safeName}.json`;
+}
 
 let firebaseApp = null, firebaseAuth = null, firestore = null;
 let firebaseAuthUnsub = null;
@@ -1223,7 +1254,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
               <div class="flex justify-center mb-6">
                 <div class="w-32 h-32 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-6xl vinyl-spin">🎧</div>
               </div>
-              <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">FORTNITE FESTIVAL PRO MIXER</h1>
+              <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">${BRAND.APP_NAME.toUpperCase()}</h1>
               <p class="text-xl md:text-2xl text-cyan-300 mb-6">Create Epic Mashups & DJ Like a Pro on the Jam Stage!</p>
               <div class="mt-6">
                 <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 START MIXING NOW</button>
@@ -1266,7 +1297,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           <div class="max-w-md w-full">
             <div class="text-center mb-8">
               <div class="w-24 h-24 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 vinyl-spin">🎧</div>
-              <h1 class="text-4xl font-bold text-white graffiti-text mb-2">FESTIVAL PRO MIXER</h1>
+              <h1 class="text-4xl font-bold text-white graffiti-text mb-2">${BRAND.APP_NAME.toUpperCase()}</h1>
               <p class="text-cyan-300">Your Personal DJ Profile</p>
             </div>
 
@@ -2215,7 +2246,7 @@ function render(){
           <div class="flex items-center gap-3">
             <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
             <div>
-              <h1 class="text-2xl font-bold text-white graffiti-text">FESTIVAL PRO MIXER</h1>
+              <h1 class="text-2xl font-bold text-white graffiti-text">${BRAND.APP_NAME.toUpperCase()}</h1>
               <div class="flex items-center flex-wrap gap-2 mt-1">
                 <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
                 ${networkBadge}

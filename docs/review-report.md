@@ -1,4 +1,4 @@
-# Fortnite Festival Pro Mixer – Architecture & Optimization Review
+# Fortnite Jam Mixer – Architecture & Optimization Review
 
 ## Executive Summary
 The app successfully combines Fortnite song data, harmonic scoring, and profile management in a single-page build, but the monolithic 2.8k-line `index.html` mixes rendering, state, and networking without module boundaries. Repeated full-list renders and duplicated listeners create noticeable work for 500+ songs, and auth/profile flows have edge cases around listener cleanup and offline imports. Admin override persistence is reliable, yet overrides are applied client-side regardless of admin role. Targeted modularization, virtualization of song lists, and stricter auth/OAuth lifecycle handling will improve maintainability, responsiveness, and data safety.

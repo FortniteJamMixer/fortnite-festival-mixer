@@ -1,8 +1,8 @@
 {
-  "name": "fortnite-festival-mixer",
+  "name": "fortnite-jam-mixer",
   "version": "1.0.0",
   "private": true,
-  "description": "Festival Pro Mixer web app with Firebase-backed metrics.",
+  "description": "Fortnite Jam Mixer web app with Firebase-backed metrics.",
   "type": "module",
   "dependencies": {
     "firebase-admin": "^12.5.0"
