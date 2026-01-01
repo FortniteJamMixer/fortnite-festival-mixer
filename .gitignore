@@ -1,2 +1,4 @@
 firebase-config.js
 !/api/firebase-config.js
+node_modules
+*.log
