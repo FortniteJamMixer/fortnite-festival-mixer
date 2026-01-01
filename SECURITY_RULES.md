@@ -27,8 +27,8 @@ service cloud.firestore {
   "rules": {
     "presence": {
       "$uid": {
-        ".write": "$uid === auth.uid",
-        ".read": true
+        ".read": true,
+        ".write": "auth != null && auth.uid === $uid"
       }
     }
   }
@@ -38,3 +38,4 @@ service cloud.firestore {
 Notes:
 - Presence writes are authenticated via anonymous auth; clients only touch their own `presence/{uid}` node.
 - Community stats remain read-only on the client; all increments/peaks are computed in serverless API routes.
+- Firebase Console: Auth → Sign-in method → Anonymous must be turned ON for presence to function.

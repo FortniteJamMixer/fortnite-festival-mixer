@@ -489,6 +489,7 @@ document.title = BRAND.BROWSER_TITLE;
 // This prevents the "no signup option" problem when firebaseEnabled was left false.
 const firebaseConfig = (window.firebaseConfig && window.firebaseConfig.apiKey) ? window.firebaseConfig : null;
 const firebaseEnabled = !!firebaseConfig;
+const presenceEnabled = true;
 
 function applyBrandingCopy(){
   const loading = document.querySelector('[data-brand="loading"]');
@@ -703,9 +704,16 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let adminMenuListenersBound = false;
     let isOffline = !navigator.onLine;
     let trackSource = 'network';
-    const communityStats = { totalTried: null, onlineNow: null, peakToday: null, new24h: null };
+    const communityStats = { totalTried: null, onlineNow: presenceEnabled ? '…' : '—', peakToday: null, new24h: null };
     let presenceApp = null, presenceDb = null, presenceAuth = null, presenceUser = null;
     let presenceListenerBound = false;
+    let presenceHeartbeat = null;
+    const PRESENCE_HEARTBEAT_MS = 25000;
+    const PRESENCE_STALE_MS = 70000;
+    const PRESENCE_INIT_GRACE_MS = 3000;
+    let presenceState = { enabled: presenceEnabled, configOk: false, connected: false, lastError: '', rawNodes: 0 };
+    let presenceInitTimer = null;
+    let presenceLastHeartbeatLog = 0;
     let peakPingInterval = null;
     let lastPeakPing = 0;
     const COMMUNITY_ANON_KEY = 'ffmCommunityAnonId';
@@ -832,9 +840,29 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return anonId;
     }
 
+    function presenceLog(message, ...args){
+      console.log(`[presence] ${message}`, ...args);
+    }
+
     function formatStatValue(value){
+      if(value === '—' || value === '…') return value;
+      if(typeof value === 'string') return value;
       if(typeof value === 'number' && !Number.isNaN(value)) return value.toLocaleString();
       return '…';
+    }
+
+    function updatePresenceDot(){
+      const dot = document.querySelector('[data-presence-dot]');
+      if(dot){
+        dot.className = `inline-block w-2.5 h-2.5 rounded-full ${presenceState.connected ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-gray-400'}`;
+      }
+    }
+
+    function updatePresenceDebugLine(){
+      const debugEl = document.querySelector('[data-presence-debug]');
+      if(!debugEl) return;
+      const uid = presenceUser?.uid || 'none';
+      debugEl.textContent = `presence uid=${uid} | connected=${!!presenceState.connected} | raw=${presenceState.rawNodes} | err=${presenceState.lastError || 'none'}`;
     }
 
     function syncCommunityStatsUI(){
@@ -845,6 +873,13 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         new24h: communityStats.new24h,
       };
       Object.entries(mapping).forEach(([key,val])=>{
+        if(key === 'online'){
+          const valueEl = document.querySelector('[data-community-stat="online"] [data-community-value]');
+          if(valueEl) valueEl.textContent = formatStatValue(val);
+          updatePresenceDot();
+          updatePresenceDebugLine();
+          return;
+        }
         const el = document.querySelector(`[data-community-stat="${key}"]`);
         if(el) el.textContent = formatStatValue(val);
       });
@@ -908,38 +943,128 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       }
     }
 
+    function markPresenceUnavailable(reason){
+      presenceState.lastError = reason;
+      presenceState.connected = false;
+      presenceLog(reason);
+      clearInterval(presenceHeartbeat);
+      setCommunityStat('onlineNow', '—');
+      updatePresenceDot();
+      updatePresenceDebugLine();
+    }
+
+    function ensurePresenceFallbackTimer(){
+      clearTimeout(presenceInitTimer);
+      presenceInitTimer = setTimeout(()=>{
+        if(communityStats.onlineNow === '…'){
+          markPresenceUnavailable('presence init timed out');
+        }
+      }, PRESENCE_INIT_GRACE_MS);
+    }
+
+    function startPresenceHeartbeat(presenceRef){
+      clearInterval(presenceHeartbeat);
+      presenceHeartbeat = setInterval(()=>{
+        presenceRef.update({ lastSeen: firebase.database.ServerValue.TIMESTAMP })
+          .then(()=>{
+            const now = Date.now();
+            if(now - presenceLastHeartbeatLog > 60000){
+              presenceLastHeartbeatLog = now;
+              presenceLog('heartbeat ok');
+            }
+          })
+          .catch(err=>{
+            presenceState.lastError = err?.message || String(err);
+            presenceLog('heartbeat failed', err);
+          });
+      }, PRESENCE_HEARTBEAT_MS);
+    }
+
+    function handlePresenceSnapshot(snapshot){
+      clearTimeout(presenceInitTimer);
+      const rawCount = snapshot?.numChildren?.() || 0;
+      let activeCount = 0;
+      const now = Date.now();
+      snapshot?.forEach?.(child=>{
+        const lastSeen = child?.val?.()?.lastSeen;
+        if(typeof lastSeen === 'number' && now - lastSeen <= PRESENCE_STALE_MS){
+          activeCount += 1;
+        }
+      });
+      presenceState.rawNodes = rawCount;
+      presenceLog(`onlineNow = ${activeCount} (raw nodes: ${rawCount})`);
+      schedulePeakPings(activeCount);
+      updatePresenceDebugLine();
+    }
+
     function bindPresence(user){
       if(!presenceDb || !user) return;
       const presenceRef = presenceDb.ref(`presence/${user.uid}`);
-      presenceRef.onDisconnect().remove().catch(err=>console.warn('onDisconnect removal failed', err));
+      presenceRef.onDisconnect().remove()
+        .then(()=>presenceLog('onDisconnect armed'))
+        .catch(err=>presenceLog('onDisconnect failed', err));
       presenceRef
-        .set({ lastSeen: firebase.database.ServerValue.TIMESTAMP, startedAt: firebase.database.ServerValue.TIMESTAMP })
-        .catch(err=>console.warn('Presence write failed', err));
+        .set({ lastSeen: firebase.database.ServerValue.TIMESTAMP })
+        .then(()=>presenceLog('wrote presence'))
+        .catch(err=>{ presenceState.lastError = err?.message || String(err); presenceLog('Presence write failed', err); });
+      startPresenceHeartbeat(presenceRef);
       if(!presenceListenerBound){
-        presenceDb.ref('presence').on('value', (snapshot)=>{
-          const count = snapshot?.numChildren?.() || 0;
-          schedulePeakPings(count);
-        });
+        presenceDb.ref('presence').on('value', handlePresenceSnapshot);
         presenceListenerBound = true;
       }
     }
 
     function initPresenceTracking(){
-      if(!firebaseEnabled || !firebaseConfig || !window.firebase?.database) return;
+      presenceLog(`enabled: ${presenceEnabled}`);
+      if(!presenceEnabled){
+        markPresenceUnavailable('presence disabled');
+        return;
+      }
+      const configOk = !!(firebaseEnabled && firebaseConfig && firebaseConfig.apiKey && firebaseConfig.databaseURL);
+      presenceState.configOk = configOk;
+      presenceLog(`firebase config ok: ${configOk}`);
+      if(!configOk){
+        markPresenceUnavailable('presence config missing');
+        return;
+      }
+      if(!window.firebase?.database){
+        markPresenceUnavailable('firebase database not available');
+        return;
+      }
       if(presenceApp) return;
+      ensurePresenceFallbackTimer();
       try{
         presenceApp = firebase.initializeApp(firebaseConfig, 'presence');
         presenceAuth = firebase.auth(presenceApp);
         presenceDb = firebase.database(presenceApp);
+        presenceDb.ref('.info/connected').on('value',(snap)=>{
+          presenceState.connected = snap?.val?.() === true;
+          if(!presenceState.connected){
+            clearInterval(presenceHeartbeat);
+            updatePresenceDot();
+            return;
+          }
+          presenceLog('connected');
+          updatePresenceDot();
+          if(presenceUser) bindPresence(presenceUser);
+        });
         presenceAuth.onAuthStateChanged((user)=>{
-          if(user && user.uid !== presenceUser?.uid){
+          if(user){
             presenceUser = user;
+            presenceLog(`auth state user: ${user.uid}`);
+            updatePresenceDebugLine();
             bindPresence(user);
           }
+        }, (err)=>{
+          presenceState.lastError = err?.message || String(err);
+          presenceLog(`auth failed: ${presenceState.lastError}`);
+          markPresenceUnavailable('auth state listener failed');
         });
-        presenceAuth.signInAnonymously().catch(err=>console.warn('Presence anon auth failed', err));
+        presenceAuth.signInAnonymously().catch(err=>{ presenceState.lastError = err?.message || String(err); presenceLog(`auth failed: ${presenceState.lastError}`); markPresenceUnavailable('auth failed'); });
       } catch(err){
-        console.warn('Presence setup failed', err);
+        presenceState.lastError = err?.message || String(err);
+        presenceLog('Presence setup failed', err);
+        markPresenceUnavailable('presence setup failed');
       }
     }
 
@@ -2422,11 +2547,15 @@ window.handleLogin = async (event) => {
 
 
 function renderCommunityPill(id, label, icon, value, colorClasses=''){
+  const isOnline = id === 'online';
+  const valueMarkup = isOnline
+    ? `<span class="inline-flex items-center gap-2" data-community-stat="${id}"><span data-presence-dot class="inline-block w-2.5 h-2.5 rounded-full ${presenceState.connected ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.8)]' : 'bg-gray-400'}"></span><span data-community-value>${formatStatValue(value)}</span></span>`
+    : `<span class="text-sm font-bold text-white" data-community-stat="${id}">${formatStatValue(value)}</span>`;
   return `<div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 ${colorClasses}">
     <span>${icon}</span>
     <div class="flex flex-col leading-tight">
       <span class="text-[10px] uppercase tracking-wide text-gray-300">${label}</span>
-      <span class="text-sm font-bold text-white" data-community-stat="${id}">${formatStatValue(value)}</span>
+      ${valueMarkup}
     </div>
   </div>`;
 }
@@ -2453,6 +2582,7 @@ function render(){
       ${renderCommunityPill('peak','Peak today','📈', communityStats.peakToday, 'border-blue-400/30 bg-blue-500/10')}
       ${renderCommunityPill('new24h','New (24h)','⏱️', communityStats.new24h, 'border-purple-400/30 bg-purple-500/10')}
     </div>`;
+  const presenceDebugLine = isAdmin() ? `<div data-presence-debug class="text-[11px] text-amber-200/90 mt-1">presence debug</div>` : '';
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
   const selectedPanel = `
     <div class="panel ${selectedSong ? 'selected-panel' : ''} space-y-3">
@@ -2491,6 +2621,7 @@ function render(){
                 ${trackSourceBadge}
               </div>
               ${communityStatsRow}
+              ${presenceDebugLine}
             </div>
           </div>
           <div class="flex items-center gap-3 flex-wrap justify-end">
@@ -2629,6 +2760,7 @@ function render(){
       </main>
     </div>
   `;
+  updatePresenceDebugLine();
   if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
   syncCommunityStatsUI();
 }
