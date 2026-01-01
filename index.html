@@ -680,9 +680,14 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
       localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
     }
+    const adminEmails = ['johnnybradford1@gmail.com'];
+    const adminUsernames = ['battlenebody'];
     function isAdmin(){
-      if(firebaseAuth?.currentUser?.email?.toLowerCase() === 'johnnybradford1@gmail.com') return true;
-      if(currentUser?.username === 'BattleNeBody') return true;
+      const email = firebaseAuth?.currentUser?.email?.toLowerCase();
+      if(email && adminEmails.includes(email)) return true;
+      const username = (currentUser?.username || firebaseAuth?.currentUser?.displayName || '').toLowerCase();
+      if(username && adminUsernames.includes(username)) return true;
+      if(currentUser?.isAdmin === true || currentUser?.role === 'admin') return true;
       return false;
     }
 
@@ -1591,6 +1596,7 @@ window.handleLogin = async (event) => {
         <div class="text-xs text-gray-300 mb-4">${priorityDescriptions[sortMode] || priorityDescriptions.bpm} Top matches are sorted by compatibility first, then the priority boost (showing strongest ~10 results up top).</div>
       ` : '';
 
+      const adminUser = isAdmin();
       songListEl.innerHTML = priorityHeader + `<div class="song-grid grid gap-4">` + scored.map(entry=>{
         const song = entry.song;
         const isSelected = selectedSong && song.id === selectedSong.id;
@@ -1619,6 +1625,9 @@ window.handleLogin = async (event) => {
           if(!bpmOk || !keyOk) return '';
         }
         const selectedStyles = isSelected ? 'selected-card' : '';
+        const genrePill = adminUser
+          ? `<button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
+          : `<span class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-default">${song.genre}${hasOverride ? ' ✓' : ''}</span>`;
         return `
           <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" draggable="true">
             <div class="star-icon absolute top-2 right-2 text-xl" style="display:${isOwned?'block':'none'}">⭐</div>
@@ -1629,7 +1638,7 @@ window.handleLogin = async (event) => {
                 <div class="font-bold text-lg mb-1 text-white">${song.title}</div>
                 <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
                 <div class="flex items-center gap-2 text-sm flex-wrap">
-                  <button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${currentUser && currentUser.username === 'BattleNeBody' ? 'cursor-pointer' : 'cursor-default opacity-75'}">${song.genre}${hasOverride ? ' ✓' : ''}</button>
+                  ${genrePill}
                   <span class="px-3 py-1 rounded-lg font-mono font-bold text-white" style="background:${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
                   <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key}</span>
                   <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
@@ -1649,10 +1658,7 @@ window.handleLogin = async (event) => {
           </div>
         `;
       }).join('') + `</div>`;
-      // attach right-click genre handlers
-      document.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
-        btn.addEventListener('click',(e)=>{ e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); });
-      });
+      bindGenreEditors(songListEl);
     }
 
     function renderSetlist(){
@@ -1816,11 +1822,13 @@ window.handleLogin = async (event) => {
         if(auditFilters.bpmOutlier && !(track.flags||[]).includes('BPM_OUTLIER')) return false;
         return true;
       };
-      const filtered = songs.filter(filterMatches);
-      const rows = filtered.map(t=>{
-        const flags = t.flags && t.flags.length ? t.flags.map(f=>`<span class="px-2 py-1 rounded bg-white/10 border border-white/10 text-xs mr-1">${f}</span>`).join('') : '<span class="text-green-300 text-xs">OK</span>';
-        return `<tr class="border-b border-white/5"><td class="p-2">${t.title}<div class="text-xs text-gray-400">${t.artist}</div></td><td class="p-2">${t.bpm} <div class="text-xs text-gray-400">raw ${t.rawBpm||t.bpm}</div></td><td class="p-2">${t.camelot}<div class="text-xs text-gray-400">derived ${t.derivedCamelot}</div></td><td class="p-2 text-xs text-gray-300">${t.rawKey||'?'} ${t.rawMode||''}</td><td class="p-2">${flags}</td><td class="p-2 text-xs"><button class="px-2 py-1 bg-purple-500/30 rounded" onclick="openOverrideModal('camelot','${t.id}')">Set Camelot</button><button class="ml-1 px-2 py-1 bg-blue-500/30 rounded" onclick="openOverrideModal('bpm','${t.id}')">Set BPM</button><button class="ml-1 px-2 py-1 bg-red-500/30 rounded" onclick="clearOverrides('${t.id}')">Clear</button></td></tr>`;
-      }).join('');
+        const filtered = songs.filter(filterMatches);
+        const rows = filtered.map(t=>{
+          const flags = t.flags && t.flags.length ? t.flags.map(f=>`<span class="px-2 py-1 rounded bg-white/10 border border-white/10 text-xs mr-1">${f}</span>`).join('') : '<span class="text-green-300 text-xs">OK</span>';
+          const hasOverride = genreOverrides[t.id];
+          const genreButton = `<button data-song-id-genre="${t.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${t.genre}${hasOverride ? ' ✓' : ''}</button>`;
+          return `<tr class="border-b border-white/5"><td class="p-2">${t.title}<div class="text-xs text-gray-400">${t.artist}</div></td><td class="p-2">${t.bpm} <div class="text-xs text-gray-400">raw ${t.rawBpm||t.bpm}</div></td><td class="p-2">${t.camelot}<div class="text-xs text-gray-400">derived ${t.derivedCamelot}</div></td><td class="p-2 text-xs text-gray-300">${t.rawKey||'?'} ${t.rawMode||''}</td><td class="p-2">${genreButton}</td><td class="p-2">${flags}</td><td class="p-2 text-xs"><button class="px-2 py-1 bg-purple-500/30 rounded" onclick="openOverrideModal('camelot','${t.id}')">Set Camelot</button><button class="ml-1 px-2 py-1 bg-blue-500/30 rounded" onclick="openOverrideModal('bpm','${t.id}')">Set BPM</button><button class="ml-1 px-2 py-1 bg-red-500/30 rounded" onclick="clearOverrides('${t.id}')">Clear</button></td></tr>`;
+        }).join('');
 
       auditEl.innerHTML = `
         <div class="space-y-4">
@@ -1846,7 +1854,7 @@ window.handleLogin = async (event) => {
           <div class="panel overflow-auto">
             <table class="w-full text-sm">
               <thead class="text-left text-gray-300">
-                <tr><th class="p-2">Title</th><th class="p-2">BPM</th><th class="p-2">Camelot</th><th class="p-2">Raw key/mode</th><th class="p-2">Flags</th><th class="p-2">Actions</th></tr>
+                <tr><th class="p-2">Title</th><th class="p-2">BPM</th><th class="p-2">Camelot</th><th class="p-2">Raw key/mode</th><th class="p-2">Genre</th><th class="p-2">Flags</th><th class="p-2">Actions</th></tr>
               </thead>
               <tbody>${rows}</tbody>
             </table>
@@ -1860,6 +1868,7 @@ window.handleLogin = async (event) => {
           </div>
         </div>
       `;
+      bindGenreEditors(auditEl);
     }
 
     function updateBandReferencesLocal(oldUsername,newUsername,newDj){
@@ -2095,7 +2104,7 @@ function render(){
 
     // ------------------ Genre context menu ------------------------
     function showGenreMenu(songId,event){
-      if(!currentUser||currentUser.username!=='BattleNeBody'){ alert('🔒 Only the admin (BattleNeBody) can correct genre tags!'); return; }
+      if(!isAdmin()) { alert('🔒 Admin only'); return; }
       const existing = document.getElementById('genreContextMenu'); if(existing) existing.remove();
       const menu=document.createElement('div'); menu.id='genreContextMenu'; menu.className='context-menu';
       const rect = event.target.getBoundingClientRect();
@@ -2114,12 +2123,36 @@ function render(){
       setTimeout(()=>{ const closeMenu=(e)=>{ if(!menu.contains(e.target)){ menu.remove(); document.removeEventListener('click', closeMenu); } }; document.addEventListener('click', closeMenu); },100);
     }
 
+    function bindGenreEditors(scope=document){
+      if(!isAdmin()) return;
+      scope.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
+        const handler = (e)=>{ e.preventDefault(); e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); };
+        btn.onclick = handler;
+        btn.oncontextmenu = handler;
+      });
+    }
+
     window.setGenreOverride = async (songId,newGenre) => {
-      if(!currentUser) return;
+      if(!isAdmin()) return alert('Admin only');
+      if(!currentUser && firebaseAuth?.currentUser){
+        currentUser = normalizeProfileShape({
+          username: firebaseAuth.currentUser.email?.split('@')[0] || firebaseAuth.currentUser.uid || 'admin',
+          djName: firebaseAuth.currentUser.displayName || firebaseAuth.currentUser.email || 'Admin',
+          ownedTracks,
+          genreOverrides
+        }, firebaseAuth.currentUser.uid || firebaseAuth.currentUser.email);
+      }
+      if(!currentUser) return alert('Sign in required for admin edits');
       genreOverrides[songId] = newGenre;
-      const song = songs.find(s=>s.id===songId); if(song) song.genre = newGenre;
+      const song = songs.find(s=>s.id===songId);
+      if(song){
+        song.genre = newGenre;
+        refreshSongOverrides(song);
+      }
       persistNamespacedState();
       await saveUserProfile();
+      refreshRegressionWarnings();
+      renderAuditView();
       renderSongList();
       const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
       if(genreTag){ genreTag.textContent = newGenre + ' ✓'; genreTag.classList.add('animate-pulse'); setTimeout(()=>genreTag.classList.remove('animate-pulse'),1000); }
