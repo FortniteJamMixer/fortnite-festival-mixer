@@ -17,6 +17,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -637,6 +638,13 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let adminMenuListenersBound = false;
     let isOffline = !navigator.onLine;
     let trackSource = 'network';
+    const communityStats = { totalTried: null, onlineNow: null, peakToday: null, new24h: null };
+    let presenceApp = null, presenceDb = null, presenceAuth = null, presenceUser = null;
+    let presenceListenerBound = false;
+    let peakPingInterval = null;
+    let lastPeakPing = 0;
+    const COMMUNITY_ANON_KEY = 'ffmCommunityAnonId';
+    const COMMUNITY_TRY_RECORDED_KEY = 'ffmCommunityTryRecorded';
     const TRACK_DB = { name: 'ffm-track-cache', store: 'tracks' };
     const SAMPLE_TRACKS = [
       { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
@@ -739,6 +747,132 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if(!isAdmin()) return alert('Admin only');
       toggleAdminTools(false);
       switchView('audit');
+    }
+
+    // ---------------------- Community metrics & presence -------------------
+    function getCommunityAnonId(){
+      let anonId = localStorage.getItem(COMMUNITY_ANON_KEY);
+      if(!anonId){
+        anonId = 'anon_' + Math.random().toString(36).slice(2,12);
+        localStorage.setItem(COMMUNITY_ANON_KEY, anonId);
+      }
+      return anonId;
+    }
+
+    function formatStatValue(value){
+      if(typeof value === 'number' && !Number.isNaN(value)) return value.toLocaleString();
+      return '…';
+    }
+
+    function syncCommunityStatsUI(){
+      const mapping = {
+        tried: communityStats.totalTried,
+        online: communityStats.onlineNow,
+        peak: communityStats.peakToday,
+        new24h: communityStats.new24h,
+      };
+      Object.entries(mapping).forEach(([key,val])=>{
+        const el = document.querySelector(`[data-community-stat="${key}"]`);
+        if(el) el.textContent = formatStatValue(val);
+      });
+    }
+
+    function setCommunityStat(key, value){
+      if(communityStats[key] === value) { syncCommunityStatsUI(); return; }
+      communityStats[key] = value;
+      syncCommunityStatsUI();
+    }
+
+    async function recordCommunityTry(force=false){
+      const anonId = getCommunityAnonId();
+      const alreadyRecorded = localStorage.getItem(COMMUNITY_TRY_RECORDED_KEY) === 'true';
+      if(alreadyRecorded && !force && communityStats.totalTried !== null) return;
+      try{
+        const resp = await fetch('/api/metrics/try', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ anonId })
+        });
+        if(!resp.ok) throw new Error('Try request failed');
+        const data = await resp.json();
+        if(Number.isFinite(Number(data.totalTried))) setCommunityStat('totalTried', Number(data.totalTried));
+        if(Number.isFinite(Number(data.new24h))) setCommunityStat('new24h', Number(data.new24h));
+        if(Number.isFinite(Number(data.peakToday))) setCommunityStat('peakToday', Number(data.peakToday));
+        localStorage.setItem(COMMUNITY_TRY_RECORDED_KEY, 'true');
+      } catch(err){
+        console.warn('Community try tracking failed', err);
+      }
+    }
+
+    async function pingPeakToday(currentOnline){
+      if(!Number.isFinite(currentOnline)) return;
+      try{
+        const resp = await fetch('/api/metrics/ping', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ onlineNow: currentOnline })
+        });
+        if(resp.ok){
+          const data = await resp.json();
+          if(Number.isFinite(Number(data.peakToday))) setCommunityStat('peakToday', Number(data.peakToday));
+        }
+      } catch(err){
+        console.warn('Peak ping failed', err);
+      }
+    }
+
+    function schedulePeakPings(count){
+      setCommunityStat('onlineNow', Number.isFinite(count) ? Number(count) : 0);
+      const now = Date.now();
+      if(!peakPingInterval){
+        peakPingInterval = setInterval(()=>{
+          if(Number.isFinite(communityStats.onlineNow)) pingPeakToday(communityStats.onlineNow);
+        }, 60000);
+      }
+      if(!lastPeakPing || now - lastPeakPing > 60000){
+        lastPeakPing = now;
+        pingPeakToday(count);
+      }
+    }
+
+    function bindPresence(user){
+      if(!presenceDb || !user) return;
+      const presenceRef = presenceDb.ref(`presence/${user.uid}`);
+      presenceRef.onDisconnect().remove().catch(err=>console.warn('onDisconnect removal failed', err));
+      presenceRef
+        .set({ lastSeen: firebase.database.ServerValue.TIMESTAMP, startedAt: firebase.database.ServerValue.TIMESTAMP })
+        .catch(err=>console.warn('Presence write failed', err));
+      if(!presenceListenerBound){
+        presenceDb.ref('presence').on('value', (snapshot)=>{
+          const count = snapshot?.numChildren?.() || 0;
+          schedulePeakPings(count);
+        });
+        presenceListenerBound = true;
+      }
+    }
+
+    function initPresenceTracking(){
+      if(!firebaseEnabled || !firebaseConfig || !window.firebase?.database) return;
+      if(presenceApp) return;
+      try{
+        presenceApp = firebase.initializeApp(firebaseConfig, 'presence');
+        presenceAuth = firebase.auth(presenceApp);
+        presenceDb = firebase.database(presenceApp);
+        presenceAuth.onAuthStateChanged((user)=>{
+          if(user && user.uid !== presenceUser?.uid){
+            presenceUser = user;
+            bindPresence(user);
+          }
+        });
+        presenceAuth.signInAnonymously().catch(err=>console.warn('Presence anon auth failed', err));
+      } catch(err){
+        console.warn('Presence setup failed', err);
+      }
+    }
+
+    function initCommunityMetrics(){
+      recordCommunityTry();
+      initPresenceTracking();
     }
 
     // ---------------------- Offline helpers -----------------------
@@ -2018,6 +2152,16 @@ window.handleLogin = async (event) => {
     }
 
 
+function renderCommunityPill(id, label, icon, value, colorClasses=''){
+  return `<div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-white/10 bg-white/5 ${colorClasses}">
+    <span>${icon}</span>
+    <div class="flex flex-col leading-tight">
+      <span class="text-[10px] uppercase tracking-wide text-gray-300">${label}</span>
+      <span class="text-sm font-bold text-white" data-community-stat="${id}">${formatStatValue(value)}</span>
+    </div>
+  </div>`;
+}
+
 function render(){
   if(view === 'audit' && !isAdmin()){
     alert('Admin only');
@@ -2033,6 +2177,13 @@ function render(){
   const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
+  const communityStatsRow = `
+    <div class="flex flex-wrap gap-2 mt-2 text-xs">
+      ${renderCommunityPill('tried','Tried','👥', communityStats.totalTried, 'border-white/20 bg-white/10')}
+      ${renderCommunityPill('online','Online now','🟢', communityStats.onlineNow, 'border-emerald-400/30 bg-emerald-500/10')}
+      ${renderCommunityPill('peak','Peak today','📈', communityStats.peakToday, 'border-blue-400/30 bg-blue-500/10')}
+      ${renderCommunityPill('new24h','New (24h)','⏱️', communityStats.new24h, 'border-purple-400/30 bg-purple-500/10')}
+    </div>`;
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
   const selectedPanel = `
     <div class="panel ${selectedSong ? 'selected-panel' : ''} space-y-3">
@@ -2070,6 +2221,7 @@ function render(){
                 ${networkBadge}
                 ${trackSourceBadge}
               </div>
+              ${communityStatsRow}
             </div>
           </div>
           <div class="flex items-center gap-3 flex-wrap justify-end">
@@ -2178,6 +2330,7 @@ function render(){
     </div>
   `;
   if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
+  syncCommunityStatsUI();
 }
 
 
@@ -2536,6 +2689,7 @@ function render(){
         navigator.serviceWorker.register('/sw.js').catch(err=>console.warn('SW registration failed', err));
       });
     }
+    initCommunityMetrics();
     async function checkAuth(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();

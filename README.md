@@ -18,6 +18,21 @@ Steps:
 
 For local-only testing, you may copy `firebase-config.example.js` to `firebase-config.js` and fill in your keys, but production builds should rely on the Vercel environment variables.
 
+### Safe community metrics (Firebase Admin)
+Server-side metrics rely on the Firebase Admin SDK. Add one of the following credential configurations to Vercel:
+
+- `FIREBASE_ADMIN_CREDENTIALS` — the full service-account JSON string.
+- or `FIREBASE_ADMIN_PRIVATE_KEY` **and** `FIREBASE_ADMIN_CLIENT_EMAIL` (plus `FIREBASE_PROJECT_ID`).
+- or `GOOGLE_APPLICATION_CREDENTIALS` pointing to a bundled credential file.
+
+The API routes `/api/metrics/try` and `/api/metrics/ping` will initialize Admin from the values above to:
+
+- Deduplicate “Tried it” counts in `metricsVisitors/{anonId}` and increment `stats/global.totalTried`.
+- Calculate “New (24h)” via a rolling Firestore query.
+- Track peak concurrent users in `stats/daily_YYYY-MM-DD` (America/Chicago).
+
+Presence uses Firebase Realtime Database (`/presence/{uid}`) with anonymous auth so the client never writes to stats directly.
+
 ## Epic OAuth setup
 
 The app keeps Firebase email/password as the primary login but now includes an Epic-link flow with server-side PKCE/state storage. Configure these Vercel env vars:
