@@ -640,6 +640,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let userKey = null;
     let localDeviceId = localStorage.getItem('localDeviceId') || null;
     let songs = [];
+    let draftProfile = null;
     let ownedTracks = [];
     let selectedSong = null;
     let sortMode = 'bpm';
@@ -666,6 +667,33 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
     let includeOppositeMode = localStorage.getItem('jamMixer.includeOppositeMode');
     includeOppositeMode = includeOppositeMode === null ? true : includeOppositeMode === 'true';
+    function applyPreferencesFromProfile(profile){
+      const prefs = profile?.preferences || {};
+      if(prefs.keyMatchMode){ keyMatchMode = prefs.keyMatchMode === 'semitone' ? 'semitone' : 'camelot'; }
+      if(Number.isFinite(prefs.maxSemitoneRange)){ maxSemitoneRange = Math.min(6, Math.max(1, Number(prefs.maxSemitoneRange))); }
+      if(typeof prefs.includeOppositeMode === 'boolean'){ includeOppositeMode = prefs.includeOppositeMode; }
+      if(['low','medium','high'].includes(prefs.priorityStrength)){ priorityStrength = prefs.priorityStrength; }
+      const wasPersisting = isPersistingProfile;
+      isPersistingProfile = true;
+      persistKeyMatchSettings();
+      isPersistingProfile = wasPersisting;
+    }
+    function syncPreferencesIntoProfile(){
+      if(!currentUser) return;
+      const prefs = { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength };
+      currentUser.preferences = prefs;
+      if(draftProfile) draftProfile.preferences = prefs;
+    }
+    let preferenceSaveTimeout = null;
+    let isPersistingProfile = false;
+    function schedulePreferencePersist(){
+      if(!currentUser) return;
+      clearTimeout(preferenceSaveTimeout);
+      preferenceSaveTimeout = setTimeout(()=>{
+        if(!currentUser) return;
+        persistCurrentUserProfile().catch(err=>console.warn('[profile] preference persistence failed', err));
+      }, 300);
+    }
     let camelotOverridesStore = { ids: {}, names: {} };
     let bpmOverridesStore = { ids: {}, names: {} };
     let auditSearch = '';
@@ -738,6 +766,14 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       localStorage.setItem(getNamespacedKey('setlist'), JSON.stringify(setlist));
       localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
       localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
+    }
+    function cloneProfile(profile){
+      if(!profile) return null;
+      try { return structuredClone(profile); } catch(_) { return JSON.parse(JSON.stringify(profile)); }
+    }
+    function refreshDraftProfileFromCurrentUser(){
+      if(viewingProfile) return;
+      draftProfile = currentUser ? cloneProfile(currentUser) : null;
     }
     const ADMIN_USERNAME = 'BattleNeBody';
     function isAdmin(){
@@ -1210,27 +1246,67 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         }catch(err){ console.warn('load override firestore', err); }
       }
     }
-    async function saveUserProfile(){
-      if(!currentUser) return;
-      const mergedProfile = {
-        ...currentUser,
-        uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
-        username: currentUser.username,
-        djName: currentUser.djName,
-        ownedTracks,
-        setlists: currentUser.setlists || setlist || [],
-        setlist: setlist || [],
-        bandMembers,
-        genreOverrides,
-        oauth: currentUser.oauth || {}
-      };
-      currentUser = mergedProfile;
-      persistNamespacedState();
-      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      if (mergedProfile.username) profiles[mergedProfile.username] = { ...(profiles[mergedProfile.username]||{}), ...mergedProfile };
-      if (mergedProfile.uid) profiles[mergedProfile.uid] = { ...(profiles[mergedProfile.uid]||{}), ...mergedProfile };
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      await saveUserProfileToBackend(mergedProfile);
+    function normalizeOwnedList(ids){
+      const arr = Array.isArray(ids) ? ids.filter(Boolean) : [];
+      return Array.from(new Set(arr)).sort();
+    }
+    async function persistCurrentUserProfile(){
+      console.debug('[profile] save clicked', { draftProfile, currentUser });
+      if(viewingProfile) throw new Error('Cannot save while viewing another profile');
+      if(!currentUser?.username) throw new Error('No current user to persist');
+      isPersistingProfile = true;
+      try{
+        syncPreferencesIntoProfile();
+        const mergedProfile = {
+          ...currentUser,
+          uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
+          username: currentUser.username,
+          djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
+          ownedTracks,
+          setlists: currentUser.setlists || setlist || [],
+          setlist: setlist || [],
+          bandMembers,
+          genreOverrides,
+          oauth: currentUser.oauth || {},
+          preferences: {
+            keyMatchMode,
+            maxSemitoneRange,
+            includeOppositeMode,
+            priorityStrength
+          }
+        };
+        console.debug('[profile] currentUser before persist', currentUser);
+        currentUser = mergedProfile;
+        console.debug('[profile] currentUser after merge', currentUser);
+        refreshDraftProfileFromCurrentUser();
+        persistNamespacedState();
+        persistKeyMatchSettings();
+        localStorage.setItem('currentUser', currentUser.username);
+        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+        if (currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...mergedProfile };
+        if (currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...mergedProfile };
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+        console.debug('[profile] local save ok');
+        const backendOk = await saveUserProfileToBackend(mergedProfile);
+        console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
+        const verifyProfile = await loadUserProfile(currentUser.username);
+        const ownedMatch = JSON.stringify(normalizeOwnedList(verifyProfile?.ownedTracks)) === JSON.stringify(normalizeOwnedList(mergedProfile.ownedTracks));
+        const prefMatch = JSON.stringify(verifyProfile?.preferences || {}) === JSON.stringify(mergedProfile.preferences || {});
+        const genreMatch = JSON.stringify(verifyProfile?.genreOverrides || {}) === JSON.stringify(mergedProfile.genreOverrides || {});
+        const djMatch = (verifyProfile?.djName || '').trim() === (mergedProfile.djName || '').trim();
+        const verified = !!verifyProfile && ownedMatch && djMatch && prefMatch && genreMatch;
+        if(!verified){
+          console.error('[profile] save verification failed', { mergedProfile, verifyProfile });
+          throw new Error('Save verification failed');
+        }
+        currentUser = verifyProfile;
+        applyPreferencesFromProfile(currentUser);
+        refreshDraftProfileFromCurrentUser();
+        console.debug('[profile] save verified', { verifyProfile });
+        return { backendOk, verifyProfile };
+      } finally {
+        isPersistingProfile = false;
+      }
     }
     async function loadUserProfile(username){
       if(!username && !firebaseAuth?.currentUser) return null;
@@ -1485,7 +1561,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       return localId;
     }
 
-    window.continueOffline = () => {
+    window.continueOffline = async () => {
       if(firebaseEnabled){
         alert('Sign in is required while cloud sync is enabled.');
         return;
@@ -1493,6 +1569,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       const username = getLocalDeviceId();
       currentUser = { username, djName: username, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
       localStorage.setItem('currentUser', currentUser.username);
+      refreshDraftProfileFromCurrentUser();
+      try { await persistCurrentUserProfile(); } catch(err){ console.warn('offline profile save failed', err); }
       loadSongs();
     };
 
@@ -1590,7 +1668,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           return;
         }
         await fetchEpicLinkStatus();
-        await saveUserProfile();
+        await persistCurrentUserProfile();
         alert('Epic account unlinked.');
         renderProfile(); setupEventListeners();
       }catch(err){
@@ -1687,6 +1765,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {},
           oauth: profile.oauth || {}
         };
+        applyPreferencesFromProfile(currentUser);
         loadNamespacedState();
         loadOverridesFromStorage();
         await loadUserOverridesFromBackend();
@@ -1694,9 +1773,10 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         setlist = currentUser.setlist || currentUser.setlists || [];
         bandMembers = currentUser.bandMembers || [];
         genreOverrides = currentUser.genreOverrides || {};
+        refreshDraftProfileFromCurrentUser();
         await fetchEpicLinkStatus();
         localStorage.setItem('currentUser', firebaseUser.uid);
-        await saveUserProfile();
+        await persistCurrentUserProfile();
         await maybeLoadSharedProfile();
         loadSongs();
       } finally {
@@ -1755,19 +1835,21 @@ window.handleLogin = async (event) => {
       const djName = (document.getElementById('djName').value || username).trim() || username;
       if(username.length<3){ alert('Username must be at least 3 characters'); return; }
       const profile = await loadUserProfile(username);
-      if(profile){ currentUser = profile; }
-      else { currentUser = { username, djName, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} }; await saveUserProfileToBackend(currentUser); }
+      if(profile){ currentUser = profile; applyPreferencesFromProfile(currentUser); }
+      else { currentUser = { username, djName, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} }; }
+      refreshDraftProfileFromCurrentUser();
       loadNamespacedState();
       loadOverridesFromStorage();
       localStorage.setItem('currentUser', username);
+      await persistCurrentUserProfile();
       loadSongs();
     };
 
     async function logoutUser(){
-      saveUserProfile();
+      try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
-      currentUser = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
+      currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
       localStorage.removeItem('currentUser');
       showLoginScreen();
     }
@@ -2049,12 +2131,16 @@ window.handleLogin = async (event) => {
 
     function renderProfile(){
       const profileEl = document.getElementById('profileView'); if(!profileEl) return;
-      const profileOwner = viewingProfile || currentUser || {};
-      const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
-      const usernameVal = profileOwner?.username || '';
-      const djVal = profileOwner?.djName || usernameVal;
-      const ownedIds = profileOwner?.ownedTracks || [];
       const viewOnly = !!viewingProfile;
+      if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
+        refreshDraftProfileFromCurrentUser();
+      }
+      const profileOwner = viewingProfile || currentUser || {};
+      const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
+      const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
+      const usernameVal = editableProfile?.username || '';
+      const djVal = editableProfile?.djName || usernameVal;
+      const ownedIds = profileOwner?.ownedTracks || [];
       const epicLink = profileOwner?.oauth?.epic || null;
       const epicLinked = !!epicLink?.linked;
       const epicDisplay = epicLink?.displayName || epicLink?.epicAccountId || '';
@@ -2262,7 +2348,7 @@ window.handleLogin = async (event) => {
 
     async function migrateUsername(oldUsername,newUsername,newDjName){
       const status = document.getElementById('profileStatus');
-      const merged = { ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlist, setlists:setlist, bandMembers, genreOverrides };
+      const merged = { ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlist, setlists:setlist, bandMembers, genreOverrides, preferences: currentUser.preferences || { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength } };
       if(firestore){
         try{
           const oldRef = firestore.collection('users').doc(oldUsername);
@@ -2297,35 +2383,41 @@ window.handleLogin = async (event) => {
       localStorage.setItem('userProfiles', JSON.stringify(profiles));
       updateBandReferencesLocal(oldUsername,newUsername,newDjName);
       currentUser = merged;
+      refreshDraftProfileFromCurrentUser();
       localStorage.setItem('currentUser', newUsername);
-      await saveUserProfileToBackend(currentUser);
+      await persistCurrentUserProfile();
     }
 
     async function saveProfileSettings(){
+      if(viewingProfile){ const status = document.getElementById('profileStatus'); if(status) status.textContent = 'View-only mode: cannot save this profile.'; return; }
       if(!currentUser) return;
       const status = document.getElementById('profileStatus');
       const newUsername = (document.getElementById('profileUsername')?.value || '').trim();
       const newDjName = (document.getElementById('profileDjName')?.value || '').trim() || newUsername;
-      const usernameChanged = newUsername !== currentUser.username;
-      const djChanged = newDjName !== currentUser.djName;
       if(!usernamePattern.test(newUsername)){
         if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
+        alert('Username must be 3-20 chars, letters/numbers/underscore only');
         return;
       }
+      draftProfile = draftProfile || cloneProfile(currentUser) || {};
+      draftProfile.username = newUsername;
+      draftProfile.djName = newDjName;
+      const usernameChanged = newUsername !== currentUser.username;
+      const djChanged = newDjName !== currentUser.djName;
       try{
         if(usernameChanged){
           if(status) status.textContent = 'Migrating profile...';
           await migrateUsername(currentUser.username,newUsername,newDjName);
         } else {
-          currentUser.djName = newDjName;
+          if(status) status.textContent = 'Saving profile...';
+          currentUser = { ...currentUser, ...draftProfile, username:newUsername, djName:newDjName };
           if(djChanged) updateBandReferencesLocal(currentUser.username,currentUser.username,newDjName);
-          await saveUserProfile();
+          await persistCurrentUserProfile();
         }
-        const msg = usernameChanged ? 'Username updated successfully' : (djChanged ? 'DJ name updated successfully' : 'Profile saved');
         render(); setupEventListeners();
         const statusEl = document.getElementById('profileStatus');
-        if(statusEl) statusEl.textContent = msg;
-      }catch(e){ const statusEl = document.getElementById('profileStatus'); if(statusEl) statusEl.textContent = 'Error saving profile: ' + (e.message||e); }
+        if(statusEl) statusEl.textContent = 'Saved ✅';
+      }catch(e){ const statusEl = document.getElementById('profileStatus'); if(statusEl) statusEl.textContent = 'Save failed ❌: ' + (e.message||e); console.error('[profile] save failed', e); }
     }
 
 
@@ -2581,6 +2673,7 @@ function render(){
           ownedTracks,
           genreOverrides
         }, firebaseAuth.currentUser.uid || firebaseAuth.currentUser.email);
+        refreshDraftProfileFromCurrentUser();
       }
       if(!currentUser) return alert('Sign in required for admin edits');
       genreOverrides[songId] = newGenre;
@@ -2590,7 +2683,7 @@ function render(){
         refreshSongOverrides(song);
       }
       persistNamespacedState();
-      await saveUserProfile();
+      await persistCurrentUserProfile();
       refreshRegressionWarnings();
       renderAuditView();
       renderSongList();
@@ -2659,6 +2752,10 @@ function render(){
       const auditInput = document.getElementById('auditSearchInput'); if(auditInput){ auditInput.oninput = (e)=>{ auditSearch = e.target.value; renderAuditView(); }; }
       const ownedSearchInput = document.getElementById('ownedSearchInput'); if(ownedSearchInput){ ownedSearchInput.oninput = (e)=>{ profileOwnedSearch = e.target.value; renderProfile(); setupEventListeners(); }; }
       const friendSearchInput = document.getElementById('friendSearchInput'); if(friendSearchInput){ friendSearchInput.onkeydown = (e)=>{ if(e.key === 'Enter'){ viewFriendProfile(); } }; }
+      const profileUsernameInput = document.getElementById('profileUsername');
+      if(profileUsernameInput && !viewingProfile){ profileUsernameInput.oninput = (e)=>{ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = e.target.value; }; }
+      const profileDjInput = document.getElementById('profileDjName');
+      if(profileDjInput && !viewingProfile){ profileDjInput.oninput = (e)=>{ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = e.target.value; }; }
       if(!viewingProfile){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
       document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
       if(isAdmin()){
@@ -2681,6 +2778,7 @@ function render(){
     window.setPriorityStrength = (val) => {
       const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
       priorityStrength = map[val] || 'medium';
+      persistKeyMatchSettings();
       render();
       setupEventListeners();
     };
@@ -2689,6 +2787,9 @@ function render(){
       localStorage.setItem('jamMixer.keyMatchMode', keyMatchMode);
       localStorage.setItem('jamMixer.maxSemitoneRange', String(maxSemitoneRange));
       localStorage.setItem('jamMixer.includeOppositeMode', includeOppositeMode ? 'true' : 'false');
+      localStorage.setItem('jamMixer.priorityStrength', priorityStrength);
+      syncPreferencesIntoProfile();
+      if(!isPersistingProfile) schedulePreferencePersist();
     }
     window.setKeyMatchMode = (mode) => {
       keyMatchMode = mode === 'semitone' ? 'semitone' : 'camelot';
@@ -2758,17 +2859,18 @@ function render(){
       renderProfile();
     };
 
-    window.toggleOwned = (id) => {
+    window.toggleOwned = async (id) => {
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
       if(ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t=>t!==id); else ownedTracks.push(id);
       persistNamespacedState();
-      saveUserProfile();
+      try { await persistCurrentUserProfile(); } catch(err){ console.error('[profile] save failed after toggleOwned', err); const status=document.getElementById('profileStatus'); if(status) status.textContent='Save failed ❌: '+(err.message||err); }
       updateOwnedCount();
       renderSongList();
     };
 
     window.exitProfileViewMode = () => {
       clearViewedProfile();
+      refreshDraftProfileFromCurrentUser();
       render();
       setupEventListeners();
     };
@@ -2831,18 +2933,19 @@ function render(){
       setupEventListeners();
     };
 
-    window.markAllOwned = () => {
+    window.markAllOwned = async () => {
       if(viewingProfile) return;
       if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
       ownedTracks = songs.map(s=>s.id);
       persistNamespacedState();
-      saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`✅ Marked all ${songs.length} songs as owned!`);
+      try { await persistCurrentUserProfile(); } catch(err){ console.error('[profile] markAllOwned save failed', err); }
+      renderSongList(); updateOwnedCount(); alert(`✅ Marked all ${songs.length} songs as owned!`);
     };
 
-    window.clearAllOwned = () => {
+    window.clearAllOwned = async () => {
       if(viewingProfile) return;
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
-      const count = ownedTracks.length; ownedTracks = []; persistNamespacedState(); saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
+      const count = ownedTracks.length; ownedTracks = []; persistNamespacedState(); try { await persistCurrentUserProfile(); } catch(err){ console.error('[profile] clearAllOwned save failed', err); } renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
     };
 
     async function addBandMember(){
@@ -2947,7 +3050,7 @@ function render(){
         const localId = localStorage.getItem('localDeviceUserId');
         if(savedUsername && savedUsername === localId){
           const profile = await loadUserProfile(savedUsername);
-          if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
+          if(profile){ currentUser = profile; applyPreferencesFromProfile(currentUser); refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
         }
         showLoginScreen();
         return;
@@ -2955,7 +3058,7 @@ function render(){
       const savedUsername = localStorage.getItem('currentUser');
       if(savedUsername){
         const profile = await loadUserProfile(savedUsername);
-        if(profile){ currentUser = profile; loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
+        if(profile){ currentUser = profile; applyPreferencesFromProfile(currentUser); refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
       }
       showLoginScreen();
     }
