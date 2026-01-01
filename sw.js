@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'fortnite-jam-mixer-shell-v3';
-const RUNTIME_CACHE = 'fortnite-jam-mixer-runtime-v3';
+const APP_SHELL_CACHE = 'fortnite-jam-mixer-shell-v4';
+const RUNTIME_CACHE = 'fortnite-jam-mixer-runtime-v4';
 const APP_SHELL = ['/', '/index.html', '/offline.css', '/manifest.webmanifest'];
 const RUNTIME_PREFIXES = [
   'https://cdn.tailwindcss.com',
@@ -36,8 +36,12 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
 
+  if (shouldBypassCaching(request)) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   const url = new URL(request.url);
-  if (shouldBypassCaching(request)) return;
   const isNavigation = request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html');
 
   if (isNavigation) {

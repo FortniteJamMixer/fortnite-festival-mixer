@@ -704,20 +704,21 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let adminMenuListenersBound = false;
     let isOffline = !navigator.onLine;
     let trackSource = 'network';
-    const communityStats = { totalTried: null, onlineNow: presenceEnabled ? '…' : '—', peakToday: null, new24h: null };
+    const communityStats = { totalMembers: '…', onlineNow: presenceEnabled ? '…' : '—' };
+    const communityStatGraceTimers = {};
     let presenceApp = null, presenceDb = null, presenceAuth = null, presenceUser = null;
     let presenceListenerBound = false;
     let presenceHeartbeat = null;
     const PRESENCE_HEARTBEAT_MS = 25000;
     const PRESENCE_STALE_MS = 70000;
     const PRESENCE_INIT_GRACE_MS = 3000;
+    const COMMUNITY_STAT_GRACE_MS = 3000;
     let presenceState = { enabled: presenceEnabled, configOk: false, connected: false, lastError: '', rawNodes: 0 };
     let presenceInitTimer = null;
     let presenceLastHeartbeatLog = 0;
-    let peakPingInterval = null;
-    let lastPeakPing = 0;
     const COMMUNITY_ANON_KEY = 'ffmCommunityAnonId';
     const COMMUNITY_TRY_RECORDED_KEY = 'ffmCommunityTryRecorded';
+    const COMMUNITY_TOTAL_CACHE_KEY = 'ffmCommunityTotalMembers';
     const TRACK_DB = { name: 'ffm-track-cache', store: 'tracks' };
     const SAMPLE_TRACKS = [
       { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
@@ -836,8 +837,21 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       if(!anonId){
         anonId = 'anon_' + Math.random().toString(36).slice(2,12);
         localStorage.setItem(COMMUNITY_ANON_KEY, anonId);
+        console.log('[members] anonId created', anonId);
+      } else {
+        console.log('[members] anonId loaded', anonId);
       }
       return anonId;
+    }
+
+    function startCommunityStatGrace(key){
+      clearTimeout(communityStatGraceTimers[key]);
+      communityStatGraceTimers[key] = setTimeout(()=>{
+        if(communityStats[key] === null || communityStats[key] === '…'){
+          communityStats[key] = '—';
+          syncCommunityStatsUI();
+        }
+      }, COMMUNITY_STAT_GRACE_MS);
     }
 
     function presenceLog(message, ...args){
@@ -867,10 +881,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
     function syncCommunityStatsUI(){
       const mapping = {
-        tried: communityStats.totalTried,
+        members: communityStats.totalMembers,
         online: communityStats.onlineNow,
-        peak: communityStats.peakToday,
-        new24h: communityStats.new24h,
       };
       Object.entries(mapping).forEach(([key,val])=>{
         if(key === 'online'){
@@ -888,58 +900,39 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     function setCommunityStat(key, value){
       if(communityStats[key] === value) { syncCommunityStatsUI(); return; }
       communityStats[key] = value;
+      if(value !== null && value !== '…'){
+        clearTimeout(communityStatGraceTimers[key]);
+      } else {
+        startCommunityStatGrace(key);
+      }
       syncCommunityStatsUI();
     }
 
     async function recordCommunityTry(force=false){
       const anonId = getCommunityAnonId();
+      const cachedTotal = Number(localStorage.getItem(COMMUNITY_TOTAL_CACHE_KEY) || '');
+      if(Number.isFinite(cachedTotal)) setCommunityStat('totalMembers', cachedTotal);
       const alreadyRecorded = localStorage.getItem(COMMUNITY_TRY_RECORDED_KEY) === 'true';
-      if(alreadyRecorded && !force && communityStats.totalTried !== null) return;
+      if(alreadyRecorded && !force && communityStats.totalMembers !== '…') return;
       try{
         const resp = await fetch('/api/metrics/try', {
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
           body: JSON.stringify({ anonId })
         });
+        console.log('[members] try endpoint status', resp.status);
         if(!resp.ok) throw new Error('Try request failed');
         const data = await resp.json();
-        if(Number.isFinite(Number(data.totalTried))) setCommunityStat('totalTried', Number(data.totalTried));
-        if(Number.isFinite(Number(data.new24h))) setCommunityStat('new24h', Number(data.new24h));
-        if(Number.isFinite(Number(data.peakToday))) setCommunityStat('peakToday', Number(data.peakToday));
+        if(Number.isFinite(Number(data.totalTried))){
+          const total = Number(data.totalTried);
+          localStorage.setItem(COMMUNITY_TOTAL_CACHE_KEY, String(total));
+          setCommunityStat('totalMembers', total);
+          console.log('[members] totalTried =', total);
+        }
         localStorage.setItem(COMMUNITY_TRY_RECORDED_KEY, 'true');
       } catch(err){
-        console.warn('Community try tracking failed', err);
-      }
-    }
-
-    async function pingPeakToday(currentOnline){
-      if(!Number.isFinite(currentOnline)) return;
-      try{
-        const resp = await fetch('/api/metrics/ping', {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ onlineNow: currentOnline })
-        });
-        if(resp.ok){
-          const data = await resp.json();
-          if(Number.isFinite(Number(data.peakToday))) setCommunityStat('peakToday', Number(data.peakToday));
-        }
-      } catch(err){
-        console.warn('Peak ping failed', err);
-      }
-    }
-
-    function schedulePeakPings(count){
-      setCommunityStat('onlineNow', Number.isFinite(count) ? Number(count) : 0);
-      const now = Date.now();
-      if(!peakPingInterval){
-        peakPingInterval = setInterval(()=>{
-          if(Number.isFinite(communityStats.onlineNow)) pingPeakToday(communityStats.onlineNow);
-        }, 60000);
-      }
-      if(!lastPeakPing || now - lastPeakPing > 60000){
-        lastPeakPing = now;
-        pingPeakToday(count);
+        console.error('Community try tracking failed', err);
+        setCommunityStat('totalMembers', Number.isFinite(cachedTotal) ? cachedTotal : '—');
       }
     }
 
@@ -992,8 +985,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         }
       });
       presenceState.rawNodes = rawCount;
-      presenceLog(`onlineNow = ${activeCount} (raw nodes: ${rawCount})`);
-      schedulePeakPings(activeCount);
+      presenceLog(`onlineNow: ${activeCount} (raw: ${rawCount})`);
+      setCommunityStat('onlineNow', Number.isFinite(activeCount) ? activeCount : '—');
       updatePresenceDebugLine();
     }
 
@@ -1005,8 +998,8 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         .catch(err=>presenceLog('onDisconnect failed', err));
       presenceRef
         .set({ lastSeen: firebase.database.ServerValue.TIMESTAMP })
-        .then(()=>presenceLog('wrote presence'))
-        .catch(err=>{ presenceState.lastError = err?.message || String(err); presenceLog('Presence write failed', err); });
+        .then(()=>presenceLog('presence write ok'))
+        .catch(err=>{ presenceState.lastError = err?.message || String(err); presenceLog('presence write failed', err); markPresenceUnavailable('presence write failed'); });
       startPresenceHeartbeat(presenceRef);
       if(!presenceListenerBound){
         presenceDb.ref('presence').on('value', handlePresenceSnapshot);
@@ -1024,6 +1017,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       presenceState.configOk = configOk;
       presenceLog(`firebase config ok: ${configOk}`);
       if(!configOk){
+        presenceLog('firebase init failed: missing config');
         markPresenceUnavailable('presence config missing');
         return;
       }
@@ -1037,6 +1031,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         presenceApp = firebase.initializeApp(firebaseConfig, 'presence');
         presenceAuth = firebase.auth(presenceApp);
         presenceDb = firebase.database(presenceApp);
+        presenceLog('firebase init ok');
         presenceDb.ref('.info/connected').on('value',(snap)=>{
           presenceState.connected = snap?.val?.() === true;
           if(!presenceState.connected){
@@ -1060,15 +1055,19 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
           presenceLog(`auth failed: ${presenceState.lastError}`);
           markPresenceUnavailable('auth state listener failed');
         });
-        presenceAuth.signInAnonymously().catch(err=>{ presenceState.lastError = err?.message || String(err); presenceLog(`auth failed: ${presenceState.lastError}`); markPresenceUnavailable('auth failed'); });
+        presenceAuth.signInAnonymously()
+          .then(()=>presenceLog('anon auth ok'))
+          .catch(err=>{ presenceState.lastError = err?.message || String(err); presenceLog(`anon auth failed: ${presenceState.lastError}`); markPresenceUnavailable('auth failed'); });
       } catch(err){
         presenceState.lastError = err?.message || String(err);
-        presenceLog('Presence setup failed', err);
+        presenceLog('firebase init failed', err);
         markPresenceUnavailable('presence setup failed');
       }
     }
 
     function initCommunityMetrics(){
+      startCommunityStatGrace('totalMembers');
+      startCommunityStatGrace('onlineNow');
       recordCommunityTry();
       initPresenceTracking();
     }
@@ -2577,10 +2576,8 @@ function render(){
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const communityStatsRow = `
     <div class="flex flex-wrap gap-2 mt-2 text-xs">
-      ${renderCommunityPill('tried','Tried','👥', communityStats.totalTried, 'border-white/20 bg-white/10')}
-      ${renderCommunityPill('online','Online now','🟢', communityStats.onlineNow, 'border-emerald-400/30 bg-emerald-500/10')}
-      ${renderCommunityPill('peak','Peak today','📈', communityStats.peakToday, 'border-blue-400/30 bg-blue-500/10')}
-      ${renderCommunityPill('new24h','New (24h)','⏱️', communityStats.new24h, 'border-purple-400/30 bg-purple-500/10')}
+      ${renderCommunityPill('online','ONLINE NOW','🟢', communityStats.onlineNow, 'border-emerald-400/30 bg-emerald-500/10')}
+      ${renderCommunityPill('members','ALL-TIME MEMBERS','👥', communityStats.totalMembers, 'border-white/20 bg-white/10')}
     </div>`;
   const presenceDebugLine = isAdmin() ? `<div data-presence-debug class="text-[11px] text-amber-200/90 mt-1">presence debug</div>` : '';
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
