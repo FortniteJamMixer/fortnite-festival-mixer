@@ -660,8 +660,9 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let genreOverrides = {};
     let sandboxTracks = [];
     let sandboxIds = [];
-    const storedPriorityStrength = localStorage.getItem('jamMixer.priorityStrength');
-    let priorityStrength = ['low','medium','high'].includes(storedPriorityStrength) ? storedPriorityStrength : 'medium';
+    let currentPage = 1;
+    const SONGS_PER_PAGE = 12;
+    let priorityStrength = 'medium';
     let keyMatchMode = (localStorage.getItem('jamMixer.keyMatchMode') || 'camelot') === 'semitone' ? 'semitone' : 'camelot';
     let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
     let includeOppositeMode = localStorage.getItem('jamMixer.includeOppositeMode');
@@ -1916,6 +1917,10 @@ window.handleLogin = async (event) => {
       });
     }
 
+    function resetPagination(){
+      currentPage = 1;
+    }
+
     const setCamelotOverride = async (trackId,value)=>{
       if(!isAdmin()) return alert('Admin only');
       camelotOverridesStore.ids[trackId] = value;
@@ -2001,6 +2006,14 @@ window.handleLogin = async (event) => {
       }
 
       const songListEl = document.getElementById('songList'); if(!songListEl) return;
+      const totalPages = Math.max(1, Math.ceil(scored.length / SONGS_PER_PAGE));
+      if(currentPage > totalPages) currentPage = totalPages;
+      if(currentPage < 1) currentPage = 1;
+      const startIndex = (currentPage - 1) * SONGS_PER_PAGE;
+      const pageEntries = scored.slice(startIndex, startIndex + SONGS_PER_PAGE);
+      const showingStart = scored.length ? startIndex + 1 : 0;
+      const showingEnd = scored.length ? Math.min(scored.length, startIndex + pageEntries.length) : 0;
+
       const priorityNames = { bpm:'Tempo', camelot:'Camelot', genre:'Genre' };
       const priorityDescriptions = {
         bpm: 'Priority: Tempo — closest BPM results are boosted within compatible matches.',
@@ -2016,7 +2029,7 @@ window.handleLogin = async (event) => {
       ` : '';
 
       const adminUser = isAdmin();
-      songListEl.innerHTML = priorityHeader + `<div class="song-grid grid gap-4">` + scored.map(entry=>{
+      const cardGrid = pageEntries.map(entry=>{
         const song = entry.song;
         const isSelected = selectedSong && song.id === selectedSong.id;
         const isOwned = displayTracks.includes(song.id);
@@ -2081,11 +2094,29 @@ window.handleLogin = async (event) => {
               <button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-id="${song.id}">Preview</button>
               <button onclick="toggleOwned('${song.id}')" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
               <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Set</button>
+              <button onclick="addToSandbox('${song.id}')" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Sandbox</button>
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
           </div>
         `;
-      }).join('') + `</div>`;
+      }).join('');
+
+      const paginationControls = scored.length ? `
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-2">
+          <div class="text-sm text-gray-300">Showing ${showingStart}-${showingEnd} of ${scored.length} tracks</div>
+          <div class="flex items-center gap-2">
+            <button class="px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-sm ${currentPage===1?'opacity-50 cursor-not-allowed':''}" onclick="changePage(-1)" ${currentPage===1?'disabled':''}>Previous</button>
+            <div class="text-sm font-semibold text-white">Page ${currentPage} / ${totalPages}</div>
+            <button class="px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-sm ${currentPage===totalPages?'opacity-50 cursor-not-allowed':''}" onclick="changePage(1)" ${currentPage===totalPages?'disabled':''}>Next</button>
+          </div>
+        </div>
+      ` : '';
+
+      const listContent = scored.length
+        ? `<div class="song-grid grid gap-4">${cardGrid}</div>${paginationControls}`
+        : `<div class="panel p-6 text-center text-gray-300">No songs match your filters yet. Try clearing search or toggling filters.</div>`;
+
+      songListEl.innerHTML = priorityHeader + listContent;
       bindGenreEditors(songListEl);
     }
 
@@ -2701,13 +2732,14 @@ function render(){
       const clearSearchBtn = document.getElementById('clearSearchBtn');
       if(searchInput && clearSearchBtn){
         searchInput.oninput = (e)=>{ 
-          searchTerm = e.target.value; 
+          searchTerm = e.target.value;
           clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
           const panelClear = document.getElementById('panelClearSearchBtn');
           if(panelClear){ panelClear.disabled = !searchTerm; panelClear.style.opacity = searchTerm ? '1' : '0.55'; panelClear.style.cursor = searchTerm ? 'pointer' : 'not-allowed'; }
-          renderSongList(); 
+          resetPagination();
+          renderSongList();
         };
-        clearSearchBtn.onclick = ()=>{ searchInput.value=''; searchTerm=''; clearSearchBtn.style.display='none'; const panelClear = document.getElementById('panelClearSearchBtn'); if(panelClear){ panelClear.disabled = true; panelClear.style.opacity='0.55'; panelClear.style.cursor='not-allowed'; } renderSongList(); };
+        clearSearchBtn.onclick = ()=>{ searchInput.value=''; searchTerm=''; clearSearchBtn.style.display='none'; const panelClear = document.getElementById('panelClearSearchBtn'); if(panelClear){ panelClear.disabled = true; panelClear.style.opacity='0.55'; panelClear.style.cursor='not-allowed'; } resetPagination(); renderSongList(); };
       }
       document.getElementById('browserBtn')?.addEventListener('click', ()=> switchView('browser'));
       document.getElementById('setlistBtn')?.addEventListener('click', ()=> switchView('setlist'));
@@ -2762,6 +2794,7 @@ function render(){
     window.setKeyMatchMode = (mode) => {
       keyMatchMode = mode === 'semitone' ? 'semitone' : 'camelot';
       persistKeyMatchSettings();
+      resetPagination();
       render();
       setupEventListeners();
     };
@@ -2781,12 +2814,14 @@ function render(){
 
     window.setSortMode = (mode) => {
       sortMode = mode;
+      resetPagination();
       render();
       setupEventListeners();
     };
 
     window.selectSong = (id) => {
       selectedSong = songs.find(s=>s.id===id);
+      resetPagination();
       render();
       setupEventListeners();
     };
@@ -2886,12 +2921,14 @@ function render(){
     window.toggleMixableFilter = () => {
       if(!selectedSong){ alert('Select a song first to see mixable tracks!'); return; }
       showMixableOnly = !showMixableOnly;
+      resetPagination();
       render();
       setupEventListeners();
     };
 
     window.toggleOwnedFilter = () => {
       showOwnedOnly = !showOwnedOnly;
+      resetPagination();
       render();
       setupEventListeners();
     };
@@ -2938,10 +2975,13 @@ function render(){
     // -------------------- Sandbox functions --------------------------
     function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; if(!el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); } if(!sandboxTracks.length && sandboxIds.length){ sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4); } renderSandbox(); }
     function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds)); }
+    function addToSandbox(id){ const track=songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)){ alert('Track already in sandbox'); return; } if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); renderSongList(); }
     function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function clearSandbox(){ sandboxTracks=[]; sandboxIds=[]; renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
+
+    function changePage(delta){ currentPage += delta; renderSongList(); }
 
     // NOTE:
     // Import / Export was intentionally removed.
