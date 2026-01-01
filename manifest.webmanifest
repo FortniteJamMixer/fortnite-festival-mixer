@@ -1,0 +1,9 @@
+{
+  "name": "Fortnite Festival Pro Mixer",
+  "short_name": "Festival Mixer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1020",
+  "theme_color": "#0f1020",
+  "icons": []
+}

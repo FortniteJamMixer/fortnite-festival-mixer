@@ -3,8 +3,12 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="theme-color" content="#0f1020" />
   <title>Fortnite Festival Pro Mixer — Final</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <script>document.documentElement.classList.add('tw-offline');</script>
+  <link rel="stylesheet" href="/offline.css" />
+  <script src="https://cdn.tailwindcss.com" onload="document.documentElement.classList.remove('tw-offline');" onerror="console.warn('Tailwind CDN unavailable; using offline fallback.');"></script>
 
   <!-- Firebase config injected from Vercel (serverless /api/firebase-config) -->
   <script src="/api/firebase-config"></script>
@@ -631,6 +635,16 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
     let regressionWarnings = [];
     let adminMenuOpen = false;
     let adminMenuListenersBound = false;
+    let isOffline = !navigator.onLine;
+    let trackSource = 'network';
+    const TRACK_DB = { name: 'ffm-track-cache', store: 'tracks' };
+    const SAMPLE_TRACKS = [
+      { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
+      { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, rawBpm:115, key:'C minor', rawKey:'C', rawMode:'minor', mode:'minor', camelot:'8A', derivedCamelot:'8A', duration:210, albumArt:'', genre:'Rock'},
+      { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, rawBpm:128, key:'D major', rawKey:'D', rawMode:'major', mode:'major', camelot:'10B', derivedCamelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
+      { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, rawBpm:95, key:'G minor', rawKey:'G', rawMode:'minor', mode:'minor', camelot:'9A', derivedCamelot:'9A', duration:190, albumArt:'', genre:'Indie'},
+      { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, rawBpm:142, key:'A minor', rawKey:'A', rawMode:'minor', mode:'minor', camelot:'11A', derivedCamelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
+    ].map(t=>({ ...t, flags: computeTrackFlags ? computeTrackFlags(t) : {} }));
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
     const profileParam = new URLSearchParams(window.location.search).get('profile');
     const pendingOAuthToast = sessionStorage.getItem('oauthSuccess');
@@ -680,15 +694,10 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
       localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
     }
-    const adminEmails = ['johnnybradford1@gmail.com'];
-    const adminUsernames = ['battlenebody'];
+    const ADMIN_USERNAME = 'BattleNeBody';
     function isAdmin(){
-      const email = firebaseAuth?.currentUser?.email?.toLowerCase();
-      if(email && adminEmails.includes(email)) return true;
-      const username = (currentUser?.username || firebaseAuth?.currentUser?.displayName || '').toLowerCase();
-      if(username && adminUsernames.includes(username)) return true;
-      if(currentUser?.isAdmin === true || currentUser?.role === 'admin') return true;
-      return false;
+      const username = currentUser?.username || firebaseAuth?.currentUser?.displayName || '';
+      return username === ADMIN_USERNAME;
     }
 
     function handleAdminMenuOutsideClick(e){
@@ -698,14 +707,14 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       const clickInMenu = menu?.contains(e.target);
       const clickOnBtn = btn?.contains(e.target);
       if(menu && !clickInMenu && !clickOnBtn){
-        window.toggleAdminTools(false);
+        toggleAdminTools(false);
       }
     }
 
     function handleAdminMenuKeydown(e){
       if(e.key === 'Escape'){
         closeHelp();
-        if(adminMenuOpen) window.toggleAdminTools(false);
+        if(adminMenuOpen) toggleAdminTools(false);
       }
     }
 
@@ -716,7 +725,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       adminMenuListenersBound = true;
     }
 
-    window.toggleAdminTools = function toggleAdminTools(force){
+    const toggleAdminTools = (force)=>{
       if(!isAdmin()) return;
       ensureAdminMenuListeners();
       const previous = adminMenuOpen;
@@ -728,8 +737,54 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
     function openAuditFromMenu(){
       if(!isAdmin()) return alert('Admin only');
-      window.toggleAdminTools(false);
+      toggleAdminTools(false);
       switchView('audit');
+    }
+
+    // ---------------------- Offline helpers -----------------------
+    function handleNetworkStatusChange(){
+      isOffline = !navigator.onLine;
+      const badges = document.querySelectorAll('[data-network-badge]');
+      badges.forEach(el=>{
+        el.textContent = isOffline ? 'Offline' : 'Online';
+        el.className = isOffline
+          ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100'
+          : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100';
+      });
+    }
+
+    function openTrackDb(){
+      return new Promise((resolve,reject)=>{
+        if(!('indexedDB' in window)) return resolve(null);
+        const req = indexedDB.open(TRACK_DB.name,1);
+        req.onupgradeneeded = ()=>{ req.result.createObjectStore(TRACK_DB.store, { keyPath:'id' }); };
+        req.onsuccess = ()=>resolve(req.result);
+        req.onerror = ()=>resolve(null);
+      });
+    }
+
+    async function cacheTracks(list){
+      const db = await openTrackDb();
+      if(!db) return;
+      return new Promise(resolve=>{
+        const tx = db.transaction(TRACK_DB.store,'readwrite');
+        const store = tx.objectStore(TRACK_DB.store);
+        list.forEach(t=>store.put(t));
+        tx.oncomplete = ()=>resolve();
+        tx.onerror = ()=>resolve();
+      });
+    }
+
+    async function readCachedTracks(){
+      const db = await openTrackDb();
+      if(!db) return [];
+      return new Promise(resolve=>{
+        const tx = db.transaction(TRACK_DB.store,'readonly');
+        const store = tx.objectStore(TRACK_DB.store);
+        const req = store.getAll();
+        req.onsuccess = ()=>resolve(req.result || []);
+        req.onerror = ()=>resolve([]);
+      });
     }
 
     // ---------------------- Utils & Scoring -----------------------
@@ -1471,42 +1526,53 @@ window.handleLogin = async (event) => {
     // -------------------- Songs loading -----------------------
     async function loadSongs(){
       console.log('Loading tracks...');
+      const cachedTracks = await readCachedTracks();
       const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
-      for(let i=0;i<endpoints.length;i++){
-        try{
-          const res = await fetch(endpoints[i]);
-          if(!res.ok) continue;
-          const data = await res.json();
-          songs = Object.entries(data).filter(([k])=>!k.startsWith('_')).map(([id,item])=>{
-            const track = item?.track || {};
-            if(!track?.tt) return null;
-            const detectedGenre = detectGenre(track.an||'', track.tt);
-            const finalGenre = genreOverrides[id] || detectedGenre;
-            const rawBpm = Number(track.mt) || 0;
-            const camelotData = deriveCamelotForTrack({ ...track, id });
-            const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
-            const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
-            const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden };
-            enriched.flags = computeTrackFlags(enriched);
-            return enriched;
-          }).filter(s=>s && s.bpm>0);
-          songs.sort((a,b)=>a.title.localeCompare(b.title));
-          regressionWarnings = knownCorrections.filter(kc=>{
-            const track = songs.find(s=>s.id===kc.id);
-            return track && track.camelot !== kc.expectedCamelot;
-          });
-          if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
-          if(songs.length>0){ render(); setupEventListeners(); return; }
-        }catch(e){ console.warn('endpoint err',e); }
+      const canFetch = navigator.onLine;
+      if(canFetch){
+        for(let i=0;i<endpoints.length;i++){
+          try{
+            const res = await fetch(endpoints[i]);
+            if(!res.ok) continue;
+            const data = await res.json();
+            songs = Object.entries(data).filter(([k])=>!k.startsWith('_')).map(([id,item])=>{
+              const track = item?.track || {};
+              if(!track?.tt) return null;
+              const detectedGenre = detectGenre(track.an||'', track.tt);
+              const finalGenre = genreOverrides[id] || detectedGenre;
+              const rawBpm = Number(track.mt) || 0;
+              const camelotData = deriveCamelotForTrack({ ...track, id });
+              const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
+              const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
+              const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden };
+              enriched.flags = computeTrackFlags(enriched);
+              return enriched;
+            }).filter(s=>s && s.bpm>0);
+            songs.sort((a,b)=>a.title.localeCompare(b.title));
+            regressionWarnings = knownCorrections.filter(kc=>{
+              const track = songs.find(s=>s.id===kc.id);
+              return track && track.camelot !== kc.expectedCamelot;
+            });
+            if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
+            if(songs.length>0){
+              trackSource = 'network';
+              cacheTracks(songs);
+              render(); setupEventListeners();
+              return;
+            }
+          }catch(e){ console.warn('endpoint err',e); }
+        }
+      }
+      if(cachedTracks.length){
+        console.warn('Using cached track data');
+        songs = cachedTracks;
+        trackSource = 'cache';
+        render(); setupEventListeners();
+        return;
       }
       console.warn('endpoints failed, using fallback sample');
-      songs = [
-        { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
-        { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, rawBpm:115, key:'C minor', rawKey:'C', rawMode:'minor', mode:'minor', camelot:'8A', derivedCamelot:'8A', duration:210, albumArt:'', genre:'Rock'},
-        { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, rawBpm:128, key:'D major', rawKey:'D', rawMode:'major', mode:'major', camelot:'10B', derivedCamelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
-        { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, rawBpm:95, key:'G minor', rawKey:'G', rawMode:'minor', mode:'minor', camelot:'9A', derivedCamelot:'9A', duration:190, albumArt:'', genre:'Indie'},
-        { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, rawBpm:142, key:'A minor', rawKey:'A', rawMode:'minor', mode:'minor', camelot:'11A', derivedCamelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
-      ].map(t=>({ ...t, flags: computeTrackFlags(t) }));
+      songs = SAMPLE_TRACKS;
+      trackSource = 'fallback';
       render(); setupEventListeners();
     }
 
@@ -1517,7 +1583,7 @@ window.handleLogin = async (event) => {
       });
     }
 
-    async function setCamelotOverride(trackId,value){
+    const setCamelotOverride = async (trackId,value)=>{
       if(!isAdmin()) return alert('Admin only');
       camelotOverridesStore.ids[trackId] = value;
       await persistOverrides();
@@ -1526,8 +1592,8 @@ window.handleLogin = async (event) => {
       refreshRegressionWarnings();
       renderAuditView();
       renderSongList();
-    }
-    async function setBpmOverride(trackId,value){
+    };
+    const setBpmOverride = async (trackId,value)=>{
       if(!isAdmin()) return alert('Admin only');
       bpmOverridesStore.ids[trackId] = Number(value);
       await persistOverrides();
@@ -1535,8 +1601,8 @@ window.handleLogin = async (event) => {
       if(track){ refreshSongOverrides(track); }
       renderAuditView();
       renderSongList();
-    }
-    async function clearOverrides(trackId){
+    };
+    const clearOverrides = async (trackId)=>{
       if(!isAdmin()) return alert('Admin only');
       delete camelotOverridesStore.ids[trackId];
       delete bpmOverridesStore.ids[trackId];
@@ -1546,7 +1612,7 @@ window.handleLogin = async (event) => {
       refreshRegressionWarnings();
       renderAuditView();
       renderSongList();
-    }
+    };
 
     // ---------------------- Render list & setlist -----------------------
     function formatDuration(sec){ const m=Math.floor(sec/60); const s=sec%60; return `${m}:${s.toString().padStart(2,'0')}`; }
@@ -1960,8 +2026,12 @@ function render(){
   if(!isAdmin() && adminMenuOpen){
     adminMenuOpen = false;
   }
+  syncAdminGlobals();
   const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
   const ownedCount = displayTracks.length;
+  const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
+  const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
+  const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
   const selectedPanel = `
@@ -1995,7 +2065,11 @@ function render(){
             <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
             <div>
               <h1 class="text-2xl font-bold text-white graffiti-text">FESTIVAL PRO MIXER</h1>
-              <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
+              <div class="flex items-center flex-wrap gap-2 mt-1">
+                <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
+                ${networkBadge}
+                ${trackSourceBadge}
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-3 flex-wrap justify-end">
@@ -2019,6 +2093,11 @@ function render(){
             <button id="profileBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
           </div>
           ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
+        </div>
+        <div class="flex items-center gap-2 flex-wrap text-sm text-cyan-100">
+          ${networkBadge}
+          ${trackSourceBadge}
+          <span class="text-xs text-gray-300">Offline browsing pulls your last cached tracks.</span>
         </div>
 
         ${regressionBanner}
@@ -2132,7 +2211,7 @@ function render(){
       });
     }
 
-    window.setGenreOverride = async (songId,newGenre) => {
+    const setGenreOverride = async (songId,newGenre) => {
       if(!isAdmin()) return alert('Admin only');
       if(!currentUser && firebaseAuth?.currentUser){
         currentUser = normalizeProfileShape({
@@ -2160,7 +2239,7 @@ function render(){
 
     function toggleAuditFilter(key){ auditFilters[key] = !auditFilters[key]; renderAuditView(); }
     function closeOverrideModal(){ const m=document.getElementById('overrideModal'); if(m) m.remove(); }
-    function openOverrideModal(type, trackId){
+    const openOverrideModal = (type, trackId)=>{
       if(!isAdmin()) return alert('Admin only');
       const track = songs.find(s=>s.id===trackId); if(!track) return;
       closeOverrideModal();
@@ -2180,6 +2259,17 @@ function render(){
         </div>
       </div>`;
       document.body.appendChild(modal);
+    };
+
+    function syncAdminGlobals(){
+      const adminActive = isAdmin();
+      const adminFunctions = { toggleAdminTools, openOverrideModal, clearOverrides, setCamelotOverride, setBpmOverride, setGenreOverride };
+      Object.entries(adminFunctions).forEach(([name, fn])=>{
+        if(adminActive){ window[name] = fn; }
+        else {
+          try { delete window[name]; } catch(_) { window[name] = undefined; }
+        }
+      });
     }
 
     // ------------------ Event listeners and interactions --------------
@@ -2438,6 +2528,14 @@ function render(){
 
     // ----------------------- Init / Auth check ------------------------
     loadOverridesFromStorage();
+    handleNetworkStatusChange();
+    window.addEventListener('online', ()=>{ handleNetworkStatusChange(); if(!songs.length) loadSongs(); });
+    window.addEventListener('offline', handleNetworkStatusChange);
+    if('serviceWorker' in navigator){
+      window.addEventListener('load', ()=>{
+        navigator.serviceWorker.register('/sw.js').catch(err=>console.warn('SW registration failed', err));
+      });
+    }
     async function checkAuth(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();
