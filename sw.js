@@ -1,12 +1,18 @@
-const APP_SHELL_CACHE = 'fortnite-jam-mixer-shell-v2';
-const RUNTIME_CACHE = 'fortnite-jam-mixer-runtime-v2';
+const APP_SHELL_CACHE = 'fortnite-jam-mixer-shell-v3';
+const RUNTIME_CACHE = 'fortnite-jam-mixer-runtime-v3';
 const APP_SHELL = ['/', '/index.html', '/offline.css', '/manifest.webmanifest'];
 const RUNTIME_PREFIXES = [
   'https://cdn.tailwindcss.com',
-  'https://www.gstatic.com/firebasejs/',
   'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
   'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks'
 ];
+const FIREBASE_BYPASS_PATTERNS = ['firebaseio.com', 'firebasedatabase.app', 'www.gstatic.com/firebasejs'];
+
+function shouldBypassCaching(request) {
+  const url = new URL(request.url);
+  if (url.pathname.startsWith('/api/')) return true;
+  return FIREBASE_BYPASS_PATTERNS.some((pattern) => request.url.includes(pattern));
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -31,6 +37,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+  if (shouldBypassCaching(request)) return;
   const isNavigation = request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html');
 
   if (isNavigation) {
