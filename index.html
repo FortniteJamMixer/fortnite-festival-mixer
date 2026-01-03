@@ -547,8 +547,29 @@ document.title = BRAND.BROWSER_TITLE;
     // -------------------- FIREBASE (auto-detect) ----------------------------
 // We auto-enable Firebase if /api/firebase-config injected window.firebaseConfig (Vercel env vars).
 // This prevents the "no signup option" problem when firebaseEnabled was left false.
-const firebaseConfig = (window.firebaseConfig && window.firebaseConfig.apiKey) ? window.firebaseConfig : null;
-const firebaseEnabled = !!firebaseConfig;
+const DEBUG_LOG_MAX = 50;
+function logEvent(type, payload = {}) {
+  const entry = {
+    type,
+    ts: Date.now(),
+    payload
+  };
+  if (typeof location !== 'undefined' && location.hostname === 'localhost') {
+    console.log('[telemetry]', entry);
+  }
+  try {
+    const existing = JSON.parse(localStorage.getItem('debugLogs') || '[]');
+    existing.push(entry);
+    while (existing.length > DEBUG_LOG_MAX) existing.shift();
+    localStorage.setItem('debugLogs', JSON.stringify(existing));
+  } catch (e) {
+    console.warn('Failed to persist debug log', e);
+  }
+}
+
+const firebaseConfig = window.firebaseConfig || {};
+const firebaseConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId);
+const firebaseEnabled = firebaseConfig.firebaseEnabled === true && firebaseConfigValid && !!window.firebase?.auth;
 const presenceEnabled = true;
 
 function applyBrandingCopy(){
@@ -568,6 +589,25 @@ function applyBrandingCopy(){
 
 applyBrandingCopy();
 
+window.addEventListener('error', (event) => {
+  logEvent('error', {
+    message: event?.message || 'Unknown error',
+    stack: event?.error?.stack || null,
+    view,
+    firebaseEnabled,
+    online: navigator.onLine
+  });
+});
+window.addEventListener('unhandledrejection', (event) => {
+  logEvent('unhandledrejection', {
+    message: event?.reason?.message || event?.reason || 'Unknown rejection',
+    stack: event?.reason?.stack || null,
+    view,
+    firebaseEnabled,
+    online: navigator.onLine
+  });
+});
+
 function buildExportFilename(username = 'profile'){
   const safeName = (username || 'profile').trim() || 'profile';
   return `${BRAND.EXPORT_PREFIX}-${safeName}.json`;
@@ -577,18 +617,27 @@ let firebaseApp = null, firebaseAuth = null, firestore = null;
 let firebaseAuthUnsub = null;
 let authSettledUser = null;
 let authProcessing = false;
-if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKey) {
+let authInFlight = false;
+if (firebaseEnabled) {
   try {
     firebaseApp = firebase.initializeApp(firebaseConfig);
     firebaseAuth = firebase.auth();
     firestore = firebase.firestore();
+    firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
+      console.warn('Firebase persistence failed', err);
+      logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
+    });
     console.log('Firebase initialized');
+    logEvent('firebase_init', { projectId: firebaseConfig.projectId });
   } catch (e) {
     console.warn('Firebase init failed', e);
+    logEvent('firebase_init_fail', { message: e?.message, code: e?.code });
     firebaseApp = null;
     firebaseAuth = null;
     firestore = null;
   }
+} else {
+  logEvent('firebase_disabled', { reason: 'missing config or sdk', firebaseConfigValid });
 }
 
 
@@ -698,6 +747,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
     // -------------------------- State -----------------------------
     let currentUser = null;
+    let songsLoaded = false;
     let userKey = null;
     let localDeviceId = localStorage.getItem('localDeviceId') || null;
     let songs = [];
@@ -1664,6 +1714,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
             <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
               <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
+              ${!firebaseEnabled ? `<div class="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/50 text-yellow-100 text-sm text-center">Firebase not configured — using local profiles.</div>` : ''}
 
               ${firebaseEnabled ? `
                 <div class="mb-5">
@@ -1708,6 +1759,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
                   <div class="text-center">
                     <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
                   </div>
+                  <div id="authError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
                 </form>
               ` : `
                 <form onsubmit="handleLogin(event)" class="space-y-4">
@@ -1980,6 +2032,7 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
         await persistCurrentUserProfile();
         await maybeLoadSharedProfile();
         loadSongs();
+        logEvent('auth_success', { uid: firebaseUser.uid });
       } finally {
         authProcessing = false;
       }
@@ -1990,24 +2043,49 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
         if (user) {
           await resolveAuthSuccess(user);
+        } else {
+          authSettledUser = null;
+          currentUser = null;
+          showLoginScreen();
         }
       });
     }
 
     async function handleFirebaseAuth(e){
       e.preventDefault();
-      if(!firebaseEnabled || !firebaseAuth) return alert('Firebase is not enabled/configured yet.');
+      const errorBox = document.getElementById('authError');
+      if(!firebaseEnabled || !firebaseAuth){
+        if(errorBox){ errorBox.textContent = 'Firebase not configured — using local profiles.'; errorBox.style.display = 'block'; }
+        logEvent('auth_fail', { reason: 'config_missing' });
+        return;
+      }
       const mode = document.getElementById('authMode')?.value || 'signin';
       const email = (document.getElementById('email')?.value || '').trim();
       const password = (document.getElementById('password')?.value || '').trim();
       const passwordConfirm = document.getElementById('passwordConfirm')?.value || '';
 
-      if(!email || !password) return alert('Enter email & password.');
-      if(password.length < 6 && mode === 'signup') return alert('Password must be at least 6 characters.');
+      if(authInFlight) return;
+      if(!email || !password){ if(errorBox){ errorBox.textContent = 'Enter email & password.'; errorBox.style.display = 'block'; } return; }
+      if(password.length < 6 && mode === 'signup'){ if(errorBox){ errorBox.textContent = 'Password must be at least 6 characters.'; errorBox.style.display = 'block'; } return; }
 
+      const submitBtn = document.getElementById('authSubmit');
+      const disableAuthUi = (disabled) => {
+        if(submitBtn){ submitBtn.disabled = disabled; submitBtn.classList.toggle('opacity-70', disabled); }
+      };
+      const mapErrorCode = (code, message)=>{
+        if(code === 'auth/invalid-credential' || code === 'auth/wrong-password') return 'Email/password incorrect';
+        if(code === 'auth/user-not-found') return 'No account found — click Register';
+        if(code === 'auth/network-request-failed') return 'Network blocked/unstable. Try again or disable VPN.';
+        if(code === 'auth/too-many-requests') return 'Too many attempts — wait a moment';
+        return message || 'Sign-in failed';
+      };
+      authInFlight = true;
+      disableAuthUi(true);
+      if(errorBox){ errorBox.textContent = ''; errorBox.style.display = 'none'; }
+      logEvent('auth_attempt', { mode, email });
       try{
         if(mode === 'signup'){
-          if(password !== passwordConfirm) return alert('Passwords do not match.');
+          if(password !== passwordConfirm){ if(errorBox){ errorBox.textContent = 'Passwords do not match.'; errorBox.style.display = 'block'; } return; }
           await firebaseAuth.createUserWithEmailAndPassword(email,password);
         } else {
           await firebaseAuth.signInWithEmailAndPassword(email,password);
@@ -2018,14 +2096,12 @@ if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKe
 
       } catch(err){
         console.error(err);
-        const code = err?.code || '';
-        if(code === 'auth/invalid-login-credentials' || code === 'auth/user-not-found' || code === 'auth/wrong-password'){
-          alert('Sign-in failed: Email/password not found.\n\nIf this is your first time using email login, click "Sign up" and create the account first.');
-        } else if(code === 'auth/email-already-in-use'){
-          alert('That email already has an account. Click "Already a member" and sign in.');
-        } else {
-          alert('Auth failed: ' + (err.message || err));
-        }
+        const message = mapErrorCode(err?.code || '', err?.message);
+        if(errorBox){ errorBox.textContent = message; errorBox.style.display = 'block'; }
+        logEvent('auth_fail', { code: err?.code, message: err?.message });
+      } finally {
+        authInFlight = false;
+        disableAuthUi(false);
       }
     }
     window.handleFirebaseAuth = handleFirebaseAuth;
@@ -2057,7 +2133,11 @@ window.handleLogin = async (event) => {
 
     // -------------------- Songs loading -----------------------
     async function loadSongs(){
+      if(songsLoaded){
+        return;
+      }
       console.log('Loading tracks...');
+      logEvent('songs_fetch_start', { online: navigator.onLine });
       const cachedTracks = await readCachedTracks();
       const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
       const canFetch = navigator.onLine;
@@ -2089,11 +2169,13 @@ window.handleLogin = async (event) => {
             if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
             if(songs.length>0){
               trackSource = 'network';
+              songsLoaded = true;
+              logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
               cacheTracks(songs);
               render(); setupEventListeners();
               return;
             }
-          }catch(e){ console.warn('endpoint err',e); }
+          }catch(e){ console.warn('endpoint err',e); logEvent('songs_fetch_fail', { message: e?.message, step: 'network' }); }
         }
       }
       if(cachedTracks.length){
@@ -2101,6 +2183,8 @@ window.handleLogin = async (event) => {
         songs = cachedTracks;
         songs.forEach(hydrateKeyInfo);
         trackSource = 'cache';
+        songsLoaded = true;
+        logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
         render(); setupEventListeners();
         return;
       }
@@ -2108,6 +2192,8 @@ window.handleLogin = async (event) => {
       songs = SAMPLE_TRACKS;
       songs.forEach(hydrateKeyInfo);
       trackSource = 'fallback';
+      songsLoaded = true;
+      logEvent('songs_fetch_fail', { message: 'network+cache miss; using fallback' });
       render(); setupEventListeners();
     }
 
@@ -2653,6 +2739,7 @@ function renderCommunityPill(id, label, icon, value, colorClasses=''){
 }
 
 function render(){
+  logEvent('ui_render', { view });
   if(view === 'audit' && !isAdmin()){
     alert('Admin only');
     view = 'browser';
@@ -2949,37 +3036,67 @@ function render(){
     }
 
     // ------------------ Event listeners and interactions --------------
-    function setupEventListeners(){
-      const searchInput = document.getElementById('searchInput');
-      const clearSearchBtn = document.getElementById('clearSearchBtn');
-      if(searchInput && clearSearchBtn){
-        searchInput.oninput = (e)=>{ 
+    let appDelegatesBound = false;
+    function bindAppDelegates(){
+      if(appDelegatesBound) return;
+      const app = document.getElementById('app');
+      if(!app) return;
+      app.addEventListener('click', (e)=>{
+        const addSet = e.target.closest('.addSetBtn');
+        if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); return; }
+        const viewBtn = e.target.closest('#browserBtn, #setlistBtn, #profileBtn, #auditBtn');
+        if(viewBtn){
+          const viewMap = { browserBtn:'browser', setlistBtn:'setlist', profileBtn:'profile', auditBtn:'audit' };
+          const targetView = viewMap[viewBtn.id];
+          if(targetView){ switchView(targetView); }
+        }
+        if(e.target.closest('#mixableFilterBtn')){ toggleMixableFilter(); }
+        if(e.target.closest('#ownedFilterBtn')){ toggleOwnedFilter(); }
+        if(e.target.closest('#clearSearchBtn') || e.target.closest('#panelClearSearchBtn')){ clearSearch(); }
+        if(e.target.closest('#markAllBtn') && !viewingProfile){ markAllOwned(); }
+        if(e.target.closest('#clearAllBtn') && !viewingProfile){ clearAllOwned(); }
+        const genreBtn = e.target.closest('[data-genre-tag]');
+        if(genreBtn && isAdmin()){
+          const newGenre = prompt('Set genre override', genreBtn.textContent.replace(' ✓','').trim());
+          if(newGenre){ setGenreOverride(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), newGenre); }
+        }
+      });
+      app.addEventListener('input', (e)=>{
+        if(e.target.id === 'searchInput'){
           searchTerm = e.target.value;
-          clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
+          const clearSearchBtn = document.getElementById('clearSearchBtn');
+          if(clearSearchBtn) clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
           const panelClear = document.getElementById('panelClearSearchBtn');
           if(panelClear){ panelClear.disabled = !searchTerm; panelClear.style.opacity = searchTerm ? '1' : '0.55'; panelClear.style.cursor = searchTerm ? 'pointer' : 'not-allowed'; }
           resetPagination();
           renderSongList();
-        };
-        clearSearchBtn.onclick = ()=>{ searchInput.value=''; searchTerm=''; clearSearchBtn.style.display='none'; const panelClear = document.getElementById('panelClearSearchBtn'); if(panelClear){ panelClear.disabled = true; panelClear.style.opacity='0.55'; panelClear.style.cursor='not-allowed'; } resetPagination(); renderSongList(); };
+        }
+        if(e.target.id === 'auditSearchInput'){ auditSearch = e.target.value; renderAuditView(); }
+        if(e.target.id === 'ownedSearchInput'){ profileOwnedSearch = e.target.value; renderProfile(); }
+        if(e.target.id === 'profileUsername' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = e.target.value; }
+        if(e.target.id === 'profileDjName' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = e.target.value; }
+        if(e.target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(e.target.value); }
+      });
+      app.addEventListener('change', (e)=>{
+        if(e.target.id === 'keyMatchModeSelect'){ setKeyMatchMode(e.target.value); }
+        if(e.target.id === 'includeOppositeModeToggle'){ toggleIncludeOppositeMode(e.target.checked); }
+      });
+      app.addEventListener('keydown', (e)=>{
+        if(e.target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
+      });
+      appDelegatesBound = true;
+    }
+
+    function setupEventListeners(){
+      bindAppDelegates();
+      const searchInput = document.getElementById('searchInput');
+      if(searchInput){
+        const clearSearchBtn = document.getElementById('clearSearchBtn');
+        if(clearSearchBtn){ clearSearchBtn.style.display = searchTerm ? 'block' : 'none'; }
       }
-      document.getElementById('browserBtn')?.addEventListener('click', ()=> switchView('browser'));
-      document.getElementById('setlistBtn')?.addEventListener('click', ()=> switchView('setlist'));
-      document.getElementById('profileBtn')?.addEventListener('click', ()=> switchView('profile'));
-      document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
-      document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
-      const keyModeSelect = document.getElementById('keyMatchModeSelect'); if(keyModeSelect){ keyModeSelect.value = keyMatchMode; keyModeSelect.onchange = (e)=> setKeyMatchMode(e.target.value); }
-      const semitoneRangeInput = document.getElementById('semitoneRangeInput'); if(semitoneRangeInput){ semitoneRangeInput.value = maxSemitoneRange; semitoneRangeInput.oninput = (e)=> setMaxSemitoneRange(e.target.value); }
-      const includeOppToggle = document.getElementById('includeOppositeModeToggle'); if(includeOppToggle){ includeOppToggle.onchange = (e)=> toggleIncludeOppositeMode(e.target.checked); }
-      const auditInput = document.getElementById('auditSearchInput'); if(auditInput){ auditInput.oninput = (e)=>{ auditSearch = e.target.value; renderAuditView(); }; }
-      const ownedSearchInput = document.getElementById('ownedSearchInput'); if(ownedSearchInput){ ownedSearchInput.oninput = (e)=>{ profileOwnedSearch = e.target.value; renderProfile(); setupEventListeners(); }; }
-      const friendSearchInput = document.getElementById('friendSearchInput'); if(friendSearchInput){ friendSearchInput.onkeydown = (e)=>{ if(e.key === 'Enter'){ viewFriendProfile(); } }; }
-      const profileUsernameInput = document.getElementById('profileUsername');
-      if(profileUsernameInput && !viewingProfile){ profileUsernameInput.oninput = (e)=>{ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = e.target.value; }; }
-      const profileDjInput = document.getElementById('profileDjName');
-      if(profileDjInput && !viewingProfile){ profileDjInput.oninput = (e)=>{ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = e.target.value; }; }
-      if(!viewingProfile){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
-      document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
+      const keyModeSelect = document.getElementById('keyMatchModeSelect'); if(keyModeSelect){ keyModeSelect.value = keyMatchMode; }
+      const semitoneRangeInput = document.getElementById('semitoneRangeInput'); if(semitoneRangeInput){ semitoneRangeInput.value = maxSemitoneRange; }
+      const includeOppToggle = document.getElementById('includeOppositeModeToggle'); if(includeOppToggle){ includeOppToggle.checked = includeOppositeMode; }
       if(isAdmin()){
         const adminBtn = document.getElementById('adminToolsBtn');
         if(adminBtn){
@@ -3141,6 +3258,7 @@ function render(){
         newView = 'browser';
       }
       adminMenuOpen = false;
+      logEvent('view_switch', { from: view, to: newView });
       view = newView;
       const browserView = document.getElementById('browserView');
       const setlistView = document.getElementById('setlistView');
