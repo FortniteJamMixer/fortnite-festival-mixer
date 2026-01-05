@@ -12,24 +12,32 @@ function parseServiceAccount(json) {
     if (parsed.private_key) parsed.private_key = normalizePrivateKey(parsed.private_key);
     return parsed;
   } catch (err) {
-    console.error("Failed to parse FIREBASE_ADMIN_CREDENTIALS", err);
-    throw new Error("Invalid FIREBASE_ADMIN_CREDENTIALS JSON");
+    console.error("Failed to parse Firebase Admin credentials", err);
+    throw new Error("Invalid Firebase Admin credentials JSON");
   }
 }
 
 function getAdminApp() {
   if (admin.apps.length) return admin.app();
 
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId =
+    process.env.FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT || process.env.GCLOUD_PROJECT;
   const serviceAccount =
-    parseServiceAccount(process.env.FIREBASE_ADMIN_CREDENTIALS) ||
-    (process.env.FIREBASE_ADMIN_PRIVATE_KEY && process.env.FIREBASE_ADMIN_CLIENT_EMAIL
+    parseServiceAccount(
+      process.env.FIREBASE_ADMIN_CREDENTIALS ||
+        process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+        process.env.FIREBASE_SERVICE_ACCOUNT
+    ) ||
+    (process.env.FIREBASE_ADMIN_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY) &&
+      (process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL)
       ? {
           project_id: projectId,
-          private_key: normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY),
-          client_email: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
+          private_key: normalizePrivateKey(
+            process.env.FIREBASE_ADMIN_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY
+          ),
+          client_email: process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL,
         }
-      : null);
+      : null;
 
   if (serviceAccount) {
     return admin.initializeApp({
@@ -61,6 +69,12 @@ export function getFirestore() {
   return admin.firestore(app);
 }
 
+export function getAdminAuth() {
+  const app = getAdminApp();
+  return admin.auth(app);
+}
+
 export const adminFieldValue = admin.firestore.FieldValue;
 export const adminTimestamp = admin.firestore.Timestamp;
 export { admin };
+export { getAdminApp };
