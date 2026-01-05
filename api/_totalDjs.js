@@ -1,4 +1,4 @@
-import { getFirestore, getAdminAuth, admin, adminFieldValue } from "./_firebaseAdmin";
+import { getFirestore, getAdminAuth, admin, adminFieldValue } from "./_firebaseAdmin.js";
 
 const STALE_AFTER_MS = 15 * 60 * 1000; // 15 minutes
 const REFRESH_TIMEOUT_MS = 4500; // timeout for in-request refresh

@@ -4,7 +4,7 @@ import {
   getFirestore,
   recountAndPersistTotals,
   toResponsePayload,
-} from "./_totalDjs";
+} from "./_totalDjs.js";
 
 const CACHE_HEADER = "no-store";
 

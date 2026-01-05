@@ -5,7 +5,7 @@ import {
   isStale,
   refreshWithTimeout,
   toResponsePayload,
-} from "./_totalDjs";
+} from "./_totalDjs.js";
 
 const CACHE_HEADER = "s-maxage=60, stale-while-revalidate=300";
 
