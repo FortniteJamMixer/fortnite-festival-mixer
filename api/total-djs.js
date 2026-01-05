@@ -1,31 +1,16 @@
-import { getAdminApp, admin } from "./_firebaseAdmin";
+import {
+  ensureCacheDoc,
+  getAdminAuth,
+  getFirestore,
+  isStale,
+  refreshWithTimeout,
+  toResponsePayload,
+} from "./_totalDjs";
 
-const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
-let cachedTotal = null;
-let cacheExpiresAt = 0;
-
-async function countAuthUsers() {
-  const now = Date.now();
-  if (cachedTotal !== null && now < cacheExpiresAt) return cachedTotal;
-
-  const app = getAdminApp();
-  const auth = admin.auth(app);
-  let total = 0;
-  let nextPageToken;
-
-  do {
-    const result = await auth.listUsers(1000, nextPageToken);
-    total += result.users.length;
-    nextPageToken = result.pageToken;
-  } while (nextPageToken);
-
-  cachedTotal = total;
-  cacheExpiresAt = now + CACHE_TTL_MS;
-  return total;
-}
+const CACHE_HEADER = "s-maxage=60, stale-while-revalidate=300";
 
 export default async function handler(req, res) {
-  res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=300");
+  res.setHeader("Cache-Control", CACHE_HEADER);
 
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -33,10 +18,25 @@ export default async function handler(req, res) {
   }
 
   try {
-    const totalDjs = await countAuthUsers();
-    res.status(200).json({ totalDjs });
+    const firestore = getFirestore();
+    const cache = await ensureCacheDoc(firestore);
+
+    const stale = isStale(cache);
+    let response = toResponsePayload(cache, stale);
+
+    if (stale) {
+      try {
+        const auth = getAdminAuth();
+        const { cache: refreshedCache, stale: stillStale } = await refreshWithTimeout(firestore, auth, cache);
+        response = toResponsePayload(refreshedCache, stillStale);
+      } catch (refreshErr) {
+        console.error("[total-djs] Unable to refresh", refreshErr);
+      }
+    }
+
+    return res.status(200).json(response);
   } catch (err) {
     console.error("Failed to load total DJs", err);
-    res.status(500).json({ error: "Failed to load total DJs" });
+    return res.status(500).json({ error: "Failed to load total DJs" });
   }
 }

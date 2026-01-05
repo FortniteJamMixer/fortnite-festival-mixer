@@ -24,6 +24,7 @@ Server-side metrics rely on the Firebase Admin SDK. Add one of the following cre
 - `FIREBASE_ADMIN_CREDENTIALS` — the full service-account JSON string.
 - or `FIREBASE_ADMIN_PRIVATE_KEY` **and** `FIREBASE_ADMIN_CLIENT_EMAIL` (plus `FIREBASE_PROJECT_ID`).
 - or `GOOGLE_APPLICATION_CREDENTIALS` pointing to a bundled credential file.
+- or `FIREBASE_SERVICE_ACCOUNT_JSON` if you prefer a single JSON env var.
 
 The API routes `/api/metrics/try` and `/api/metrics/ping` will initialize Admin from the values above to:
 
@@ -32,6 +33,13 @@ The API routes `/api/metrics/try` and `/api/metrics/ping` will initialize Admin 
 - Track peak concurrent users in `stats/daily_YYYY-MM-DD` (America/Chicago).
 
 Presence uses Firebase Realtime Database (`/presence/{uid}`) with anonymous auth so the client never writes to stats directly.
+
+### Total DJs counter (cached + reconciled)
+- Endpoints: `GET /api/total-djs` (fast cache + background refresh) and `POST /api/recount-total-djs` (auth-recount).
+- Firestore cache lives at `stats/public` with fields `totalDjs`, `updatedAt`, `source`, `lastError`, and `lastAttemptAt`.
+- `FIREBASE_SERVICE_ACCOUNT_JSON` (or the split Admin env vars above) must include a properly formatted private key; `\\n` sequences are normalized to real newlines automatically.
+- Set `CRON_SECRET` and configure a Vercel Cron header `x-cron-secret: @cron-secret` (see `vercel.json`) to trigger hourly recounts without exposing the endpoint publicly.
+- The API never hard-resets to `0`; if recounts fail it returns the last known good total with an `updatedAt` timestamp so the UI can show “As of …”.
 
 ## Epic OAuth setup
 

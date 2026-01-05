@@ -820,9 +820,13 @@ if (firebaseEnabled) {
     let isOffline = !navigator.onLine;
     let trackSource = 'network';
     const communityStats = { totalDjs: '…' };
+    const communityStatMeta = { totalDjs: { updatedAt: null, stale: false } };
     const communityStatGraceTimers = {};
     const COMMUNITY_STAT_GRACE_MS = 3000;
     const COMMUNITY_TOTAL_DJS_CACHE_KEY = 'ffmCommunityTotalDjs';
+    const COMMUNITY_TOTAL_DJS_REFRESH_MS = 5 * 60 * 1000;
+    const COMMUNITY_TOTAL_DJS_STALE_RETRY_MS = 15 * 1000;
+    let communityRefreshInterval = null;
     const TRACK_DB = { name: 'ffm-track-cache', store: 'tracks' };
     const SAMPLE_TRACKS = [
       { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
@@ -958,10 +962,22 @@ if (firebaseEnabled) {
     }
 
     function formatStatValue(value){
+      if(value === null || value === undefined) return '—';
       if(value === '—' || value === '…') return value;
       if(typeof value === 'string') return value;
       if(typeof value === 'number' && !Number.isNaN(value)) return value.toLocaleString();
       return '…';
+    }
+
+    function formatCommunityMeta(key){
+      if(key === 'totalDjs'){
+        const { updatedAt, stale } = communityStatMeta.totalDjs || {};
+        const date = updatedAt ? new Date(updatedAt) : null;
+        const timeLabel = date ? date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
+        const staleLabel = stale ? ' (refreshing...)' : '';
+        return `As of: ${timeLabel}${staleLabel}`;
+      }
+      return '';
     }
 
     function syncCommunityStatsUI(){
@@ -971,12 +987,14 @@ if (firebaseEnabled) {
       Object.entries(mapping).forEach(([key,val])=>{
         const el = document.querySelector(`[data-community-stat="${key}"]`);
         if(el) el.textContent = formatStatValue(val);
+        const metaEl = document.querySelector(`[data-community-stat-meta="${key}"]`);
+        if(metaEl) metaEl.textContent = formatCommunityMeta(key);
       });
     }
 
-    function setCommunityStat(key, value){
-      if(communityStats[key] === value) { syncCommunityStatsUI(); return; }
+    function setCommunityStat(key, value, meta={}){
       communityStats[key] = value;
+      communityStatMeta[key] = { ...(communityStatMeta[key]||{}), ...meta };
       if(value !== null && value !== '…'){
         clearTimeout(communityStatGraceTimers[key]);
       } else {
@@ -987,28 +1005,43 @@ if (firebaseEnabled) {
 
     async function loadTotalDjs(force=false){
       const cachedTotal = Number(localStorage.getItem(COMMUNITY_TOTAL_DJS_CACHE_KEY) || '');
-      if(Number.isFinite(cachedTotal)) setCommunityStat('totalDjs', cachedTotal);
+      if(Number.isFinite(cachedTotal) && communityStats.totalDjs === '…'){
+        setCommunityStat('totalDjs', cachedTotal, { updatedAt: communityStatMeta.totalDjs?.updatedAt, stale:false });
+      }
       if(!force && communityStats.totalDjs !== '…' && communityStats.totalDjs !== '—') return;
       try{
         const resp = await fetch('/api/total-djs');
         if(!resp.ok) throw new Error('Total DJs request failed');
         const data = await resp.json();
-        const total = Number(data.totalDjs);
-        if(Number.isFinite(total)){
+        const rawTotal = data.totalDjs;
+        const total = typeof rawTotal === 'number' ? rawTotal : Number.NaN;
+        const updatedAt = data.updatedAt ? new Date(data.updatedAt) : null;
+        const stale = Boolean(data.stale);
+        const validTotal = Number.isFinite(total);
+        if(validTotal){
           localStorage.setItem(COMMUNITY_TOTAL_DJS_CACHE_KEY, String(total));
-          setCommunityStat('totalDjs', total);
-          return;
         }
-        throw new Error('Invalid total DJs value');
+        const fallbackValue = validTotal ? total : (Number.isFinite(cachedTotal) ? cachedTotal : null);
+        setCommunityStat(
+          'totalDjs',
+          fallbackValue ?? '—',
+          { updatedAt: updatedAt ? updatedAt.toISOString() : (communityStatMeta.totalDjs?.updatedAt || null), stale }
+        );
+        if(stale){
+          setTimeout(()=>loadTotalDjs(true), COMMUNITY_TOTAL_DJS_STALE_RETRY_MS);
+        }
       } catch(err){
         console.error('Total DJs fetch failed', err);
-        setCommunityStat('totalDjs', Number.isFinite(cachedTotal) ? cachedTotal : '—');
+        const fallbackValue = Number.isFinite(cachedTotal) ? cachedTotal : '—';
+        setCommunityStat('totalDjs', fallbackValue, { stale:false });
       }
     }
 
     function initCommunityMetrics(){
       startCommunityStatGrace('totalDjs');
       loadTotalDjs();
+      clearInterval(communityRefreshInterval);
+      communityRefreshInterval = setInterval(()=>loadTotalDjs(true), COMMUNITY_TOTAL_DJS_REFRESH_MS);
     }
 
     // ---------------------- Offline helpers -----------------------
@@ -2543,9 +2576,9 @@ function renderCommunityStat(id, label, icon, value, caption=''){
       <div class="flex flex-col leading-tight">
         <span class="text-[10px] uppercase tracking-wide text-gray-300">${label}</span>
         <span class="text-sm font-bold text-white" data-community-stat="${id}">${formatStatValue(value)}</span>
+        <span class="text-[11px] text-cyan-100/80" data-community-stat-meta="${id}">${caption || formatCommunityMeta(id)}</span>
       </div>
     </div>
-    ${caption ? `<span class="text-[11px] text-cyan-100/80">${caption}</span>` : ''}
   </div>`;
 }
 
@@ -2567,7 +2600,7 @@ function render(){
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const communityStatsRow = `
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2 text-xs">
-      ${renderCommunityStat('totalDjs','TOTAL DJS','🎛️', communityStats.totalDjs, 'All time sign-ins')}
+      ${renderCommunityStat('totalDjs','TOTAL DJS','🎛️', communityStats.totalDjs)}
     </div>`;
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
   const selectedPanel = `
