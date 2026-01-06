@@ -571,6 +571,23 @@ const firebaseConfig = window.firebaseConfig || {};
 const firebaseConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId);
 const firebaseEnabled = firebaseConfig.firebaseEnabled === true && firebaseConfigValid && !!window.firebase?.auth;
 
+    const ADMIN_USERS = ['BattleNeBody'];
+    function applyAdminFlag(profile){
+      if(!profile) return profile;
+      return { ...profile, isAdmin: ADMIN_USERS.includes(profile.username) };
+    }
+    function adminStatusChanged(originalProfile, updatedProfile){
+      if(!updatedProfile) return false;
+      const previous = originalProfile?.isAdmin ?? false;
+      return previous !== (updatedProfile.isAdmin ?? false) || typeof originalProfile?.isAdmin === 'undefined';
+    }
+    async function persistAdminFlagIfNeeded(originalProfile, updatedProfile){
+      if(!updatedProfile) return;
+      if(adminStatusChanged(originalProfile, updatedProfile)){
+        await saveUserProfileToBackend(updatedProfile);
+      }
+    }
+
 function applyBrandingCopy(){
   const loading = document.querySelector('[data-brand="loading"]');
   if(loading) loading.textContent = `Loading ${BRAND.APP_NAME}...`;
@@ -649,7 +666,8 @@ if (firebaseEnabled) {
       const djName = profile.djName || username;
       const email = profile.email || profile.mail || '';
       const oauth = profile.oauth || {};
-      return { ...profile, username, djName, email, ownedTracks: ownedArray, oauth };
+      const isAdmin = profile.isAdmin === true;
+      return { ...profile, username, djName, email, ownedTracks: ownedArray, oauth, isAdmin };
     }
     function buildOwnedMap(ids){
       const map = {};
@@ -672,18 +690,20 @@ if (firebaseEnabled) {
         ownedMap: buildOwnedMap(ownedIds),
         updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
       };
+      let backendOk = true;
       if (firestore && firebaseUser && profileKey) {
         try {
           await firestore.collection('users').doc(profileKey).set(payload, { merge: true });
-          return true;
-        } catch (e) { console.warn('Firestore save failed', e); return false; }
-      } else {
-        const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-        if (payload.username) profiles[payload.username] = payload;
-        if (profileKey) profiles[profileKey] = payload;
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
-        return true;
+        } catch (e) {
+          console.warn('Firestore save failed', e);
+          backendOk = false;
+        }
       }
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      if (payload.username) profiles[payload.username] = payload;
+      if (profileKey) profiles[profileKey] = payload;
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      return backendOk;
     }
     async function loadUserProfileFromBackend(identifier) {
       if (!identifier && !firebaseAuth?.currentUser) return null;
@@ -899,10 +919,8 @@ if (firebaseEnabled) {
       if(viewingProfile) return;
       draftProfile = currentUser ? cloneProfile(currentUser) : null;
     }
-    const ADMIN_USERNAME = 'BattleNeBody';
     function isAdmin(){
-      const username = currentUser?.username || firebaseAuth?.currentUser?.displayName || '';
-      return username === ADMIN_USERNAME;
+      return currentUser?.isAdmin === true;
     }
 
     function handleAdminMenuOutsideClick(e){
@@ -1317,6 +1335,9 @@ if (firebaseEnabled) {
       console.debug('[profile] save clicked', { draftProfile, currentUser });
       if(viewingProfile) throw new Error('Cannot save while viewing another profile');
       if(!currentUser?.username) throw new Error('No current user to persist');
+      const adminApplied = applyAdminFlag(currentUser);
+      await persistAdminFlagIfNeeded(currentUser, adminApplied);
+      currentUser = adminApplied;
       isPersistingProfile = true;
       try{
         syncPreferencesIntoProfile();
@@ -1632,7 +1653,9 @@ if (firebaseEnabled) {
         return;
       }
       const username = getLocalDeviceId();
-      currentUser = { username, djName: username, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
+      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, isAdmin: false };
+      currentUser = applyAdminFlag(offlineProfile);
+      await persistAdminFlagIfNeeded(offlineProfile, currentUser);
       localStorage.setItem('currentUser', currentUser.username);
       refreshDraftProfileFromCurrentUser();
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('offline profile save failed', err); }
@@ -1818,7 +1841,7 @@ if (firebaseEnabled) {
         }
 
         const profile = existingProfile || {};
-        currentUser = {
+        const mergedProfile = {
           ...profile,
           uid: firebaseUser.uid,
           username: profile.username || defaultUsername,
@@ -1828,8 +1851,11 @@ if (firebaseEnabled) {
           setlist: importedProfile?.setlist || profile.setlist || profile.setlists || setlist || [],
           bandMembers: importedProfile?.bandMembers || profile.bandMembers || bandMembers || [],
           genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {},
-          oauth: profile.oauth || {}
+          oauth: profile.oauth || {},
+          isAdmin: profile.isAdmin === true
         };
+        currentUser = applyAdminFlag(mergedProfile);
+        await persistAdminFlagIfNeeded(profile, currentUser);
         applyPreferencesFromProfile(currentUser);
         loadNamespacedState();
         loadOverridesFromStorage();
@@ -1924,8 +1950,17 @@ window.handleLogin = async (event) => {
       const djName = (document.getElementById('djName').value || username).trim() || username;
       if(username.length<3){ alert('Username must be at least 3 characters'); return; }
       const profile = await loadUserProfile(username);
-      if(profile){ currentUser = profile; applyPreferencesFromProfile(currentUser); }
-      else { currentUser = { username, djName, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} }; }
+      if(profile){
+        const appliedProfile = applyAdminFlag(profile);
+        await persistAdminFlagIfNeeded(profile, appliedProfile);
+        currentUser = appliedProfile;
+        applyPreferencesFromProfile(currentUser);
+      }
+      else {
+        const baseProfile = { username, djName, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {}, isAdmin: false };
+        currentUser = applyAdminFlag(baseProfile);
+        await persistAdminFlagIfNeeded(baseProfile, currentUser);
+      }
       refreshDraftProfileFromCurrentUser();
       loadNamespacedState();
       loadOverridesFromStorage();
@@ -2463,7 +2498,8 @@ window.handleLogin = async (event) => {
 
     async function migrateUsername(oldUsername,newUsername,newDjName){
       const status = document.getElementById('profileStatus');
-      const merged = { ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlist, setlists:setlist, bandMembers, genreOverrides, preferences: currentUser.preferences || { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength } };
+      const merged = applyAdminFlag({ ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlist, setlists:setlist, bandMembers, genreOverrides, preferences: currentUser.preferences || { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength } });
+      await persistAdminFlagIfNeeded(currentUser, merged);
       if(firestore){
         try{
           const oldRef = firestore.collection('users').doc(oldUsername);
@@ -2525,7 +2561,9 @@ window.handleLogin = async (event) => {
           await migrateUsername(currentUser.username,newUsername,newDjName);
         } else {
           if(status) status.textContent = 'Saving profile...';
-          currentUser = { ...currentUser, ...draftProfile, username:newUsername, djName:newDjName };
+          const previousProfile = currentUser;
+          currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, username:newUsername, djName:newDjName });
+          await persistAdminFlagIfNeeded(previousProfile, currentUser);
           if(djChanged) updateBandReferencesLocal(currentUser.username,currentUser.username,newDjName);
           await persistCurrentUserProfile();
         }
@@ -2590,7 +2628,8 @@ function render(){
         <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
       </div>
     </div>`;
-  const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}`;
+  const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
+  const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}${adminLabel}`;
   const authButtonLabel = firebaseAuth?.currentUser ? 'Logout' : 'Sign In';
   const authButtonAction = firebaseAuth?.currentUser ? 'logoutUser()' : 'showLoginScreen()';
   document.getElementById('app').innerHTML = `
@@ -2752,7 +2791,7 @@ function render(){
 
     // ------------------ Genre context menu ------------------------
     function showGenreMenu(songId,event){
-      if(!isAdmin()) { alert('🔒 Admin only'); return; }
+      if(!currentUser?.isAdmin) { alert('🔒 Admin only.'); return; }
       const existing = document.getElementById('genreContextMenu'); if(existing) existing.remove();
       const menu=document.createElement('div'); menu.id='genreContextMenu'; menu.className='context-menu';
       const rect = event.target.getBoundingClientRect();
@@ -2783,12 +2822,16 @@ function render(){
     const setGenreOverride = async (songId,newGenre) => {
       if(!isAdmin()) return alert('Admin only');
       if(!currentUser && firebaseAuth?.currentUser){
-        currentUser = normalizeProfileShape({
+        const tempProfile = normalizeProfileShape({
           username: firebaseAuth.currentUser.email?.split('@')[0] || firebaseAuth.currentUser.uid || 'admin',
           djName: firebaseAuth.currentUser.displayName || firebaseAuth.currentUser.email || 'Admin',
           ownedTracks,
-          genreOverrides
+          genreOverrides,
+          isAdmin: false
         }, firebaseAuth.currentUser.uid || firebaseAuth.currentUser.email);
+        const appliedProfile = applyAdminFlag(tempProfile);
+        await persistAdminFlagIfNeeded(tempProfile, appliedProfile);
+        currentUser = appliedProfile;
         refreshDraftProfileFromCurrentUser();
       }
       if(!currentUser) return alert('Sign in required for admin edits');
@@ -3267,7 +3310,12 @@ function render(){
         const localId = localStorage.getItem('localDeviceUserId');
         if(savedUsername && savedUsername === localId){
           const profile = await loadUserProfile(savedUsername);
-          if(profile){ currentUser = profile; applyPreferencesFromProfile(currentUser); refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
+          if(profile){
+            const appliedProfile = applyAdminFlag(profile);
+            await persistAdminFlagIfNeeded(profile, appliedProfile);
+            currentUser = appliedProfile;
+            applyPreferencesFromProfile(currentUser);
+            refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
         }
         showLoginScreen();
         return;
@@ -3275,7 +3323,12 @@ function render(){
       const savedUsername = localStorage.getItem('currentUser');
       if(savedUsername){
         const profile = await loadUserProfile(savedUsername);
-        if(profile){ currentUser = profile; applyPreferencesFromProfile(currentUser); refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
+        if(profile){
+          const appliedProfile = applyAdminFlag(profile);
+          await persistAdminFlagIfNeeded(profile, appliedProfile);
+          currentUser = appliedProfile;
+          applyPreferencesFromProfile(currentUser);
+          refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
       }
       showLoginScreen();
     }
