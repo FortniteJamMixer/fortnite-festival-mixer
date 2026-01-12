@@ -1,0 +1,11 @@
+{
+  "crons": [
+    {
+      "path": "/api/recount-total-djs",
+      "schedule": "0 * * * *",
+      "headers": {
+        "x-cron-secret": "@cron-secret"
+      }
+    }
+  ]
+}
