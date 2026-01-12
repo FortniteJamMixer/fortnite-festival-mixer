@@ -19,6 +19,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="/constants/appMeta.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -222,12 +223,8 @@
 
           <div class="helpSection" id="whatsNew">
             <h3>What’s New</h3>
-            <ul>
-              <li data-help-feature="hasSetlist" data-help-feature-mode="item">✅ Setlist is now functional</li>
-              <li data-help-feature="hasLiveProfile" data-help-feature-mode="item">✅ Profile supports Stream URL + LIVE status pill</li>
-              <li data-help-feature="hasOfflineMode" data-help-feature-mode="item">✅ Offline browsing uses your last cached tracks</li>
-              <li data-help-feature="hasStatsTiles" data-help-feature-mode="item">✅ Stats tiles explain live/all-time activity</li>
-            </ul>
+            <ul id="whatsNewList"></ul>
+            <p class="small-muted" id="whatsNewEmpty" style="display:none">Nothing new right now — check back after the next update.</p>
           </div>
 
           <div class="helpSection" id="help-setlist" data-help-feature="hasSetlist">
@@ -324,6 +321,7 @@
       </div>
 
       <div class="helpFooter">
+        <span class="small-muted" id="helpVersion"></span>
         <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
       </div>
     </div>
@@ -460,6 +458,24 @@ if (firebaseEnabled) {
 function getAppVersion(){
   return window.appVersion || window.APP_VERSION || firebaseConfig?.appVersion || firebaseConfig?.version || null;
 }
+function warnIfWhatsNewStale(){
+  const host = typeof location !== 'undefined' ? location.hostname : '';
+  const isDevHost = host === 'localhost' || host === '127.0.0.1';
+  if(!isDevHost) return;
+  const appVersion = getAppVersion();
+  const items = Array.isArray(window.WHATS_NEW) ? window.WHATS_NEW : [];
+  if(!appVersion || items.length === 0) return;
+  const signature = items.map(item => item.id).join('|');
+  let previous = {};
+  try{
+    previous = JSON.parse(localStorage.getItem('whatsNewSignature') || '{}');
+  }catch(_){}
+  if(previous?.version && previous.version !== appVersion && previous.signature === signature){
+    console.warn(`[whats-new] APP_VERSION changed to ${appVersion} but WHATS_NEW looks unchanged.`);
+  }
+  localStorage.setItem('whatsNewSignature', JSON.stringify({ version: appVersion, signature }));
+}
+warnIfWhatsNewStale();
 function getFirebaseAnalytics(){
   if(!firebaseEnabled) return null;
   if(typeof firebase?.analytics !== 'function') return null;
@@ -3293,13 +3309,28 @@ function render(){
       if(appVersion) payload.appVersion = appVersion;
       return payload;
     }
-    function getHelpFlags(){
+    const MAX_WHATS_NEW_ITEMS = 8;
+    function resolveFeatureFlagValue(value, fallback){
+      return typeof value === 'boolean' ? value : fallback;
+    }
+    function resolveFeatureFlags(){
+      const baseFlags = window.FEATURE_FLAGS || {};
       return {
-        hasSetlist: !!document.getElementById('setlistBtn'),
-        hasLiveProfile: true,
-        hasOfflineMode: typeof readCachedTracks === 'function' && 'serviceWorker' in navigator,
-        hasOwnedToggle: !!document.getElementById('ownedFilterBtn'),
-        hasStatsTiles: !!document.querySelector('[data-community-stat]')
+        setlist: resolveFeatureFlagValue(baseFlags.setlist, !!document.getElementById('setlistBtn')),
+        liveProfile: resolveFeatureFlagValue(baseFlags.liveProfile, true),
+        offlineMode: resolveFeatureFlagValue(baseFlags.offlineMode, typeof readCachedTracks === 'function' && 'serviceWorker' in navigator),
+        ownedToggle: resolveFeatureFlagValue(baseFlags.ownedToggle, !!document.getElementById('ownedFilterBtn')),
+        statsTiles: resolveFeatureFlagValue(baseFlags.statsTiles, !!document.querySelector('[data-community-stat]'))
+      };
+    }
+    function getHelpFlags(){
+      const features = resolveFeatureFlags();
+      return {
+        hasSetlist: features.setlist,
+        hasLiveProfile: features.liveProfile,
+        hasOfflineMode: features.offlineMode,
+        hasOwnedToggle: features.ownedToggle,
+        hasStatsTiles: features.statsTiles
       };
     }
 
@@ -3316,6 +3347,31 @@ function render(){
         if(content) content.style.display = enabled ? '' : 'none';
         if(coming) coming.style.display = enabled ? 'none' : 'block';
       });
+    }
+
+    function renderWhatsNew(features){
+      const list = document.getElementById('whatsNewList');
+      if(!list) return;
+      const items = Array.isArray(window.WHATS_NEW) ? window.WHATS_NEW : [];
+      const activeFeatures = features || resolveFeatureFlags();
+      const filtered = items.filter((item) => {
+        const requires = Array.isArray(item?.requires) ? item.requires : [];
+        if(requires.length === 0) return true;
+        return requires.every(flag => activeFeatures[flag]);
+      }).slice(0, MAX_WHATS_NEW_ITEMS);
+      list.innerHTML = filtered.map((item) => {
+        const dateLabel = item?.date ? ` <span class="small-muted">(${item.date})</span>` : '';
+        return `<li>✅ ${item.text}${dateLabel}</li>`;
+      }).join('');
+      const empty = document.getElementById('whatsNewEmpty');
+      if(empty) empty.style.display = filtered.length ? 'none' : 'block';
+    }
+
+    function syncHelpVersion(){
+      const helpVersion = document.getElementById('helpVersion');
+      if(!helpVersion) return;
+      const appVersion = getAppVersion();
+      helpVersion.textContent = appVersion ? `Help updated for v${appVersion}` : '';
     }
 
     function syncHelpTabsA11y(){
@@ -3387,6 +3443,9 @@ function render(){
       helpOpenedAt = Date.now();
       helpTabTracked = false;
       track('help_opened', buildHelpOpenedPayload(source, target));
+      const features = resolveFeatureFlags();
+      renderWhatsNew(features);
+      syncHelpVersion();
       applyHelpFlags(getHelpFlags());
       helpTab = 'basic';
       helpScroll = { basic: 0, advanced: 0 };
