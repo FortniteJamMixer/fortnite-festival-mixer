@@ -5,10 +5,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+    }
+
     // Community stats are readable by anyone.
     match /stats/{document=**} {
       allow read: if true;
       allow write: if false;
+    }
+
+    match /appConfig/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Per-visitor docs are server-only.

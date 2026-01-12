@@ -20,6 +20,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <script src="/constants/appMeta.js"></script>
+  <script src="/services/configService.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -177,6 +178,23 @@
     .helpIconBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
     .helpIconBtn:focus-visible { outline: 2px solid rgba(0,217,255,0.8); outline-offset: 2px; }
 
+    /* Admin editor modal */
+    .admin-editor-modal { position: fixed; inset: 0; z-index: 7000; display: flex; align-items: center; justify-content: center; background: rgba(3,7,18,0.75); backdrop-filter: blur(8px); }
+    .admin-editor-card { width: min(1100px, 95vw); max-height: 90vh; overflow: hidden; background: rgba(3,7,18,0.95); border: 1px solid rgba(0,217,255,0.2); border-radius: 18px; display: flex; flex-direction: column; }
+    .admin-editor-header { padding: 16px 20px; border-bottom: 1px solid rgba(0,217,255,0.15); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .admin-editor-body { padding: 18px 20px; overflow: auto; display: grid; gap: 16px; }
+    .admin-editor-columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .admin-editor-section { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.04); }
+    .admin-editor-row { display: grid; gap: 8px; align-items: center; grid-template-columns: 1fr auto; }
+    .admin-editor-row + .admin-editor-row { margin-top: 8px; }
+    .admin-editor-input, .admin-editor-textarea { width: 100%; background: rgba(15,23,42,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 8px 10px; color: #fff; font-size: 13px; }
+    .admin-editor-textarea { min-height: 70px; resize: vertical; }
+    .admin-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .admin-editor-btn { padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #fff; font-size: 12px; font-weight: 600; }
+    .admin-editor-btn:hover { background: rgba(255,255,255,0.18); }
+    .admin-editor-preview { border: 1px solid rgba(0,217,255,0.18); border-radius: 12px; padding: 12px; background: rgba(0,0,0,0.4); max-height: 520px; overflow: auto; }
+    .admin-editor-inline-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
     /* Tour overlay */
     #tourOverlay {
       display: none;
@@ -281,13 +299,7 @@
 
           <div class="helpSection" id="quickstart">
             <h3>Quick Start (30 seconds)</h3>
-            <ol style="line-height:1.6">
-              <li><strong>Step 1:</strong> Browse tracks.</li>
-              <li><strong>Step 2:</strong> Click a track and hit <strong>+ Set</strong> to add it to <strong>Setlist</strong>.</li>
-              <li><strong>Step 3:</strong> Click <strong>Setlist</strong> to view/remove tracks.</li>
-              <li><strong>Step 4:</strong> Open <strong>Profile</strong> → paste your <strong>Stream URL</strong> → toggle <strong>Go Live</strong>.</li>
-              <li><strong>Step 5:</strong> Click the bright green <strong>LIVE</strong> pill to open your stream.</li>
-            </ol>
+            <ol id="helpQuickStartList" style="line-height:1.6"></ol>
           </div>
 
           <div class="helpSection" id="whatsNew">
@@ -296,96 +308,16 @@
             <p class="small-muted" id="whatsNewEmpty" style="display:none">Nothing new right now — check back after the next update.</p>
           </div>
 
-          <div class="helpSection" id="help-setlist" data-help-feature="hasSetlist">
-            <h3>Setlist</h3>
-            <div data-help-content>
-              <ol>
-                <li>Click <strong>+ Set</strong> on a track to add it.</li>
-                <li>Open the <strong>Setlist</strong> tab to see everything you picked.</li>
-                <li>Remove a song with the <strong>✕</strong> button in Setlist.</li>
-                <li>The count in <strong>Setlist (X)</strong> shows how many tracks are in your list.</li>
-              </ol>
-            </div>
-            <p class="helpComing" data-help-coming>Coming soon.</p>
-          </div>
-
-          <div class="helpSection" id="help-live" data-help-feature="hasLiveProfile">
-            <h3>Profile: Live Streaming</h3>
-            <div data-help-content>
-              <ol>
-                <li>Open <strong>Profile</strong> and paste your <strong>Stream URL</strong>.</li>
-                <li><strong>Go Live</strong> stays disabled until the URL is valid.</li>
-                <li>When live, the bright green <strong>LIVE</strong> pill opens your stream.</li>
-                <li>Tap <strong>End Live</strong> when you’re done.</li>
-              </ol>
-            </div>
-            <p class="helpComing" data-help-coming>Coming soon.</p>
-          </div>
-
-          <div class="helpSection" id="offlineHelp" data-help-feature="hasOfflineMode">
-            <h3>Online vs Offline</h3>
-            <div data-help-content>
-              <ol>
-                <li><strong>Online</strong> means you’re connected and can sync normally.</li>
-                <li><strong>Offline</strong> means no connection; the app uses your last cached tracks.</li>
-                <li>Some profile sync features may wait until you’re back online.</li>
-              </ol>
-            </div>
-            <p class="helpComing" data-help-coming>Coming soon.</p>
-          </div>
-
-          <div class="helpSection" id="ownedHelp" data-help-feature="hasOwnedToggle">
-            <h3>Owned / Inventory</h3>
-            <div data-help-content>
-              <ol>
-                <li><strong>Owned X/Y</strong> shows how many tracks you marked as owned.</li>
-                <li>Use <strong>Show All</strong> or <strong>✓ Owned Only</strong> to switch views.</li>
-                <li>Tap <strong>Mark Owned</strong> on a card to add it to your inventory.</li>
-              </ol>
-            </div>
-            <p class="helpComing" data-help-coming>Coming soon.</p>
-          </div>
+          <div id="helpBasicSections"></div>
 
           <div class="helpSection" id="helpFaq">
             <h3>Troubleshooting FAQ</h3>
-            <details class="helpFaq" data-help-feature="hasLiveProfile" data-help-feature-mode="item" data-question-id="go_live_disabled">
-              <summary>Why is Go Live disabled?</summary>
-              <p>Add a valid Stream URL first.</p>
-            </details>
-            <details class="helpFaq" data-help-feature="hasSetlist" data-help-feature-mode="item" data-question-id="cant_see_setlist">
-              <summary>Why can’t I see my Setlist?</summary>
-              <p>Click the Setlist tab and check the count.</p>
-            </details>
-            <details class="helpFaq" data-help-feature="hasOfflineMode" data-help-feature-mode="item" data-question-id="offline_mode">
-              <summary>Why am I in Offline mode?</summary>
-              <p>No connection; the app uses cached tracks.</p>
-            </details>
-            <details class="helpFaq" data-help-feature="hasOwnedToggle" data-help-feature-mode="item" data-question-id="owned_count_wrong">
-              <summary>My Owned count looks wrong</summary>
-              <p>Re-check owned selections or refresh the page.</p>
-            </details>
+            <div id="helpFaqList"></div>
           </div>
         </div>
 
         <div id="helpAdvanced" data-help-pane="advanced" style="display:none">
-          <div class="helpSection" id="sortingHelp">
-            <h3>Sorting / Matching</h3>
-            <ul>
-              <li><strong>Top Matches</strong> are sorted by overall compatibility first.</li>
-              <li><strong>Tempo / Camelot / Genre</strong> decide how ties get nudged.</li>
-              <li><strong>Priority Strength</strong> changes how hard the tie-break nudge is.</li>
-              <li><strong>Mixable Only</strong> keeps just the safest key + tempo combos.</li>
-            </ul>
-          </div>
-
-          <div class="helpSection" id="compatHints">
-            <h3>Compatibility Hints</h3>
-            <ul>
-              <li>Look for the 🎧 icon to spot tracks that are mixable with your selected song.</li>
-              <li>The ±BPM chip shows how far the tempo gap is.</li>
-              <li>Camelot and key pills help you see harmonic neighbors fast.</li>
-            </ul>
-          </div>
+          <div id="helpAdvancedSections"></div>
         </div>
       </div>
 
@@ -556,7 +488,7 @@ function warnIfWhatsNewStale(){
   const isDevHost = host === 'localhost' || host === '127.0.0.1';
   if(!isDevHost) return;
   const appVersion = getAppVersion();
-  const items = Array.isArray(window.WHATS_NEW) ? window.WHATS_NEW : [];
+  const items = Array.isArray(window.DEFAULT_WHATS_NEW?.items) ? window.DEFAULT_WHATS_NEW.items : [];
   if(!appVersion || items.length === 0) return;
   const signature = items.map(item => item.id).join('|');
   let previous = {};
@@ -569,6 +501,9 @@ function warnIfWhatsNewStale(){
   localStorage.setItem('whatsNewSignature', JSON.stringify({ version: appVersion, signature }));
 }
 warnIfWhatsNewStale();
+let helpContentState = window.DEFAULT_HELP_CONTENT || null;
+let whatsNewState = window.DEFAULT_WHATS_NEW || null;
+let configLoadPromise = null;
 function getFirebaseAnalytics(){
   if(!firebaseEnabled) return null;
   if(typeof firebase?.analytics !== 'function') return null;
@@ -2126,6 +2061,7 @@ function track(eventName, payload = {}){
         await persistCurrentUserProfile();
         await maybeLoadSharedProfile();
         loadSongs();
+        await loadRemoteConfig();
         logEvent('auth_success', { uid: firebaseUser.uid });
       } finally {
         authProcessing = false;
@@ -3057,6 +2993,8 @@ function render(){
             <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
             ${viewingProfile?`<button onclick="exitProfileViewMode()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
             ${(!viewingProfile && isAdmin())?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
+                  <button id="adminMenuHelpEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Help Editor</button>
+                  <button id="adminMenuWhatsNewEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
                   <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
                 </div>`:''}</div>`:''}
             <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
@@ -3286,7 +3224,7 @@ function render(){
 
     function syncAdminGlobals(){
       const adminActive = isAdmin();
-      const adminFunctions = { toggleAdminTools, openOverrideModal, clearOverrides, setCamelotOverride, setBpmOverride, setGenreOverride };
+      const adminFunctions = { toggleAdminTools, openOverrideModal, clearOverrides, setCamelotOverride, setBpmOverride, setGenreOverride, openAdminHelpEditor, openAdminWhatsNewEditor };
       Object.entries(adminFunctions).forEach(([name, fn])=>{
         if(adminActive){ window[name] = fn; }
         else {
@@ -3365,6 +3303,10 @@ function render(){
         const adminMenu = document.getElementById('adminToolsMenu');
         if(adminMenu){
           adminMenu.style.pointerEvents = 'auto';
+          const helpBtn = document.getElementById('adminMenuHelpEditor');
+          if(helpBtn) helpBtn.onclick = (e)=>{ e.stopPropagation(); openAdminHelpEditor(); toggleAdminTools(false); };
+          const whatsNewBtn = document.getElementById('adminMenuWhatsNewEditor');
+          if(whatsNewBtn) whatsNewBtn.onclick = (e)=>{ e.stopPropagation(); openAdminWhatsNewEditor(); toggleAdminTools(false); };
           const auditBtn = document.getElementById('adminMenuAudit');
           if(auditBtn) auditBtn.onclick = (e)=>{ e.stopPropagation(); openAuditFromMenu(); };
         }
@@ -3642,7 +3584,257 @@ function render(){
     // Profiles persist automatically via Firebase or localStorage.
     // Do not reintroduce manual JSON import/export without a migration plan.
 
+    // -------------------- Help/What's New config ---------------------
+    const HELP_SECTION_FEATURES = {
+      setlist: 'hasSetlist',
+      live: 'hasLiveProfile',
+      offline: 'hasOfflineMode',
+      owned: 'hasOwnedToggle'
+    };
+    const HELP_SECTION_IDS = {
+      setlist: 'help-setlist',
+      live: 'help-live',
+      offline: 'offlineHelp',
+      owned: 'ownedHelp'
+    };
+    const HELP_FAQ_FEATURES = {
+      go_live_disabled: 'hasLiveProfile',
+      cant_see_setlist: 'hasSetlist',
+      offline_mode: 'hasOfflineMode',
+      owned_count_wrong: 'hasOwnedToggle'
+    };
+
+    function getWhatsNewItems(){
+      if(Array.isArray(whatsNewState?.items)) return whatsNewState.items;
+      if(Array.isArray(whatsNewState)) return whatsNewState;
+      if(Array.isArray(window.DEFAULT_WHATS_NEW?.items)) return window.DEFAULT_WHATS_NEW.items;
+      return [];
+    }
+
+    function buildListElement(items, listTag = 'ol'){
+      const list = document.createElement(listTag);
+      items.forEach((line) => {
+        const li = document.createElement('li');
+        li.textContent = line;
+        list.appendChild(li);
+      });
+      return list;
+    }
+
+    function buildHelpSectionElement(section, { listTag = 'ol', includeFeatures = true, includeIds = true } = {}){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'helpSection';
+      if(includeIds && section?.id){
+        const sectionId = HELP_SECTION_IDS[section.id] || `help-${section.id}`;
+        wrapper.id = sectionId;
+      }
+      const featureKey = HELP_SECTION_FEATURES[section?.id];
+      if(includeFeatures && featureKey){
+        wrapper.dataset.helpFeature = featureKey;
+      }
+      const title = document.createElement('h3');
+      title.textContent = section?.title || '';
+      wrapper.appendChild(title);
+
+      const content = document.createElement('div');
+      if(includeFeatures && featureKey){
+        content.dataset.helpContent = '';
+      }
+      const body = Array.isArray(section?.body) ? section.body : [];
+      content.appendChild(buildListElement(body, listTag));
+      wrapper.appendChild(content);
+
+      if(includeFeatures && featureKey){
+        const coming = document.createElement('p');
+        coming.className = 'helpComing';
+        coming.dataset.helpComing = '';
+        coming.textContent = 'Coming soon.';
+        wrapper.appendChild(coming);
+      }
+      return wrapper;
+    }
+
+    function renderHelpContentInto({ helpData, quickStartEl, basicSectionsEl, faqListEl, advancedSectionsEl, includeFeatures = true, includeIds = true } = {}){
+      if(!helpData) return;
+      const quickStart = Array.isArray(helpData?.basic?.quickStart) ? helpData.basic.quickStart : [];
+      if(quickStartEl){
+        quickStartEl.innerHTML = '';
+        const isListEl = ['OL','UL'].includes(quickStartEl.tagName);
+        if(isListEl){
+          quickStart.forEach((line) => {
+            const li = document.createElement('li');
+            li.textContent = line;
+            quickStartEl.appendChild(li);
+          });
+        } else {
+          quickStartEl.appendChild(buildListElement(quickStart, 'ol'));
+        }
+      }
+      if(basicSectionsEl){
+        basicSectionsEl.innerHTML = '';
+        const sections = Array.isArray(helpData?.basic?.sections) ? helpData.basic.sections : [];
+        sections.forEach(section => {
+          basicSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ol', includeFeatures, includeIds }));
+        });
+      }
+      if(faqListEl){
+        faqListEl.innerHTML = '';
+        const faqs = Array.isArray(helpData?.basic?.faq) ? helpData.basic.faq : [];
+        faqs.forEach((faq) => {
+          const detail = document.createElement('details');
+          detail.className = 'helpFaq';
+          detail.dataset.questionId = faq.id || '';
+          const featureKey = HELP_FAQ_FEATURES[faq.id];
+          if(includeFeatures && featureKey){
+            detail.dataset.helpFeature = featureKey;
+            detail.dataset.helpFeatureMode = 'item';
+          }
+          const summary = document.createElement('summary');
+          summary.textContent = faq.q || '';
+          detail.appendChild(summary);
+          const answers = Array.isArray(faq.a) ? faq.a : [];
+          answers.forEach((line) => {
+            const p = document.createElement('p');
+            p.textContent = line;
+            detail.appendChild(p);
+          });
+          faqListEl.appendChild(detail);
+        });
+      }
+      if(advancedSectionsEl){
+        advancedSectionsEl.innerHTML = '';
+        const sections = Array.isArray(helpData?.advanced?.sections) ? helpData.advanced.sections : [];
+        sections.forEach(section => {
+          advancedSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ul', includeFeatures: false, includeIds }));
+        });
+      }
+    }
+
+    function renderHelpContent(){
+      const helpData = helpContentState || window.DEFAULT_HELP_CONTENT;
+      renderHelpContentInto({
+        helpData,
+        quickStartEl: document.getElementById('helpQuickStartList'),
+        basicSectionsEl: document.getElementById('helpBasicSections'),
+        faqListEl: document.getElementById('helpFaqList'),
+        advancedSectionsEl: document.getElementById('helpAdvancedSections'),
+        includeFeatures: true
+      });
+      bindHelpFaqTracking();
+      applyHelpFlags(getHelpFlags());
+    }
+
+    function renderHelpPreview(targetEl, helpData){
+      if(!targetEl) return;
+      targetEl.innerHTML = '';
+      const basicWrapper = document.createElement('div');
+      const basicTitle = document.createElement('h4');
+      basicTitle.textContent = 'Basic';
+      basicWrapper.appendChild(basicTitle);
+      const quickTitle = document.createElement('div');
+      quickTitle.className = 'text-xs text-cyan-200 font-semibold';
+      quickTitle.textContent = 'Quick Start';
+      basicWrapper.appendChild(quickTitle);
+      const quickList = document.createElement('div');
+      basicWrapper.appendChild(quickList);
+      const sectionsContainer = document.createElement('div');
+      const faqContainer = document.createElement('div');
+      renderHelpContentInto({
+        helpData,
+        quickStartEl: quickList,
+        basicSectionsEl: sectionsContainer,
+        faqListEl: faqContainer,
+        advancedSectionsEl: null,
+        includeFeatures: false,
+        includeIds: false
+      });
+      basicWrapper.appendChild(sectionsContainer);
+      if(faqContainer.children.length){
+        const faqTitle = document.createElement('div');
+        faqTitle.className = 'text-xs text-cyan-200 font-semibold mt-2';
+        faqTitle.textContent = 'FAQ';
+        basicWrapper.appendChild(faqTitle);
+        basicWrapper.appendChild(faqContainer);
+      }
+      targetEl.appendChild(basicWrapper);
+
+      const advancedWrapper = document.createElement('div');
+      advancedWrapper.className = 'mt-3';
+      const advancedTitle = document.createElement('h4');
+      advancedTitle.textContent = 'Advanced';
+      advancedWrapper.appendChild(advancedTitle);
+      const advancedContainer = document.createElement('div');
+      renderHelpContentInto({
+        helpData,
+        quickStartEl: null,
+        basicSectionsEl: null,
+        faqListEl: null,
+        advancedSectionsEl: advancedContainer,
+        includeFeatures: false,
+        includeIds: false
+      });
+      advancedWrapper.appendChild(advancedContainer);
+      targetEl.appendChild(advancedWrapper);
+    }
+
+    function cloneConfig(data){
+      return data ? JSON.parse(JSON.stringify(data)) : null;
+    }
+
+    function splitLines(value){
+      return (value || '')
+        .split('\\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    }
+
+    function escapeHtml(value){
+      return String(value ?? '')
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/\"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+
+    function parseCommaList(value){
+      return (value || '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(Boolean);
+    }
+
+    function moveItem(list, fromIndex, toIndex){
+      if(!Array.isArray(list)) return;
+      if(fromIndex < 0 || fromIndex >= list.length) return;
+      if(toIndex < 0 || toIndex >= list.length) return;
+      const [item] = list.splice(fromIndex, 1);
+      list.splice(toIndex, 0, item);
+    }
+
+    async function loadRemoteConfig(){
+      if(configLoadPromise) return configLoadPromise;
+      if(!window.configService){
+        renderHelpContent();
+        return null;
+      }
+      configLoadPromise = Promise.all([
+        window.configService.getHelpContent({ firestore, defaults: window.DEFAULT_HELP_CONTENT }),
+        window.configService.getWhatsNew({ firestore, defaults: window.DEFAULT_WHATS_NEW })
+      ]).then(([helpData, whatsNewData]) => {
+        if(helpData) helpContentState = helpData;
+        if(whatsNewData) whatsNewState = whatsNewData;
+        renderHelpContent();
+      }).catch((err) => {
+        console.warn('[config] load failed', err);
+        renderHelpContent();
+      });
+      return configLoadPromise;
+    }
+
     // --------------------- Help modal functions -----------------------
+    let helpEditorState = null;
+    let whatsNewEditorState = null;
     function normalizeHelpTarget(value){
       return value === 'setlist' || value === 'live' ? value : 'none';
     }
@@ -3698,7 +3890,7 @@ function render(){
     function renderWhatsNew(features){
       const list = document.getElementById('whatsNewList');
       if(!list) return;
-      const items = Array.isArray(window.WHATS_NEW) ? window.WHATS_NEW : [];
+      const items = getWhatsNewItems();
       const activeFeatures = features || resolveFeatureFlags();
       const filtered = items.filter((item) => {
         const requires = Array.isArray(item?.requires) ? item.requires : [];
@@ -3828,6 +4020,382 @@ function render(){
       modal.setAttribute('aria-hidden','true');
     }
 
+    function closeAdminEditorModal(id){
+      const modal = document.getElementById(id);
+      if(modal) modal.remove();
+    }
+
+    function getEditorUpdatedBy(){
+      return firebaseAuth?.currentUser?.email || currentUser?.username || firebaseAuth?.currentUser?.uid || 'admin';
+    }
+
+    function renderAdminHelpEditor(){
+      const modal = document.getElementById('adminHelpEditorModal');
+      if(!modal || !helpEditorState) return;
+      const form = modal.querySelector('[data-editor-form]');
+      const preview = modal.querySelector('[data-editor-preview]');
+      if(!form) return;
+      const basic = helpEditorState.basic || { quickStart: [], sections: [], faq: [] };
+      const advanced = helpEditorState.advanced || { sections: [] };
+      const quickStartRows = (basic.quickStart || []).map((line, index) => `
+        <div class="admin-editor-row">
+          <input class="admin-editor-input" data-field="quickStart" data-index="${index}" value="${escapeHtml(line)}" />
+          <div class="admin-editor-inline-actions">
+            <button class="admin-editor-btn" data-action="move-up" data-target="quickStart" data-index="${index}">↑</button>
+            <button class="admin-editor-btn" data-action="move-down" data-target="quickStart" data-index="${index}">↓</button>
+            <button class="admin-editor-btn" data-action="remove-item" data-target="quickStart" data-index="${index}">Remove</button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-xs text-gray-400">No quick start steps yet.</div>';
+
+      const basicSectionRows = (basic.sections || []).map((section, index) => `
+        <div class="mt-2 p-2 border border-white/10 rounded-lg space-y-2">
+          <div class="text-xs text-cyan-200 font-semibold">Section ${index + 1}</div>
+          <input class="admin-editor-input" data-field="basic-section-id" data-index="${index}" value="${escapeHtml(section.id || '')}" placeholder="id (setlist, live, offline...)" />
+          <input class="admin-editor-input" data-field="basic-section-title" data-index="${index}" value="${escapeHtml(section.title || '')}" placeholder="Title" />
+          <textarea class="admin-editor-textarea" data-field="basic-section-body" data-index="${index}" placeholder="One line per bullet">${escapeHtml((section.body || []).join('\\n'))}</textarea>
+          <div class="admin-editor-inline-actions">
+            <button class="admin-editor-btn" data-action="move-up" data-target="basicSections" data-index="${index}">↑</button>
+            <button class="admin-editor-btn" data-action="move-down" data-target="basicSections" data-index="${index}">↓</button>
+            <button class="admin-editor-btn" data-action="remove-item" data-target="basicSections" data-index="${index}">Remove</button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-xs text-gray-400">No basic sections yet.</div>';
+
+      const faqRows = (basic.faq || []).map((faq, index) => `
+        <div class="mt-2 p-2 border border-white/10 rounded-lg space-y-2">
+          <div class="text-xs text-cyan-200 font-semibold">FAQ ${index + 1}</div>
+          <input class="admin-editor-input" data-field="faq-id" data-index="${index}" value="${escapeHtml(faq.id || '')}" placeholder="id (go_live_disabled...)" />
+          <input class="admin-editor-input" data-field="faq-q" data-index="${index}" value="${escapeHtml(faq.q || '')}" placeholder="Question" />
+          <textarea class="admin-editor-textarea" data-field="faq-a" data-index="${index}" placeholder="Answer lines">${escapeHtml((faq.a || []).join('\\n'))}</textarea>
+          <div class="admin-editor-inline-actions">
+            <button class="admin-editor-btn" data-action="move-up" data-target="faq" data-index="${index}">↑</button>
+            <button class="admin-editor-btn" data-action="move-down" data-target="faq" data-index="${index}">↓</button>
+            <button class="admin-editor-btn" data-action="remove-item" data-target="faq" data-index="${index}">Remove</button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-xs text-gray-400">No FAQ entries yet.</div>';
+
+      const advancedSectionRows = (advanced.sections || []).map((section, index) => `
+        <div class="mt-2 p-2 border border-white/10 rounded-lg space-y-2">
+          <div class="text-xs text-cyan-200 font-semibold">Advanced ${index + 1}</div>
+          <input class="admin-editor-input" data-field="advanced-section-id" data-index="${index}" value="${escapeHtml(section.id || '')}" placeholder="id (sorting...)" />
+          <input class="admin-editor-input" data-field="advanced-section-title" data-index="${index}" value="${escapeHtml(section.title || '')}" placeholder="Title" />
+          <textarea class="admin-editor-textarea" data-field="advanced-section-body" data-index="${index}" placeholder="One line per bullet">${escapeHtml((section.body || []).join('\\n'))}</textarea>
+          <div class="admin-editor-inline-actions">
+            <button class="admin-editor-btn" data-action="move-up" data-target="advancedSections" data-index="${index}">↑</button>
+            <button class="admin-editor-btn" data-action="move-down" data-target="advancedSections" data-index="${index}">↓</button>
+            <button class="admin-editor-btn" data-action="remove-item" data-target="advancedSections" data-index="${index}">Remove</button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-xs text-gray-400">No advanced sections yet.</div>';
+
+      form.innerHTML = `
+        <div class="admin-editor-section">
+          <div class="text-sm font-semibold text-white mb-2">Version</div>
+          <input class="admin-editor-input" data-field="help-version" value="${escapeHtml(helpEditorState.version ?? 1)}" />
+        </div>
+        <div class="admin-editor-section">
+          <div class="text-sm font-semibold text-white mb-2">Quick Start Steps</div>
+          ${quickStartRows}
+          <button class="admin-editor-btn mt-2" data-action="add-item" data-target="quickStart">+ Add Step</button>
+        </div>
+        <div class="admin-editor-section">
+          <div class="text-sm font-semibold text-white mb-2">Basic Sections</div>
+          ${basicSectionRows}
+          <button class="admin-editor-btn mt-2" data-action="add-item" data-target="basicSections">+ Add Section</button>
+        </div>
+        <div class="admin-editor-section">
+          <div class="text-sm font-semibold text-white mb-2">FAQ</div>
+          ${faqRows}
+          <button class="admin-editor-btn mt-2" data-action="add-item" data-target="faq">+ Add FAQ</button>
+        </div>
+        <div class="admin-editor-section">
+          <div class="text-sm font-semibold text-white mb-2">Advanced Sections</div>
+          ${advancedSectionRows}
+          <button class="admin-editor-btn mt-2" data-action="add-item" data-target="advancedSections">+ Add Advanced Section</button>
+        </div>
+      `;
+
+      if(preview){
+        renderHelpPreview(preview, helpEditorState);
+      }
+    }
+
+    async function saveHelpEditor(){
+      if(!window.configService) return alert('Config service unavailable');
+      const status = document.querySelector('#adminHelpEditorModal [data-editor-status]');
+      if(status) status.textContent = 'Saving...';
+      try{
+        const payload = window.configService.validateHelpDoc(helpEditorState);
+        if(!payload) throw new Error('Validation failed. Fill all required fields.');
+        const saved = await window.configService.saveHelpContent({
+          firestore,
+          data: payload,
+          updatedBy: getEditorUpdatedBy()
+        });
+        helpContentState = saved;
+        helpEditorState = cloneConfig(saved);
+        renderHelpContent();
+        renderAdminHelpEditor();
+        if(status) status.textContent = 'Saved ✅';
+      }catch(err){
+        console.warn('[admin] help save failed', err);
+        if(status) status.textContent = `Save failed: ${err.message || err}`;
+        alert(`Help save failed: ${err.message || err}`);
+      }
+    }
+
+    function openAdminHelpEditor(){
+      if(!isAdmin()) return alert('Admin only');
+      closeAdminEditorModal('adminHelpEditorModal');
+      helpEditorState = cloneConfig(helpContentState || window.DEFAULT_HELP_CONTENT);
+      if(!helpEditorState){
+        helpEditorState = { version: 1, basic: { quickStart: [], sections: [], faq: [] }, advanced: { sections: [] } };
+      }
+      helpEditorState.basic = helpEditorState.basic || { quickStart: [], sections: [], faq: [] };
+      helpEditorState.basic.quickStart = helpEditorState.basic.quickStart || [];
+      helpEditorState.basic.sections = helpEditorState.basic.sections || [];
+      helpEditorState.basic.faq = helpEditorState.basic.faq || [];
+      helpEditorState.advanced = helpEditorState.advanced || { sections: [] };
+      helpEditorState.advanced.sections = helpEditorState.advanced.sections || [];
+      const modal = document.createElement('div');
+      modal.id = 'adminHelpEditorModal';
+      modal.className = 'admin-editor-modal';
+      modal.innerHTML = `
+        <div class="admin-editor-card">
+          <div class="admin-editor-header">
+            <div>
+              <div class="text-lg font-bold text-white">Help Editor</div>
+              <div class="text-xs text-cyan-200">Edit basic + advanced help content. One line per bullet.</div>
+            </div>
+            <button class="admin-editor-btn" data-action="close-editor">Close</button>
+          </div>
+          <div class="admin-editor-body">
+            <div class="admin-editor-columns">
+              <div data-editor-form></div>
+              <div>
+                <div class="text-sm font-semibold text-cyan-100 mb-2">Preview</div>
+                <div class="admin-editor-preview" data-editor-preview></div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div class="text-xs text-cyan-200" data-editor-status></div>
+              <div class="admin-editor-actions">
+                <button class="admin-editor-btn" data-action="reset-help">Reset to defaults</button>
+                <button class="admin-editor-btn" data-action="save-help">Save & Publish</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      renderAdminHelpEditor();
+      modal.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if(!btn) return;
+        const action = btn.dataset.action;
+        if(action === 'close-editor'){ closeAdminEditorModal('adminHelpEditorModal'); return; }
+        if(action === 'save-help'){ saveHelpEditor(); return; }
+        if(action === 'reset-help'){
+          helpEditorState = cloneConfig(window.DEFAULT_HELP_CONTENT);
+          renderAdminHelpEditor();
+          return;
+        }
+        const target = btn.dataset.target;
+        const index = Number(btn.dataset.index);
+        if(action === 'add-item'){
+          if(target === 'quickStart') helpEditorState.basic.quickStart.push('New step');
+          if(target === 'basicSections') helpEditorState.basic.sections.push({ id: 'new_section', title: 'New Section', body: ['New bullet'] });
+          if(target === 'faq') helpEditorState.basic.faq.push({ id: 'new_faq', q: 'New question?', a: ['New answer.'] });
+          if(target === 'advancedSections') helpEditorState.advanced.sections.push({ id: 'new_advanced', title: 'New Advanced Section', body: ['New bullet'] });
+          renderAdminHelpEditor();
+          return;
+        }
+        if(action === 'remove-item'){
+          if(target === 'quickStart') helpEditorState.basic.quickStart.splice(index, 1);
+          if(target === 'basicSections') helpEditorState.basic.sections.splice(index, 1);
+          if(target === 'faq') helpEditorState.basic.faq.splice(index, 1);
+          if(target === 'advancedSections') helpEditorState.advanced.sections.splice(index, 1);
+          renderAdminHelpEditor();
+          return;
+        }
+        if(action === 'move-up' || action === 'move-down'){
+          const delta = action === 'move-up' ? -1 : 1;
+          if(target === 'quickStart') moveItem(helpEditorState.basic.quickStart, index, index + delta);
+          if(target === 'basicSections') moveItem(helpEditorState.basic.sections, index, index + delta);
+          if(target === 'faq') moveItem(helpEditorState.basic.faq, index, index + delta);
+          if(target === 'advancedSections') moveItem(helpEditorState.advanced.sections, index, index + delta);
+          renderAdminHelpEditor();
+        }
+      });
+      modal.addEventListener('input', (e) => {
+        const field = e.target?.dataset?.field;
+        if(!field) return;
+        const index = Number(e.target.dataset.index);
+        const value = e.target.value;
+        if(field === 'help-version'){ helpEditorState.version = Number(value) || 1; }
+        if(field === 'quickStart'){ helpEditorState.basic.quickStart[index] = value; }
+        if(field === 'basic-section-id'){ helpEditorState.basic.sections[index].id = value; }
+        if(field === 'basic-section-title'){ helpEditorState.basic.sections[index].title = value; }
+        if(field === 'basic-section-body'){ helpEditorState.basic.sections[index].body = splitLines(value); }
+        if(field === 'faq-id'){ helpEditorState.basic.faq[index].id = value; }
+        if(field === 'faq-q'){ helpEditorState.basic.faq[index].q = value; }
+        if(field === 'faq-a'){ helpEditorState.basic.faq[index].a = splitLines(value); }
+        if(field === 'advanced-section-id'){ helpEditorState.advanced.sections[index].id = value; }
+        if(field === 'advanced-section-title'){ helpEditorState.advanced.sections[index].title = value; }
+        if(field === 'advanced-section-body'){ helpEditorState.advanced.sections[index].body = splitLines(value); }
+        const preview = modal.querySelector('[data-editor-preview]');
+        if(preview) renderHelpPreview(preview, helpEditorState);
+      });
+    }
+
+    function renderWhatsNewPreview(container, items){
+      if(!container) return;
+      container.innerHTML = items.map(item => `<div class="text-sm mb-2">✅ ${escapeHtml(item.text || '')}</div>`).join('') || '<div class="text-xs text-gray-400">No preview items.</div>';
+    }
+
+    function renderWhatsNewEditor(){
+      const modal = document.getElementById('adminWhatsNewEditorModal');
+      if(!modal || !whatsNewEditorState) return;
+      const form = modal.querySelector('[data-editor-form]');
+      const preview = modal.querySelector('[data-editor-preview]');
+      if(!form) return;
+      const items = whatsNewEditorState.items || [];
+      const itemRows = items.map((item, index) => `
+        <div class="mt-2 p-2 border border-white/10 rounded-lg space-y-2">
+          <div class="text-xs text-cyan-200 font-semibold">Item ${index + 1}</div>
+          <input class="admin-editor-input" data-field="whatsnew-id" data-index="${index}" value="${escapeHtml(item.id || '')}" placeholder="id" />
+          <input class="admin-editor-input" data-field="whatsnew-text" data-index="${index}" value="${escapeHtml(item.text || '')}" placeholder="Text" />
+          <input class="admin-editor-input" data-field="whatsnew-requires" data-index="${index}" value="${escapeHtml((item.requires || []).join(', '))}" placeholder="requires (comma-separated flags)" />
+          <div class="admin-editor-inline-actions">
+            <button class="admin-editor-btn" data-action="move-up" data-target="whatsNew" data-index="${index}">↑</button>
+            <button class="admin-editor-btn" data-action="move-down" data-target="whatsNew" data-index="${index}">↓</button>
+            <button class="admin-editor-btn" data-action="remove-item" data-target="whatsNew" data-index="${index}">Remove</button>
+          </div>
+        </div>
+      `).join('') || '<div class="text-xs text-gray-400">No What’s New items yet.</div>';
+
+      form.innerHTML = `
+        <div class="admin-editor-section">
+          <div class="text-sm font-semibold text-white mb-2">Version</div>
+          <input class="admin-editor-input" data-field="whatsnew-version" value="${escapeHtml(whatsNewEditorState.version ?? 1)}" />
+        </div>
+        <div class="admin-editor-section">
+          <div class="text-sm font-semibold text-white mb-2">Items</div>
+          ${itemRows}
+          <button class="admin-editor-btn mt-2" data-action="add-item" data-target="whatsNew">+ Add Item</button>
+        </div>
+      `;
+      renderWhatsNewPreview(preview, items);
+    }
+
+    async function saveWhatsNewEditor(){
+      if(!window.configService) return alert('Config service unavailable');
+      const status = document.querySelector('#adminWhatsNewEditorModal [data-editor-status]');
+      if(status) status.textContent = 'Saving...';
+      try{
+        const payload = window.configService.validateWhatsNewDoc(whatsNewEditorState);
+        if(!payload) throw new Error('Validation failed. Add at least one item.');
+        const saved = await window.configService.saveWhatsNew({
+          firestore,
+          data: payload,
+          updatedBy: getEditorUpdatedBy()
+        });
+        whatsNewState = saved;
+        whatsNewEditorState = cloneConfig(saved);
+        renderWhatsNew();
+        renderWhatsNewEditor();
+        if(status) status.textContent = 'Saved ✅';
+      }catch(err){
+        console.warn('[admin] whats new save failed', err);
+        if(status) status.textContent = `Save failed: ${err.message || err}`;
+        alert(`What's New save failed: ${err.message || err}`);
+      }
+    }
+
+    function openAdminWhatsNewEditor(){
+      if(!isAdmin()) return alert('Admin only');
+      closeAdminEditorModal('adminWhatsNewEditorModal');
+      whatsNewEditorState = cloneConfig(whatsNewState || window.DEFAULT_WHATS_NEW);
+      if(!whatsNewEditorState){
+        whatsNewEditorState = { version: 1, items: [] };
+      }
+      whatsNewEditorState.items = whatsNewEditorState.items || [];
+      const modal = document.createElement('div');
+      modal.id = 'adminWhatsNewEditorModal';
+      modal.className = 'admin-editor-modal';
+      modal.innerHTML = `
+        <div class="admin-editor-card">
+          <div class="admin-editor-header">
+            <div>
+              <div class="text-lg font-bold text-white">What’s New Editor</div>
+              <div class="text-xs text-cyan-200">Edit release bullets shown in Help.</div>
+            </div>
+            <button class="admin-editor-btn" data-action="close-editor">Close</button>
+          </div>
+          <div class="admin-editor-body">
+            <div class="admin-editor-columns">
+              <div data-editor-form></div>
+              <div>
+                <div class="text-sm font-semibold text-cyan-100 mb-2">Preview</div>
+                <div class="admin-editor-preview" data-editor-preview></div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div class="text-xs text-cyan-200" data-editor-status></div>
+              <div class="admin-editor-actions">
+                <button class="admin-editor-btn" data-action="reset-whatsnew">Reset to defaults</button>
+                <button class="admin-editor-btn" data-action="save-whatsnew">Save & Publish</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      renderWhatsNewEditor();
+      modal.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action]');
+        if(!btn) return;
+        const action = btn.dataset.action;
+        if(action === 'close-editor'){ closeAdminEditorModal('adminWhatsNewEditorModal'); return; }
+        if(action === 'save-whatsnew'){ saveWhatsNewEditor(); return; }
+        if(action === 'reset-whatsnew'){
+          whatsNewEditorState = cloneConfig(window.DEFAULT_WHATS_NEW);
+          renderWhatsNewEditor();
+          return;
+        }
+        const target = btn.dataset.target;
+        const index = Number(btn.dataset.index);
+        if(action === 'add-item' && target === 'whatsNew'){
+          whatsNewEditorState.items.push({ id: 'new_item', text: 'New update', requires: [] });
+          renderWhatsNewEditor();
+          return;
+        }
+        if(action === 'remove-item' && target === 'whatsNew'){
+          whatsNewEditorState.items.splice(index, 1);
+          renderWhatsNewEditor();
+          return;
+        }
+        if((action === 'move-up' || action === 'move-down') && target === 'whatsNew'){
+          const delta = action === 'move-up' ? -1 : 1;
+          moveItem(whatsNewEditorState.items, index, index + delta);
+          renderWhatsNewEditor();
+        }
+      });
+      modal.addEventListener('input', (e) => {
+        const field = e.target?.dataset?.field;
+        if(!field) return;
+        const index = Number(e.target.dataset.index);
+        const value = e.target.value;
+        if(field === 'whatsnew-version'){ whatsNewEditorState.version = Number(value) || 1; }
+        if(field === 'whatsnew-id'){ whatsNewEditorState.items[index].id = value; }
+        if(field === 'whatsnew-text'){ whatsNewEditorState.items[index].text = value; }
+        if(field === 'whatsnew-requires'){ whatsNewEditorState.items[index].requires = parseCommaList(value); }
+        renderWhatsNewPreview(modal.querySelector('[data-editor-preview]'), whatsNewEditorState.items);
+      });
+    }
+
     async function maybeLoadSharedProfile(){
       if(!profileParam){ viewingProfile = null; return; }
       friendSearchTerm = profileParam;
@@ -3851,6 +4419,7 @@ function render(){
       helpModal.addEventListener('click',(e)=>{ if(e.target === helpModal) closeHelp(); });
       bindHelpTabs();
       bindHelpFaqTracking();
+      renderHelpContent();
     }
     bindTourEvents();
     window.addEventListener('resize', ()=>{ if(tourState.isOpen) updateTourUI(); });
@@ -3895,8 +4464,9 @@ function render(){
             await persistAdminFlagIfNeeded(profile, appliedProfile);
             currentUser = appliedProfile;
             applyPreferencesFromProfile(currentUser);
-            refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
+            refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); await loadRemoteConfig(); return; }
         }
+        await loadRemoteConfig();
         showLoginScreen();
         return;
       }
@@ -3908,8 +4478,9 @@ function render(){
           await persistAdminFlagIfNeeded(profile, appliedProfile);
           currentUser = appliedProfile;
           applyPreferencesFromProfile(currentUser);
-          refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); return; }
+          refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); await loadRemoteConfig(); return; }
       }
+      await loadRemoteConfig();
       showLoginScreen();
     }
 
