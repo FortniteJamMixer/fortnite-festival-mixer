@@ -143,6 +143,25 @@
       border: none;
       box-shadow: 0 6px 24px rgba(139,92,246,0.12);
     }
+    .helpIconBtn {
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #e5f6ff;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .2s ease;
+    }
+    .helpIconBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+    .helpIconBtn:focus-visible { outline: 2px solid rgba(0,217,255,0.8); outline-offset: 2px; }
 
     /* responsive tweaks */
     @media (max-width: 980px) {
@@ -211,7 +230,7 @@
             </ul>
           </div>
 
-          <div class="helpSection" id="setlist" data-help-feature="hasSetlist">
+          <div class="helpSection" id="help-setlist" data-help-feature="hasSetlist">
             <h3>Setlist</h3>
             <div data-help-content>
               <ol>
@@ -224,7 +243,7 @@
             <p class="helpComing" data-help-coming>Coming soon.</p>
           </div>
 
-          <div class="helpSection" id="profileLive" data-help-feature="hasLiveProfile">
+          <div class="helpSection" id="help-live" data-help-feature="hasLiveProfile">
             <h3>Profile: Live Streaming</h3>
             <div data-help-content>
               <ol>
@@ -2256,7 +2275,10 @@ window.handleLogin = async (event) => {
                 <p id="streamUrlHelper" class="text-xs text-amber-200 mt-1" ${streamHelperText ? '' : 'style="display:none;"'}>${streamHelperText}</p>
               </div>
               <div class="md:col-span-2">
-                <label class="text-sm text-gray-300">Live Status</label>
+                <div class="flex items-center gap-2">
+                  <label class="text-sm text-gray-300">Live Status</label>
+                  <button type="button" class="helpIconBtn" onclick="openHelpModal({ target: 'live' })" aria-label="Open help: Live streaming" title="How Live status works">?</button>
+                </div>
                 <div class="flex items-center gap-3 flex-wrap">
                   <button id="liveToggleBtn" onclick="toggleLiveStatus()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'}" ${viewOnly || !streamUrlValid ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${liveToggleLabel}</button>
                   ${livePill}
@@ -2658,7 +2680,10 @@ function render(){
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div class="flex gap-2 flex-wrap">
             <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
-            <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlistIds.length}</span>)</button>
+            <div class="flex items-center gap-1">
+              <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlistIds.length}</span>)</button>
+              <button type="button" class="helpIconBtn" onclick="openHelpModal({ target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
+            </div>
             <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
           </div>
           ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
@@ -3289,7 +3314,7 @@ function render(){
       syncHelpTabsA11y();
     }
 
-    function openHelp(){
+    function openHelpModal(options = {}){
       const modal = document.getElementById('helpModal');
       if(!modal) return;
       applyHelpFlags(getHelpFlags());
@@ -3300,6 +3325,19 @@ function render(){
       modal.setAttribute('aria-hidden','false');
       const activeTab = document.querySelector('.helpTabBtn.active');
       if(activeTab){ activeTab.focus(); } else { modal.focus(); }
+      const target = options?.target || null;
+      const targetId = target === 'setlist' ? 'help-setlist' : target === 'live' ? 'help-live' : null;
+      if(targetId){
+        setTimeout(() => {
+          const targetEl = document.getElementById(targetId);
+          if(targetEl){
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 0);
+      }
+    }
+    function openHelp(){
+      openHelpModal();
     }
     function closeHelp(){
       const modal = document.getElementById('helpModal');
@@ -3386,7 +3424,7 @@ function render(){
     document.addEventListener('click', (e)=>{ const preview = e.target.closest('.previewBtn'); if(preview){ e.preventDefault(); onPreviewClick(preview.dataset.id); } const addSet = e.target.closest('.addSetBtn'); if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); } });
 
     // ---------------- Expose some helpers for debugging ----------------
-    window.openHelp = openHelp; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile;
+    window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile;
   </script>
 </body>
 </html>
