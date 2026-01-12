@@ -657,6 +657,33 @@ if (firebaseEnabled) {
 }
 
 
+    function normalizeStreamUrlInput(value){
+      const trimmed = (value || '').trim();
+      if(!trimmed) return '';
+      if(/^https?:\/\//i.test(trimmed)) return trimmed;
+      if(/^www\./i.test(trimmed)) return `https://${trimmed}`;
+      if(/^[\w.-]+\.[a-z]{2,}/i.test(trimmed)) return `https://${trimmed}`;
+      return trimmed;
+    }
+    function isValidStreamUrl(value){
+      if(!value) return false;
+      try{
+        const parsed = new URL(value);
+        return ['http:','https:'].includes(parsed.protocol) && !!parsed.hostname;
+      }catch(_){
+        return false;
+      }
+    }
+    function normalizeLiveProfileFields(profile){
+      const streamUrl = normalizeStreamUrlInput(profile?.streamUrl || '');
+      const streamUrlValid = isValidStreamUrl(streamUrl);
+      return {
+        streamUrl,
+        isLive: streamUrlValid ? profile?.isLive === true : false,
+        liveSince: streamUrlValid ? (profile?.liveSince || null) : null
+      };
+    }
+
     // Backend save/load wrappers (Firestore or localStorage)
     function normalizeProfileShape(profile, fallbackId){
       if(!profile) return null;
@@ -668,7 +695,8 @@ if (firebaseEnabled) {
       const oauth = profile.oauth || {};
       const isAdmin = profile.isAdmin === true;
       const normalizedSetlist = normalizeSetlistIds(profile.setlistIds || profile.setlist || profile.setlists);
-      return { ...profile, username, djName, email, ownedTracks: ownedArray, setlistIds: normalizedSetlist, setlist: normalizedSetlist, setlists: normalizedSetlist, oauth, isAdmin };
+      const liveDefaults = normalizeLiveProfileFields(profile);
+      return { ...profile, ...liveDefaults, username, djName, email, ownedTracks: ownedArray, setlistIds: normalizedSetlist, setlist: normalizedSetlist, setlists: normalizedSetlist, oauth, isAdmin };
     }
     function buildOwnedMap(ids){
       const map = {};
@@ -1368,6 +1396,8 @@ if (firebaseEnabled) {
       isPersistingProfile = true;
       try{
         syncPreferencesIntoProfile();
+        const normalizedStreamUrl = normalizeStreamUrlInput(currentUser.streamUrl || '');
+        const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
         const mergedProfile = {
           ...currentUser,
           uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
@@ -1378,6 +1408,9 @@ if (firebaseEnabled) {
           setlist: setlistIds || [],
           bandMembers,
           genreOverrides,
+          streamUrl: normalizedStreamUrl,
+          isLive: streamUrlValid ? currentUser.isLive === true : false,
+          liveSince: streamUrlValid ? (currentUser.liveSince || null) : null,
           oauth: currentUser.oauth || {},
           preferences: {
             keyMatchMode,
@@ -1680,7 +1713,7 @@ if (firebaseEnabled) {
         return;
       }
       const username = getLocalDeviceId();
-      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlistIds: [], setlists: [], setlist: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, isAdmin: false };
+      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlistIds: [], setlists: [], setlist: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, streamUrl: '', isLive: false, liveSince: null, isAdmin: false };
       currentUser = applyAdminFlag(offlineProfile);
       await persistAdminFlagIfNeeded(offlineProfile, currentUser);
       localStorage.setItem('currentUser', currentUser.username);
@@ -1872,6 +1905,7 @@ if (firebaseEnabled) {
         }
 
         const profile = existingProfile || {};
+        const liveDefaults = normalizeLiveProfileFields({ ...profile, ...importedProfile });
         const mergedProfile = {
           ...profile,
           uid: firebaseUser.uid,
@@ -1883,6 +1917,9 @@ if (firebaseEnabled) {
           setlist: importedProfile?.setlist || profile.setlist || profile.setlists || setlistIds || [],
           bandMembers: importedProfile?.bandMembers || profile.bandMembers || bandMembers || [],
           genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {},
+          streamUrl: liveDefaults.streamUrl,
+          isLive: liveDefaults.isLive,
+          liveSince: liveDefaults.liveSince,
           oauth: profile.oauth || {},
           isAdmin: profile.isAdmin === true
         };
@@ -1989,7 +2026,7 @@ window.handleLogin = async (event) => {
         applyPreferencesFromProfile(currentUser);
       }
       else {
-        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, isAdmin: false };
+        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, streamUrl: '', isLive: false, liveSince: null, isAdmin: false };
         currentUser = applyAdminFlag(baseProfile);
         await persistAdminFlagIfNeeded(baseProfile, currentUser);
       }
@@ -2357,6 +2394,15 @@ window.handleLogin = async (event) => {
       const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
       const usernameVal = editableProfile?.username || '';
       const djVal = editableProfile?.djName || usernameVal;
+      const streamUrlValue = editableProfile?.streamUrl || '';
+      const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlValue);
+      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
+      const liveActive = streamUrlValid && profileOwner?.isLive === true;
+      let liveSinceLabel = '';
+      if(profileOwner?.liveSince){
+        const liveDate = new Date(profileOwner.liveSince);
+        if(!Number.isNaN(liveDate.getTime())) liveSinceLabel = liveDate.toLocaleString();
+      }
       const ownedIds = profileOwner?.ownedTracks || [];
       const epicLink = profileOwner?.oauth?.epic || null;
       const epicLinked = !!epicLink?.linked;
@@ -2390,6 +2436,11 @@ window.handleLogin = async (event) => {
         </div>`;
       }).join('');
       const ownedEmpty = `<div class="text-sm text-gray-400">${profileOwnedSearch ? 'No owned songs match your search.' : 'No owned songs yet.'}</div>`;
+      const livePill = liveActive
+        ? `<a id="liveStatusPill" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1 rounded-full text-xs font-bold bg-green-400 text-black border border-green-200/80" style="box-shadow: 0 0 14px rgba(34,197,94,0.8);">LIVE</a>`
+        : `<span id="liveStatusPill" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70">OFFLINE</span>`;
+      const liveToggleLabel = liveActive ? 'End Live' : 'Go Live';
+      const streamHelperText = streamUrlValid ? '' : (viewOnly ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-5xl mx-auto">
           <div class="panel space-y-3">
@@ -2415,6 +2466,20 @@ window.handleLogin = async (event) => {
                 <label class="text-sm text-gray-300">DJ Name</label>
                 <input id="profileDjName" value="${djVal}" ${viewOnly ? 'disabled' : ''} class="w-full px-4 py-3 bg-black/40 border border-purple-500/30 rounded-lg text-white ${viewOnly?'opacity-60 cursor-not-allowed':''}" />
                 <p class="text-xs text-gray-400 mt-1">Shown in headers and shared views.</p>
+              </div>
+              <div class="md:col-span-2">
+                <label class="text-sm text-gray-300">Stream URL</label>
+                <input id="profileStreamUrl" value="${streamUrlValue}" ${viewOnly ? 'disabled' : ''} placeholder="https://twitch.tv/yourname" class="w-full px-4 py-3 bg-black/40 border border-green-500/30 rounded-lg text-white ${viewOnly?'opacity-60 cursor-not-allowed':''}" />
+                <p class="text-xs text-gray-400 mt-1">Examples: twitch.tv/yourname, youtube.com/@you/live, kick.com/yourname</p>
+                <p id="streamUrlHelper" class="text-xs text-amber-200 mt-1" ${streamHelperText ? '' : 'style="display:none;"'}>${streamHelperText}</p>
+              </div>
+              <div class="md:col-span-2">
+                <label class="text-sm text-gray-300">Live Status</label>
+                <div class="flex items-center gap-3 flex-wrap">
+                  <button id="liveToggleBtn" onclick="toggleLiveStatus()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'}" ${viewOnly || !streamUrlValid ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${liveToggleLabel}</button>
+                  ${livePill}
+                  ${liveSinceLabel && liveActive ? `<span class="text-xs text-gray-400">Live since ${liveSinceLabel}</span>` : ''}
+                </div>
               </div>
             </div>
             <div class="flex gap-3 flex-wrap">
@@ -2482,6 +2547,75 @@ window.handleLogin = async (event) => {
           </div>
         </div>`;
     }
+
+    function updateStreamControlsFromInput(){
+      const input = document.getElementById('profileStreamUrl');
+      if(!input) return;
+      const normalized = normalizeStreamUrlInput(input.value || '');
+      const valid = isValidStreamUrl(normalized);
+      const helper = document.getElementById('streamUrlHelper');
+      if(helper){
+        helper.textContent = valid ? '' : (viewingProfile ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
+        helper.style.display = valid ? 'none' : 'block';
+      }
+      const toggleBtn = document.getElementById('liveToggleBtn');
+      if(toggleBtn){
+        if(viewingProfile){
+          toggleBtn.disabled = true;
+          toggleBtn.style.opacity = '0.6';
+          toggleBtn.style.cursor = 'not-allowed';
+        } else {
+          toggleBtn.disabled = !valid;
+          toggleBtn.style.opacity = valid ? '1' : '0.6';
+          toggleBtn.style.cursor = valid ? 'pointer' : 'not-allowed';
+        }
+      }
+      const pill = document.getElementById('liveStatusPill');
+      if(pill && valid && pill.tagName === 'A'){
+        pill.setAttribute('href', normalized);
+      }
+      if(pill && !valid){
+        pill.removeAttribute('href');
+        pill.removeAttribute('target');
+        pill.removeAttribute('rel');
+        pill.textContent = 'OFFLINE';
+        pill.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70';
+        pill.style.boxShadow = '';
+      }
+    }
+
+    window.toggleLiveStatus = async () => {
+      if(viewingProfile) return;
+      if(!currentUser) return;
+      const status = document.getElementById('profileStatus');
+      const input = document.getElementById('profileStreamUrl');
+      const normalizedStreamUrl = normalizeStreamUrlInput(input?.value || currentUser.streamUrl || '');
+      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
+      if(!streamUrlValid){
+        if(status) status.textContent = 'Add a valid stream link to enable Live.';
+        updateStreamControlsFromInput();
+        return;
+      }
+      draftProfile = draftProfile || cloneProfile(currentUser) || {};
+      const nextIsLive = !(draftProfile.isLive ?? currentUser.isLive ?? false);
+      const nextLiveSince = nextIsLive ? (draftProfile.liveSince || currentUser.liveSince || new Date().toISOString()) : null;
+      draftProfile.streamUrl = normalizedStreamUrl;
+      draftProfile.isLive = nextIsLive;
+      draftProfile.liveSince = nextLiveSince;
+      const previousProfile = currentUser;
+      currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveSince: nextLiveSince });
+      await persistAdminFlagIfNeeded(previousProfile, currentUser);
+      try{
+        if(status) status.textContent = nextIsLive ? 'Going live...' : 'Ending live...';
+        await persistCurrentUserProfile();
+        renderProfile();
+        setupEventListeners();
+        if(status) status.textContent = nextIsLive ? 'Live ✅' : 'Offline ✅';
+      }catch(err){
+        if(status) status.textContent = 'Live toggle failed ❌: ' + (err.message || err);
+        console.error('[profile] live toggle failed', err);
+      }
+    };
 
     function renderAuditView(){
       const auditEl = document.getElementById('auditView');
@@ -2612,6 +2746,12 @@ window.handleLogin = async (event) => {
       const status = document.getElementById('profileStatus');
       const newUsername = (document.getElementById('profileUsername')?.value || '').trim();
       const newDjName = (document.getElementById('profileDjName')?.value || '').trim() || newUsername;
+      const streamUrlInput = (document.getElementById('profileStreamUrl')?.value || '').trim();
+      const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlInput);
+      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
+      const existingLiveSince = draftProfile?.liveSince || currentUser.liveSince || null;
+      const nextIsLive = streamUrlValid ? (draftProfile?.isLive ?? currentUser.isLive ?? false) : false;
+      const nextLiveSince = nextIsLive ? (existingLiveSince || new Date().toISOString()) : null;
       if(!usernamePattern.test(newUsername)){
         if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
         alert('Username must be 3-20 chars, letters/numbers/underscore only');
@@ -2620,6 +2760,10 @@ window.handleLogin = async (event) => {
       draftProfile = draftProfile || cloneProfile(currentUser) || {};
       draftProfile.username = newUsername;
       draftProfile.djName = newDjName;
+      draftProfile.streamUrl = normalizedStreamUrl;
+      draftProfile.isLive = nextIsLive;
+      draftProfile.liveSince = nextLiveSince;
+      currentUser = { ...currentUser, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveSince: nextLiveSince };
       const usernameChanged = newUsername !== currentUser.username;
       const djChanged = newDjName !== currentUser.djName;
       try{
@@ -2984,6 +3128,11 @@ function render(){
         if(e.target.id === 'ownedSearchInput'){ profileOwnedSearch = e.target.value; renderProfile(); }
         if(e.target.id === 'profileUsername' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = e.target.value; }
         if(e.target.id === 'profileDjName' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = e.target.value; }
+        if(e.target.id === 'profileStreamUrl' && !viewingProfile){
+          draftProfile = draftProfile || cloneProfile(currentUser) || {};
+          draftProfile.streamUrl = e.target.value;
+          updateStreamControlsFromInput();
+        }
         if(e.target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(e.target.value); }
       });
       app.addEventListener('change', (e)=>{
