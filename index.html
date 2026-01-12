@@ -282,19 +282,19 @@
 
           <div class="helpSection" id="helpFaq">
             <h3>Troubleshooting FAQ</h3>
-            <details class="helpFaq" data-help-feature="hasLiveProfile" data-help-feature-mode="item">
+            <details class="helpFaq" data-help-feature="hasLiveProfile" data-help-feature-mode="item" data-question-id="go_live_disabled">
               <summary>Why is Go Live disabled?</summary>
               <p>Add a valid Stream URL first.</p>
             </details>
-            <details class="helpFaq" data-help-feature="hasSetlist" data-help-feature-mode="item">
+            <details class="helpFaq" data-help-feature="hasSetlist" data-help-feature-mode="item" data-question-id="cant_see_setlist">
               <summary>Why can’t I see my Setlist?</summary>
               <p>Click the Setlist tab and check the count.</p>
             </details>
-            <details class="helpFaq" data-help-feature="hasOfflineMode" data-help-feature-mode="item">
+            <details class="helpFaq" data-help-feature="hasOfflineMode" data-help-feature-mode="item" data-question-id="offline_mode">
               <summary>Why am I in Offline mode?</summary>
               <p>No connection; the app uses cached tracks.</p>
             </details>
-            <details class="helpFaq" data-help-feature="hasOwnedToggle" data-help-feature-mode="item">
+            <details class="helpFaq" data-help-feature="hasOwnedToggle" data-help-feature-mode="item" data-question-id="owned_count_wrong">
               <summary>My Owned count looks wrong</summary>
               <p>Re-check owned selections or refresh the page.</p>
             </details>
@@ -455,6 +455,33 @@ if (firebaseEnabled) {
   }
 } else {
   logEvent('firebase_disabled', { reason: 'missing config or sdk', firebaseConfigValid });
+}
+
+function getAppVersion(){
+  return window.appVersion || window.APP_VERSION || firebaseConfig?.appVersion || firebaseConfig?.version || null;
+}
+function getFirebaseAnalytics(){
+  if(!firebaseEnabled) return null;
+  if(typeof firebase?.analytics !== 'function') return null;
+  try {
+    return firebase.analytics();
+  } catch (e) {
+    console.warn('Firebase analytics unavailable', e);
+    return null;
+  }
+}
+function track(eventName, payload = {}){
+  const safePayload = payload && typeof payload === 'object' ? payload : {};
+  const analyticsInstance = getFirebaseAnalytics();
+  if(analyticsInstance && typeof analyticsInstance.logEvent === 'function'){
+    try {
+      analyticsInstance.logEvent(eventName, safePayload);
+      return;
+    } catch (e) {
+      console.warn('Analytics logEvent failed', e);
+    }
+  }
+  console.debug('[analytics]', eventName, safePayload);
 }
 
 
@@ -630,6 +657,10 @@ if (firebaseEnabled) {
     let sandboxIds = [];
     let helpTab = 'basic';
     let helpScroll = { basic: 0, advanced: 0 };
+    let helpOpenedAt = null;
+    let helpOpenTarget = 'none';
+    let helpOpenSource = 'other';
+    let helpTabTracked = false;
     const PAGE_SIZE_OPTIONS = [12,24,48];
     const PAGE_SIZE_KEY = 'jamMixer.pageSize';
     const CURRENT_PAGE_KEY = 'jamMixer.currentPage';
@@ -2277,7 +2308,7 @@ window.handleLogin = async (event) => {
               <div class="md:col-span-2">
                 <div class="flex items-center gap-2">
                   <label class="text-sm text-gray-300">Live Status</label>
-                  <button type="button" class="helpIconBtn" onclick="openHelpModal({ target: 'live' })" aria-label="Open help: Live streaming" title="How Live status works">?</button>
+                  <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'live_icon', target: 'live' })" aria-label="Open help: Live streaming" title="How Live status works">?</button>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
                   <button id="liveToggleBtn" onclick="toggleLiveStatus()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'}" ${viewOnly || !streamUrlValid ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${liveToggleLabel}</button>
@@ -2682,7 +2713,7 @@ function render(){
             <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
             <div class="flex items-center gap-1">
               <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlistIds.length}</span>)</button>
-              <button type="button" class="helpIconBtn" onclick="openHelpModal({ target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
+              <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
             <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
           </div>
@@ -3250,6 +3281,18 @@ function render(){
     // Do not reintroduce manual JSON import/export without a migration plan.
 
     // --------------------- Help modal functions -----------------------
+    function normalizeHelpTarget(value){
+      return value === 'setlist' || value === 'live' ? value : 'none';
+    }
+    function normalizeHelpSource(value){
+      return value === 'menu' || value === 'setlist_icon' || value === 'live_icon' ? value : 'other';
+    }
+    function buildHelpOpenedPayload(source, target){
+      const payload = { source, target };
+      const appVersion = getAppVersion();
+      if(appVersion) payload.appVersion = appVersion;
+      return payload;
+    }
     function getHelpFlags(){
       return {
         hasSetlist: !!document.getElementById('setlistBtn'),
@@ -3290,6 +3333,7 @@ function render(){
       if(!helpContent) return;
       const panes = document.querySelectorAll('[data-help-pane]');
       helpScroll[helpTab] = helpContent.scrollTop;
+      const previousTab = helpTab;
       helpTab = tab === 'advanced' ? 'advanced' : 'basic';
       panes.forEach(pane => {
         const isActive = pane.dataset.helpPane === helpTab;
@@ -3297,6 +3341,10 @@ function render(){
       });
       helpContent.scrollTop = helpScroll[helpTab] || 0;
       syncHelpTabsA11y();
+      if(helpOpenedAt && (!helpTabTracked || previousTab !== helpTab)){
+        track('help_tab_viewed', { tab: helpTab, target: helpOpenTarget });
+        helpTabTracked = true;
+      }
     }
 
     function bindHelpTabs(){
@@ -3314,9 +3362,31 @@ function render(){
       syncHelpTabsA11y();
     }
 
+    function bindHelpFaqTracking(){
+      document.querySelectorAll('.helpFaq').forEach((faq) => {
+        if(faq.dataset.bound === 'true') return;
+        faq.dataset.bound = 'true';
+        faq.addEventListener('toggle', () => {
+          const questionId = faq.dataset.questionId;
+          if(!questionId) return;
+          track('help_faq_toggled', {
+            questionId,
+            state: faq.open ? 'open' : 'closed'
+          });
+        });
+      });
+    }
+
     function openHelpModal(options = {}){
       const modal = document.getElementById('helpModal');
       if(!modal) return;
+      const target = normalizeHelpTarget(options?.target);
+      const source = normalizeHelpSource(options?.source);
+      helpOpenTarget = target;
+      helpOpenSource = source;
+      helpOpenedAt = Date.now();
+      helpTabTracked = false;
+      track('help_opened', buildHelpOpenedPayload(source, target));
       applyHelpFlags(getHelpFlags());
       helpTab = 'basic';
       helpScroll = { basic: 0, advanced: 0 };
@@ -3325,7 +3395,6 @@ function render(){
       modal.setAttribute('aria-hidden','false');
       const activeTab = document.querySelector('.helpTabBtn.active');
       if(activeTab){ activeTab.focus(); } else { modal.focus(); }
-      const target = options?.target || null;
       const targetId = target === 'setlist' ? 'help-setlist' : target === 'live' ? 'help-live' : null;
       if(targetId){
         setTimeout(() => {
@@ -3337,11 +3406,19 @@ function render(){
       }
     }
     function openHelp(){
-      openHelpModal();
+      openHelpModal({ source: 'menu', target: 'none' });
     }
     function closeHelp(){
       const modal = document.getElementById('helpModal');
       if(!modal) return;
+      if(helpOpenedAt){
+        const timeOpenMs = Math.max(0, Date.now() - helpOpenedAt);
+        track('help_closed', { timeOpenMs, target: helpOpenTarget });
+      }
+      helpOpenedAt = null;
+      helpOpenTarget = 'none';
+      helpOpenSource = 'other';
+      helpTabTracked = false;
       modal.style.display = 'none';
       modal.setAttribute('aria-hidden','true');
     }
@@ -3368,6 +3445,7 @@ function render(){
     if(helpModal){
       helpModal.addEventListener('click',(e)=>{ if(e.target === helpModal) closeHelp(); });
       bindHelpTabs();
+      bindHelpFaqTracking();
     }
     document.addEventListener('keydown',(e)=>{ if(e.key === 'Escape'){ closeHelp(); } });
 
