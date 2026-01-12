@@ -124,6 +124,19 @@
     .camelot-caption { text-align: center; color: #e6f7ff; font-size: 13px; margin-top: 6px; }
     .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
+    .helpFooter { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .helpFooterActions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .helpAltBtn {
+      background: rgba(255,255,255,0.08);
+      padding: 8px 12px;
+      border-radius: 10px;
+      color: #dff7ff;
+      font-weight:700;
+      cursor:pointer;
+      border: 1px solid rgba(0,217,255,0.2);
+      transition: all .2s ease;
+    }
+    .helpAltBtn:hover { background: rgba(255,255,255,0.16); color: #fff; border-color: rgba(255,255,255,0.3); }
 
     /* Custom neon scrollbar for helpContent */
     .helpContent::-webkit-scrollbar { width: 12px; }
@@ -163,6 +176,62 @@
     }
     .helpIconBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
     .helpIconBtn:focus-visible { outline: 2px solid rgba(0,217,255,0.8); outline-offset: 2px; }
+
+    /* Tour overlay */
+    #tourOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 25000;
+      pointer-events: none;
+    }
+    #tourOverlay[data-open="true"] { display: block; pointer-events: auto; }
+    .tour-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(5,8,20,0.75);
+      backdrop-filter: blur(3px);
+    }
+    .tour-highlight {
+      position: fixed;
+      border-radius: 14px;
+      border: 2px solid rgba(0,217,255,0.75);
+      box-shadow: 0 0 0 2px rgba(0,217,255,0.15), 0 0 25px rgba(0,217,255,0.45);
+      transition: all .2s ease;
+      pointer-events: none;
+    }
+    .tour-tooltip {
+      position: fixed;
+      max-width: 320px;
+      width: calc(100% - 32px);
+      background: linear-gradient(180deg, rgba(12,10,25,0.98), rgba(20,16,38,0.98));
+      border-radius: 14px;
+      border: 1px solid rgba(0,217,255,0.22);
+      box-shadow: 0 12px 35px rgba(0,0,0,0.55), 0 0 28px rgba(0,217,255,0.18);
+      color: #e6f7ff;
+      padding: 14px 16px;
+      pointer-events: auto;
+    }
+    .tour-title { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
+    .tour-copy { font-size: 14px; color: rgba(230,247,255,0.85); margin-bottom: 10px; }
+    .tour-hint { font-size: 12px; color: rgba(159,232,255,0.8); margin-bottom: 10px; }
+    .tour-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+    .tour-actions .tour-left { display:flex; gap:8px; flex-wrap:wrap; }
+    .tour-actions .tour-right { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
+    .tour-btn {
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 700;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      color: #e6f7ff;
+      cursor: pointer;
+    }
+    .tour-btn:hover { background: rgba(255,255,255,0.18); }
+    .tour-btn-primary { background: linear-gradient(90deg,#ff6b9d,#8b5cf6); border: none; color: #fff; }
+    .tour-btn-primary:hover { filter: brightness(1.05); }
+    .tour-btn-secondary { border-color: rgba(0,217,255,0.4); color: #bdf1ff; }
+    .tour-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 
     /* responsive tweaks */
     @media (max-width: 980px) {
@@ -322,7 +391,31 @@
 
       <div class="helpFooter">
         <span class="small-muted" id="helpVersion"></span>
-        <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
+        <div class="helpFooterActions">
+          <button class="helpAltBtn" onclick="startTour('help',{ force: true })">Run Quick Tour</button>
+          <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tour Overlay -->
+  <div id="tourOverlay" aria-hidden="true">
+    <div class="tour-backdrop"></div>
+    <div class="tour-highlight" id="tourHighlight" style="display:none"></div>
+    <div class="tour-tooltip" id="tourTooltip" role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+      <div class="tour-title" id="tourTitle"></div>
+      <div class="tour-copy" id="tourCopy"></div>
+      <div class="tour-hint" id="tourHint" style="display:none"></div>
+      <div class="tour-actions">
+        <div class="tour-left">
+          <button class="tour-btn" id="tourBackBtn">Back</button>
+          <button class="tour-btn tour-btn-secondary" id="tourRouteBtn" style="display:none">Go to Profile</button>
+        </div>
+        <div class="tour-right">
+          <button class="tour-btn" id="tourSkipBtn">Skip</button>
+          <button class="tour-btn tour-btn-primary" id="tourNextBtn">Next</button>
+        </div>
       </div>
     </div>
   </div>
@@ -677,6 +770,20 @@ function track(eventName, payload = {}){
     let helpOpenTarget = 'none';
     let helpOpenSource = 'other';
     let helpTabTracked = false;
+    const TOUR_VERSION = 1;
+    const TOUR_STORAGE_KEY = 'tour_done_v1';
+    const TOUR_STEPS = [
+      { id: 'browse', selector: '#searchInput', title: 'Browse Tracks', copy: 'Scroll or search to find songs you want to mix.', route: 'browser', routeLabel: 'Go to Browse' },
+      { id: 'setlist', selector: '#setlistBtn', title: 'Build Your Setlist', copy: 'Tap a track to add it, then open Setlist to review your picks.', route: 'browser' },
+      { id: 'go-live', selector: '#profileStreamUrl', title: 'Go Live (Optional)', copy: 'Add your stream link, then turn on LIVE. The green pill opens your stream.', route: 'profile', routeLabel: 'Go to Profile' }
+    ];
+    const tourState = {
+      isOpen: false,
+      stepIndex: 0,
+      steps: TOUR_STEPS,
+      source: 'auto',
+      lastFocused: null
+    };
     const PAGE_SIZE_OPTIONS = [12,24,48];
     const PAGE_SIZE_KEY = 'jamMixer.pageSize';
     const CURRENT_PAGE_KEY = 'jamMixer.currentPage';
@@ -1234,6 +1341,236 @@ function track(eventName, payload = {}){
       const list = ids.map(item => (typeof item === 'string' ? item : item?.id)).filter(Boolean);
       return Array.from(new Set(list));
     }
+    function getTourProfileDone(profile){
+      if(!profile?.tour) return false;
+      const version = Number(profile.tour.version || 0);
+      return profile.tour.done === true && version >= TOUR_VERSION;
+    }
+    function isTourDone(){
+      if(localStorage.getItem(TOUR_STORAGE_KEY) === '1') return true;
+      return getTourProfileDone(currentUser);
+    }
+    function markTourDone(){
+      localStorage.setItem(TOUR_STORAGE_KEY, '1');
+      if(currentUser && !viewingProfile){
+        const tourData = { done: true, version: TOUR_VERSION, completedAt: new Date().toISOString() };
+        currentUser = { ...currentUser, tour: tourData };
+        if(draftProfile) draftProfile.tour = tourData;
+        if(!isPersistingProfile){
+          persistCurrentUserProfile().catch(err=>console.warn('[tour] profile persist failed', err));
+        }
+      }
+    }
+    function getTourElements(){
+      return {
+        overlay: document.getElementById('tourOverlay'),
+        highlight: document.getElementById('tourHighlight'),
+        tooltip: document.getElementById('tourTooltip'),
+        title: document.getElementById('tourTitle'),
+        copy: document.getElementById('tourCopy'),
+        hint: document.getElementById('tourHint'),
+        backBtn: document.getElementById('tourBackBtn'),
+        routeBtn: document.getElementById('tourRouteBtn'),
+        skipBtn: document.getElementById('tourSkipBtn'),
+        nextBtn: document.getElementById('tourNextBtn')
+      };
+    }
+    function openTourOverlay(){
+      const { overlay } = getTourElements();
+      if(!overlay) return;
+      overlay.dataset.open = 'true';
+      overlay.setAttribute('aria-hidden','false');
+    }
+    function closeTourOverlay(){
+      const { overlay } = getTourElements();
+      if(!overlay) return;
+      overlay.dataset.open = 'false';
+      overlay.setAttribute('aria-hidden','true');
+    }
+    function focusTour(){
+      const { tooltip } = getTourElements();
+      if(!tooltip) return;
+      const focusables = tooltip.querySelectorAll('button,[href],[tabindex]:not([tabindex="-1"])');
+      const first = focusables[0];
+      if(first) first.focus();
+    }
+    function trapTourFocus(e){
+      if(!tourState.isOpen || e.key !== 'Tab') return;
+      const { tooltip } = getTourElements();
+      if(!tooltip) return;
+      const focusables = Array.from(tooltip.querySelectorAll('button,[href],[tabindex]:not([tabindex="-1"])'));
+      if(!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if(e.shiftKey && document.activeElement === first){
+        e.preventDefault();
+        last.focus();
+      } else if(!e.shiftKey && document.activeElement === last){
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    function scrollTargetIntoView(targetEl){
+      if(!targetEl) return;
+      try{
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }catch(_){}
+    }
+    function positionTourElements(step){
+      const { highlight, tooltip, hint, routeBtn, nextBtn } = getTourElements();
+      if(!highlight || !tooltip) return;
+      const routeMismatch = step.route && view !== step.route;
+      const targetEl = routeMismatch ? null : document.querySelector(step.selector);
+      const rect = targetEl?.getBoundingClientRect();
+      const hasTarget = rect && rect.width > 0 && rect.height > 0;
+      if(hasTarget){
+        const padding = 6;
+        highlight.style.display = 'block';
+        highlight.style.top = `${Math.max(0, rect.top - padding)}px`;
+        highlight.style.left = `${Math.max(0, rect.left - padding)}px`;
+        highlight.style.width = `${rect.width + padding * 2}px`;
+        highlight.style.height = `${rect.height + padding * 2}px`;
+      } else {
+        highlight.style.display = 'none';
+      }
+      if(hint){
+        if(routeMismatch){
+          hint.textContent = step.route === 'profile' ? 'Open Profile to continue.' : 'Open Browse to continue.';
+          hint.style.display = 'block';
+        } else if(!hasTarget){
+          hint.textContent = 'Go to the next screen to continue.';
+          hint.style.display = 'block';
+        } else {
+          hint.style.display = 'none';
+        }
+      }
+      if(routeBtn){
+        routeBtn.style.display = routeMismatch ? 'inline-flex' : 'none';
+        routeBtn.textContent = step.routeLabel || (step.route === 'profile' ? 'Go to Profile' : 'Go to Browse');
+      }
+      if(nextBtn){
+        nextBtn.disabled = routeMismatch;
+      }
+      if(!hasTarget){
+        tooltip.style.top = '50%';
+        tooltip.style.left = '50%';
+        tooltip.style.transform = 'translate(-50%, -50%)';
+        return;
+      }
+      tooltip.style.transform = 'translate(0, 0)';
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const spacing = 12;
+      let top = rect.bottom + spacing;
+      if(top + tooltipRect.height > window.innerHeight - 12){
+        top = rect.top - spacing - tooltipRect.height;
+      }
+      let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
+      left = Math.max(12, Math.min(left, window.innerWidth - tooltipRect.width - 12));
+      if(top < 12 || top + tooltipRect.height > window.innerHeight - 12){
+        top = Math.max(12, Math.min(rect.bottom + spacing, window.innerHeight - tooltipRect.height - 12));
+      }
+      tooltip.style.top = `${top}px`;
+      tooltip.style.left = `${left}px`;
+      scrollTargetIntoView(targetEl);
+    }
+    function updateTourUI(){
+      if(!tourState.isOpen) return;
+      const step = tourState.steps[tourState.stepIndex];
+      const { title, copy, backBtn, nextBtn } = getTourElements();
+      if(title) title.textContent = step.title;
+      if(copy) copy.textContent = step.copy;
+      if(backBtn) backBtn.style.display = tourState.stepIndex === 0 ? 'none' : 'inline-flex';
+      if(nextBtn) nextBtn.textContent = tourState.stepIndex === tourState.steps.length - 1 ? 'Done' : 'Next';
+      requestAnimationFrame(()=> positionTourElements(step));
+    }
+    function startTour(source = 'auto', options = {}){
+      if(tourState.isOpen) return;
+      if(!options.force && isTourDone()) return;
+      tourState.isOpen = true;
+      tourState.stepIndex = 0;
+      tourState.source = source;
+      tourState.lastFocused = document.activeElement;
+      bindTourEvents();
+      const helpModal = document.getElementById('helpModal');
+      if(helpModal && helpModal.style.display === 'flex'){
+        closeHelp();
+      }
+      openTourOverlay();
+      updateTourUI();
+      focusTour();
+    }
+    function nextTourStep(){
+      if(!tourState.isOpen) return;
+      if(tourState.stepIndex >= tourState.steps.length - 1){
+        finishTour();
+        return;
+      }
+      tourState.stepIndex += 1;
+      updateTourUI();
+      focusTour();
+    }
+    function prevTourStep(){
+      if(!tourState.isOpen) return;
+      if(tourState.stepIndex === 0) return;
+      tourState.stepIndex -= 1;
+      updateTourUI();
+      focusTour();
+    }
+    function skipTour(){
+      if(!tourState.isOpen) return;
+      tourState.isOpen = false;
+      closeTourOverlay();
+      markTourDone();
+      if(tourState.lastFocused && typeof tourState.lastFocused.focus === 'function'){
+        tourState.lastFocused.focus();
+      }
+    }
+    function finishTour(){
+      if(!tourState.isOpen) return;
+      tourState.isOpen = false;
+      closeTourOverlay();
+      markTourDone();
+      if(tourState.lastFocused && typeof tourState.lastFocused.focus === 'function'){
+        tourState.lastFocused.focus();
+      }
+    }
+    function goToTourRoute(route){
+      if(!route) return;
+      if(typeof window.switchView === 'function'){
+        window.switchView(route);
+      }
+      updateTourUI();
+    }
+    function bindTourEvents(){
+      const { backBtn, nextBtn, skipBtn, routeBtn } = getTourElements();
+      if(backBtn && !backBtn.dataset.bound){
+        backBtn.dataset.bound = 'true';
+        backBtn.addEventListener('click', prevTourStep);
+      }
+      if(nextBtn && !nextBtn.dataset.bound){
+        nextBtn.dataset.bound = 'true';
+        nextBtn.addEventListener('click', nextTourStep);
+      }
+      if(skipBtn && !skipBtn.dataset.bound){
+        skipBtn.dataset.bound = 'true';
+        skipBtn.addEventListener('click', skipTour);
+      }
+      if(routeBtn && !routeBtn.dataset.bound){
+        routeBtn.dataset.bound = 'true';
+        routeBtn.addEventListener('click', ()=>{
+          const step = tourState.steps[tourState.stepIndex];
+          goToTourRoute(step.route);
+        });
+      }
+    }
+    function maybeAutoStartTour(){
+      if(isTourDone()) return;
+      if(tourState.isOpen) return;
+      setTimeout(()=>{
+        if(tourState.isOpen || isTourDone()) return;
+        startTour('auto');
+      }, 300);
+    }
     async function persistCurrentUserProfile(){
       console.debug('[profile] save clicked', { draftProfile, currentUser });
       if(viewingProfile) throw new Error('Cannot save while viewing another profile');
@@ -1260,6 +1597,7 @@ function track(eventName, payload = {}){
           isLive: streamUrlValid ? currentUser.isLive === true : false,
           liveSince: streamUrlValid ? (currentUser.liveSince || null) : null,
           oauth: currentUser.oauth || {},
+          tour: currentUser.tour || {},
           preferences: {
             keyMatchMode,
             maxSemitoneRange,
@@ -1769,6 +2107,7 @@ function track(eventName, payload = {}){
           isLive: liveDefaults.isLive,
           liveSince: liveDefaults.liveSince,
           oauth: profile.oauth || {},
+          tour: profile.tour || {},
           isAdmin: profile.isAdmin === true
         };
         currentUser = applyAdminFlag(mergedProfile);
@@ -1874,7 +2213,7 @@ window.handleLogin = async (event) => {
         applyPreferencesFromProfile(currentUser);
       }
       else {
-        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, streamUrl: '', isLive: false, liveSince: null, isAdmin: false };
+        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, streamUrl: '', isLive: false, liveSince: null, isAdmin: false, tour: {} };
         currentUser = applyAdminFlag(baseProfile);
         await persistAdminFlagIfNeeded(baseProfile, currentUser);
       }
@@ -1938,6 +2277,7 @@ window.handleLogin = async (event) => {
               logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
               cacheTracks(songs);
               render(); setupEventListeners();
+              maybeAutoStartTour();
               return;
             }
           }catch(e){ console.warn('endpoint err',e); logEvent('songs_fetch_fail', { message: e?.message, step: 'network' }); }
@@ -1952,6 +2292,7 @@ window.handleLogin = async (event) => {
         songsLoaded = true;
         logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
         render(); setupEventListeners();
+        maybeAutoStartTour();
         return;
       }
       console.warn('endpoints failed, using fallback sample');
@@ -1962,6 +2303,7 @@ window.handleLogin = async (event) => {
       songsLoaded = true;
       logEvent('songs_fetch_fail', { message: 'network+cache miss; using fallback' });
       render(); setupEventListeners();
+      maybeAutoStartTour();
     }
 
     function refreshRegressionWarnings(){
@@ -2397,6 +2739,7 @@ window.handleLogin = async (event) => {
             </div>
           </div>
         </div>`;
+      updateTourUI();
     }
 
     function updateStreamControlsFromInput(){
@@ -2851,6 +3194,8 @@ function render(){
   `;
   if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
   syncCommunityStatsUI();
+  bindTourEvents();
+  updateTourUI();
 }
 
 
@@ -3219,6 +3564,7 @@ function render(){
       else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
       else if(view==='audit'){ renderAuditView(); setupEventListeners(); }
       else { renderProfile(); setupEventListeners(); }
+      updateTourUI();
     };
 
     window.toggleMixableFilter = () => {
@@ -3506,7 +3852,20 @@ function render(){
       bindHelpTabs();
       bindHelpFaqTracking();
     }
-    document.addEventListener('keydown',(e)=>{ if(e.key === 'Escape'){ closeHelp(); } });
+    bindTourEvents();
+    window.addEventListener('resize', ()=>{ if(tourState.isOpen) updateTourUI(); });
+    window.addEventListener('scroll', ()=>{ if(tourState.isOpen) updateTourUI(); }, true);
+    document.addEventListener('keydown',(e)=>{
+      if(tourState.isOpen){
+        if(e.key === 'Escape'){
+          skipTour();
+          return;
+        }
+        trapTourFocus(e);
+        return;
+      }
+      if(e.key === 'Escape'){ closeHelp(); }
+    });
 
     // ----------------------- Init / Auth check ------------------------
     loadOverridesFromStorage();
@@ -3561,7 +3920,7 @@ function render(){
     document.addEventListener('click', (e)=>{ const preview = e.target.closest('.previewBtn'); if(preview){ e.preventDefault(); onPreviewClick(preview.dataset.id); } const addSet = e.target.closest('.addSetBtn'); if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); } });
 
     // ---------------- Expose some helpers for debugging ----------------
-    window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile;
+    window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile; window.startTour = startTour;
   </script>
 </body>
 </html>
