@@ -106,6 +106,11 @@
     .helpSection p, .helpSection ul, .helpSection ol { margin-bottom: 8px; }
     .helpSection ul { margin-left: 16px; }
     .helpSection ol { margin-left: 18px; }
+    .helpComing { color: rgba(159,232,255,0.7); font-size: 12px; font-style: italic; display: none; }
+    .helpFaq { border: 1px solid rgba(0,217,255,0.18); background: rgba(255,255,255,0.03); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+    .helpFaq summary { cursor: pointer; font-weight: 700; color: #e6f7ff; list-style: none; }
+    .helpFaq summary::-webkit-details-marker { display: none; }
+    .helpFaq p { margin-top: 6px; color: rgba(230,247,255,0.8); font-size: 13px; }
     .helpDivider { margin: 14px 0; border-color: rgba(0,217,255,0.08); }
     .anchorGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
     .anchorLink { display: block; padding: 10px 12px; border-radius: 10px; background: rgba(0,217,255,0.06); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; text-decoration: none; font-weight: 700; }
@@ -182,341 +187,118 @@
         <div id="helpBasic" data-help-pane="basic">
           <div class="helpSection" id="welcome">
             <h3 data-brand="help-title">Fortnite Jam Mixer Help</h3>
-            <p class="small-muted" data-brand="help-intro">A complete, beginner-to-pro guide for every tool in Fortnite Jam Mixer. Open this help anytime with the ❓ button in the header.</p>
-            <div class="anchorGrid">
-              <a class="anchorLink" href="#quickstart">Quick Start</a>
-              <a class="anchorLink" href="#browse">Browse, Search & Filter</a>
-              <a class="anchorLink" href="#select">Select a Track & Mixable Only</a>
-              <a class="anchorLink" href="#priority">Priority Modes & Strength</a>
-              <a class="anchorLink" href="#setlist">Setlist & Set view</a>
-              <a class="anchorLink" href="#camelot">Camelot Wheel & Harmonic Mixing</a>
-              <a class="anchorLink" href="#internalCamelot" data-brand="help-anchor-camelot">How Fortnite Jam Mixer uses Camelot</a>
-              <a class="anchorLink" href="#export">Export & Import Basics</a>
-            </div>
+            <p class="small-muted" data-brand="help-intro">Simple steps you can follow fast. Start with Quick Start, then skim the sections below.</p>
           </div>
 
           <div class="helpSection" id="quickstart">
-            <h3>Quick Start</h3>
+            <h3>Quick Start (30 seconds)</h3>
             <ol style="line-height:1.6">
-              <li><strong>Browse or search</strong> the song cards. Hovering shows genre, BPM, Camelot key, and ownership.</li>
-              <li><strong>Select a track</strong> (click any card). It becomes the anchor; matching songs bubble to the top.</li>
-              <li><strong>Choose a Priority Mode</strong> (Tempo, Camelot, or Genre) and adjust <strong>Priority Strength</strong> (Low/Medium/High) to steer the tie-breakers.</li>
-              <li><strong>Toggle Mixable Only</strong> when you want strict harmonic/tempo filtering instead of broad suggestions.</li>
-              <li><strong>Add to Set</strong> to start a setlist.</li>
+              <li><strong>Step 1:</strong> Browse tracks.</li>
+              <li><strong>Step 2:</strong> Click a track and hit <strong>+ Set</strong> to add it to <strong>Setlist</strong>.</li>
+              <li><strong>Step 3:</strong> Click <strong>Setlist</strong> to view/remove tracks.</li>
+              <li><strong>Step 4:</strong> Open <strong>Profile</strong> → paste your <strong>Stream URL</strong> → toggle <strong>Go Live</strong>.</li>
+              <li><strong>Step 5:</strong> Click the bright green <strong>LIVE</strong> pill to open your stream.</li>
             </ol>
-            <div class="callout">
-              <div class="calloutTitle">💡 Beginner Tip</div>
-              <p class="small-muted">Start with Camelot Priority + Mixable Only. You’ll see the safest harmonic picks immediately.</p>
-            </div>
           </div>
 
-          <div class="helpSection" id="browse">
-            <h3>Browse, Search & Filter</h3>
+          <div class="helpSection" id="whatsNew">
+            <h3>What’s New</h3>
             <ul>
-              <li><strong>Browse songs</strong> in the main grid. Use the <span class="pill" style="background:rgba(255,107,157,0.18);border:1px solid rgba(255,107,157,0.4);color:#fff;">Genre</span> and <span class="pill" style="background:rgba(0,217,255,0.15);border:1px solid rgba(0,217,255,0.4);color:#fff;">Camelot key</span> pills for quick scanning.</li>
-              <li><strong>Search</strong> by title or artist in the header bar.</li>
-              <li><strong>Filter</strong> with <em>Show All / ✓ Owned Only</em> to narrow to your library.</li>
-              <li><strong>Show Mixable</strong> can stack with search/owned filters to narrow to harmonically compatible songs.</li>
+              <li data-help-feature="hasSetlist" data-help-feature-mode="item">✅ Setlist is now functional</li>
+              <li data-help-feature="hasLiveProfile" data-help-feature-mode="item">✅ Profile supports Stream URL + LIVE status pill</li>
+              <li data-help-feature="hasOfflineMode" data-help-feature-mode="item">✅ Offline browsing uses your last cached tracks</li>
+              <li data-help-feature="hasStatsTiles" data-help-feature-mode="item">✅ Stats tiles explain live/all-time activity</li>
             </ul>
-            <div class="callout">
-              <div class="calloutTitle">🎚️ Pro Tip</div>
-              <p class="small-muted">Use search to find a vibe (e.g., “synthwave”), then toggle Mixable Only to keep only the compatible cuts.</p>
+          </div>
+
+          <div class="helpSection" id="setlist" data-help-feature="hasSetlist">
+            <h3>Setlist</h3>
+            <div data-help-content>
+              <ol>
+                <li>Click <strong>+ Set</strong> on a track to add it.</li>
+                <li>Open the <strong>Setlist</strong> tab to see everything you picked.</li>
+                <li>Remove a song with the <strong>✕</strong> button in Setlist.</li>
+                <li>The count in <strong>Setlist (X)</strong> shows how many tracks are in your list.</li>
+              </ol>
             </div>
+            <p class="helpComing" data-help-coming>Coming soon.</p>
           </div>
 
-          <div class="helpSection" id="select">
-            <h3>Selecting a Track & Mixable Only</h3>
-            <ul>
-              <li><strong>Select a track</strong> by clicking its card. A <span class="selected-badge">Selected</span> badge appears and compatibility scores recalc around it.</li>
-              <li><strong>Mixable Only</strong> (🎧) filters the grid to keys that match the anchor (Camelot match or ±1 number same letter) and sensible BPM ranges. Turn it off to explore looser options.</li>
-              <li><strong>Compatibility pills</strong> show why a song is ranked (key match, BPM delta, genre cohesion).</li>
-            </ul>
-            <div class="callout">
-              <div class="calloutTitle">🔍 Why it matters</div>
-              <p class="small-muted">Mixable Only is perfect before a live transition; turn it off when crate-digging for creative curveballs.</p>
+          <div class="helpSection" id="profileLive" data-help-feature="hasLiveProfile">
+            <h3>Profile: Live Streaming</h3>
+            <div data-help-content>
+              <ol>
+                <li>Open <strong>Profile</strong> and paste your <strong>Stream URL</strong>.</li>
+                <li><strong>Go Live</strong> stays disabled until the URL is valid.</li>
+                <li>When live, the bright green <strong>LIVE</strong> pill opens your stream.</li>
+                <li>Tap <strong>End Live</strong> when you’re done.</li>
+              </ol>
             </div>
+            <p class="helpComing" data-help-coming>Coming soon.</p>
           </div>
 
-          <div class="helpSection" id="priority">
-            <h3>Priority Modes & Strength</h3>
-            <p data-brand="priority-desc">Fortnite Jam Mixer always calculates a blended compatibility score (Key → BPM → Genre). Priority modes only decide how ties are broken, not the overall score.</p>
-            <ul>
-              <li><span class="tag">Tempo Priority</span> Pushes closer BPM tracks up when scores are similar.</li>
-              <li><span class="tag">Camelot Priority</span> Prefers the strongest harmonic matches first.</li>
-              <li><span class="tag">Genre Priority</span> Boosts songs that share the current track’s genre family.</li>
-            </ul>
-            <p><strong>Priority Strength</strong> (Low / Medium / High) controls how aggressively the chosen mode nudges the order. High = strong tie-break, Low = gentle shuffle.</p>
-            <div class="callout">
-              <div class="calloutTitle">🧭 Cue-building idea</div>
-              <p class="small-muted">Use Camelot Priority + High to plan tight harmonic sections, then switch to Tempo Priority when you want to accelerate energy.</p>
+          <div class="helpSection" id="offlineHelp" data-help-feature="hasOfflineMode">
+            <h3>Online vs Offline</h3>
+            <div data-help-content>
+              <ol>
+                <li><strong>Online</strong> means you’re connected and can sync normally.</li>
+                <li><strong>Offline</strong> means no connection; the app uses your last cached tracks.</li>
+                <li>Some profile sync features may wait until you’re back online.</li>
+              </ol>
             </div>
+            <p class="helpComing" data-help-coming>Coming soon.</p>
           </div>
 
-          <div class="helpSection" id="setlist">
-            <h3>Owned Tracks, Setlist & Set view</h3>
-            <ul>
-              <li><strong>Mark Owned</strong> on any card to tag it as part of your library. The <em>Owned Only</em> filter shows just these tracks.</li>
-              <li><strong>+ Set</strong> adds the song to your setlist. Open <strong>Set view</strong> to see, reorder, and remove selections with the ✕ button.</li>
-              <li><strong>Setlist sorting</strong> mirrors your order; reorder inside Set view to shape your show.</li>
-              <li><strong>Profiles & sync</strong> save automatically. With Firebase enabled, your owned list and setlist sync to your account; otherwise they’re stored locally.</li>
-            </ul>
-            <div class="callout">
-              <div class="calloutTitle">🎯 Beginner Tip</div>
-              <p class="small-muted">Curate your first 5 songs with Owned Only + Camelot Priority. Add them to Set to start shaping a show.</p>
+          <div class="helpSection" id="ownedHelp" data-help-feature="hasOwnedToggle">
+            <h3>Owned / Inventory</h3>
+            <div data-help-content>
+              <ol>
+                <li><strong>Owned X/Y</strong> shows how many tracks you marked as owned.</li>
+                <li>Use <strong>Show All</strong> or <strong>✓ Owned Only</strong> to switch views.</li>
+                <li>Tap <strong>Mark Owned</strong> on a card to add it to your inventory.</li>
+              </ol>
             </div>
+            <p class="helpComing" data-help-coming>Coming soon.</p>
           </div>
 
-          <div class="helpSection" id="camelot">
-            <h3>Camelot Wheel: Colors, Numbers & Keys</h3>
-            <p>The Camelot system labels keys with a number (1–12) and letter (A = minor, B = major). Colors below follow the industry-standard Mixed In Key palette so you can recognize keys at a glance.</p>
-            <div class="camelot-wheel" aria-label="Camelot wheel diagram">
-              <svg id="camelotWheelSvg" viewBox="0 0 600 600" role="img" aria-labelledby="camelotTitle camelotDesc" preserveAspectRatio="xMidYMid meet">
-                <title id="camelotTitle">Camelot Wheel</title>
-                <desc id="camelotDesc">Two-ring Camelot wheel with outer B (major) and inner A (minor) wedges labeled with Camelot codes and musical keys.</desc>
-              </svg>
-            </div>
-            <script>
-              (() => {
-                const svg = document.getElementById('camelotWheelSvg');
-                if (!svg) return;
-
-              const NS = 'http://www.w3.org/2000/svg';
-              const cx = 300, cy = 300, segments = 12, slice = 360 / segments;
-
-              const major = [
-                { code: '1B', key: 'B Major' },
-                { code: '2B', key: 'F♯ Major' },
-                { code: '3B', key: 'D♭ Major' },
-                { code: '4B', key: 'A♭ Major' },
-                { code: '5B', key: 'E♭ Major' },
-                { code: '6B', key: 'B♭ Major' },
-                { code: '7B', key: 'F Major' },
-                { code: '8B', key: 'C Major' },
-                { code: '9B', key: 'G Major' },
-                { code: '10B', key: 'D Major' },
-                { code: '11B', key: 'A Major' },
-                { code: '12B', key: 'E Major' }
-              ];
-
-              const minor = [
-                { code: '1A', key: 'A♭ Minor' },
-                { code: '2A', key: 'E♭ Minor' },
-                { code: '3A', key: 'B♭ Minor' },
-                { code: '4A', key: 'F Minor' },
-                { code: '5A', key: 'C Minor' },
-                { code: '6A', key: 'G Minor' },
-                { code: '7A', key: 'D Minor' },
-                { code: '8A', key: 'A Minor' },
-                { code: '9A', key: 'E Minor' },
-                { code: '10A', key: 'B Minor' },
-                { code: '11A', key: 'F♯ Minor' },
-                { code: '12A', key: 'C♯ Minor' }
-              ];
-
-              const majorColors = ['#15c49f','#11c1c9','#2aa8ff','#4d6dff','#a45cf8','#e556b3','#f06473','#f7843f','#f7c54f','#c9e34a','#7ae05c','#3ac88c'];
-              const minorColors = ['#0f9b73','#0fa8c8','#1d98ff','#435bff','#9b4cf4','#d44fc4','#e24d67','#f07a36','#f0b33a','#b9d937','#63d149','#2bb577'];
-
-              const polar = (r, angle) => {
-                const rad = (angle - 90) * Math.PI / 180;
-                return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-              };
-
-              const describeWedge = (outerR, innerR, startAngle, endAngle) => {
-                const outerStart = polar(outerR, startAngle);
-                const outerEnd = polar(outerR, endAngle);
-                const innerEnd = polar(innerR, endAngle);
-                const innerStart = polar(innerR, startAngle);
-                const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
-                return [
-                  'M', outerStart.x, outerStart.y,
-                  'A', outerR, outerR, 0, largeArc, 1, outerEnd.x, outerEnd.y,
-                  'L', innerEnd.x, innerEnd.y,
-                  'A', innerR, innerR, 0, largeArc, 0, innerStart.x, innerStart.y,
-                  'Z'
-                ].join(' ');
-              };
-
-              const addRing = (data, colors, outerRadius, innerRadius, textSize) => {
-                const wedgeGroup = document.createElementNS(NS, 'g');
-                const textGroup = document.createElementNS(NS, 'g');
-                data.forEach((entry, i) => {
-                  const start = -90 + i * slice;
-                  const end = start + slice;
-                  const mid = start + slice / 2;
-
-                  const wedge = document.createElementNS(NS, 'path');
-                  wedge.setAttribute('d', describeWedge(outerRadius, innerRadius, start, end));
-                  wedge.setAttribute('fill', colors[i % colors.length]);
-                  wedge.setAttribute('stroke', 'rgba(0,0,0,0.08)');
-                  wedge.setAttribute('stroke-width', '1');
-                  wedgeGroup.appendChild(wedge);
-
-                  const textRadius = innerRadius + (outerRadius - innerRadius) * 0.52;
-                  const pos = polar(textRadius, mid);
-                  const rotation = (mid > 90 && mid < 270) ? mid + 180 : mid;
-
-                  const label = document.createElementNS(NS, 'text');
-                  label.setAttribute('x', pos.x);
-                  label.setAttribute('y', pos.y);
-                  label.setAttribute('fill', '#f7fbff');
-                  label.setAttribute('font-family', '"Segoe UI", sans-serif');
-                  label.setAttribute('text-anchor', 'middle');
-                  label.setAttribute('dominant-baseline', 'middle');
-                  label.setAttribute('transform', `rotate(${rotation} ${pos.x} ${pos.y})`);
-
-                  const code = document.createElementNS(NS, 'tspan');
-                  code.setAttribute('x', pos.x);
-                  code.setAttribute('dy', '0');
-                  code.setAttribute('font-size', textSize);
-                  code.setAttribute('font-weight', '800');
-                  code.textContent = entry.code;
-
-                  const key = document.createElementNS(NS, 'tspan');
-                  key.setAttribute('x', pos.x);
-                  key.setAttribute('dy', '16');
-                  key.setAttribute('font-size', textSize - 4);
-                  key.setAttribute('font-weight', '600');
-                  key.textContent = entry.key;
-
-                  label.appendChild(code);
-                  label.appendChild(key);
-                  textGroup.appendChild(label);
-                });
-                svg.appendChild(wedgeGroup);
-                svg.appendChild(textGroup);
-              };
-
-              addRing(major, majorColors, 280, 200, 18);
-              addRing(minor, minorColors, 188, 118, 17);
-
-              const center = document.createElementNS(NS, 'circle');
-              center.setAttribute('cx', cx);
-              center.setAttribute('cy', cy);
-              center.setAttribute('r', 90);
-              center.setAttribute('fill', 'rgba(9,14,30,0.9)');
-              center.setAttribute('stroke', 'rgba(255,255,255,0.07)');
-              center.setAttribute('stroke-width', '2');
-              svg.appendChild(center);
-
-              const hubLabel = document.createElementNS(NS, 'text');
-              hubLabel.setAttribute('x', cx);
-              hubLabel.setAttribute('y', cy);
-              hubLabel.setAttribute('fill', '#e6f7ff');
-              hubLabel.setAttribute('text-anchor', 'middle');
-              hubLabel.setAttribute('font-family', '"Segoe UI", sans-serif');
-              hubLabel.setAttribute('font-size', '16');
-              hubLabel.setAttribute('font-weight', '700');
-              hubLabel.textContent = 'Camelot Wheel';
-              svg.appendChild(hubLabel);
-            })();
-          </script>
-          <div class="camelot-caption">Colors: green → teal → blue → purple → magenta → red → orange → yellow → lime (industry-standard Camelot palette). A = minor (inner ring), B = major (outer ring).</div>
-          <h4 style="color:#ffd7a6">Harmonic Mixing Rules</h4>
-          <ul>
-            <li><strong>Perfect match:</strong> same number + same letter (e.g., 8A → 8A).</li>
-            <li><strong>Energy switch:</strong> same number, different letter (e.g., 8A → 8B) for a happy/somber contrast with stable harmony.</li>
-            <li><strong>Smooth move:</strong> +1 or -1 number, same letter (e.g., 8A → 9A or 7A) for gradual energy lifts or drops.</li>
-            <li><strong>Avoid far jumps:</strong> skipping several numbers or flipping both number and letter usually clashes unless you use heavy FX.</li>
-          </ul>
-          <div class="callout">
-            <div class="calloutTitle">🎛️ DJ Tip</div>
-            <p class="small-muted">Ride the wheel clockwise for rising energy. Hop between inner/outer rings on the same number when you want a brighter (major) or moodier (minor) take.</p>
+          <div class="helpSection" id="helpFaq">
+            <h3>Troubleshooting FAQ</h3>
+            <details class="helpFaq" data-help-feature="hasLiveProfile" data-help-feature-mode="item">
+              <summary>Why is Go Live disabled?</summary>
+              <p>Add a valid Stream URL first.</p>
+            </details>
+            <details class="helpFaq" data-help-feature="hasSetlist" data-help-feature-mode="item">
+              <summary>Why can’t I see my Setlist?</summary>
+              <p>Click the Setlist tab and check the count.</p>
+            </details>
+            <details class="helpFaq" data-help-feature="hasOfflineMode" data-help-feature-mode="item">
+              <summary>Why am I in Offline mode?</summary>
+              <p>No connection; the app uses cached tracks.</p>
+            </details>
+            <details class="helpFaq" data-help-feature="hasOwnedToggle" data-help-feature-mode="item">
+              <summary>My Owned count looks wrong</summary>
+              <p>Re-check owned selections or refresh the page.</p>
+            </details>
           </div>
-        </div>
-
-        <div class="helpSection" id="internalCamelot">
-          <h3 data-brand="camelot-heading">How Fortnite Jam Mixer Uses Camelot</h3>
-          <ul>
-            <li><strong>Accurate keys:</strong> Tracks display Camelot values aligned to real song keys. Example: “Don’t Fear the Reaper” is <strong>8A</strong> because the song is in A minor; earlier incorrect tags were fixed in the dataset.</li>
-            <li><strong>Color pills</strong> on each card mirror the Camelot wheel colors so you can glance-match without reading numbers.</li>
-            <li><strong>Unknown keys</strong> show a <strong>?</strong>. They stay visible for discovery, but Mixable Only will skip them because harmonic certainty is missing.</li>
-            <li><strong>Compatibility scoring</strong> prioritizes exact Camelot matches, then ±1 number same letter, then broader tempo/genre factors.</li>
-          </ul>
-          <div class="callout">
-            <div class="calloutTitle">ℹ️ Note</div>
-            <p class="small-muted">If you ever spot a wrong key, corrected tags will update the Mixable filter and color pill instantly.</p>
-          </div>
-        </div>
-        <div class="helpSection" id="export">
-          <h3>Export & Import Basics</h3>
-          <ul>
-            <li><strong>Auto-save first:</strong> Profiles, owned flags, and setlists save automatically to Firebase when signed in, or to local storage when offline.</li>
-            <li><strong>Seamless restore:</strong> Signing in on another device restores your saved data without manual downloads.</li>
-            <li><strong>No manual JSON:</strong> Manual import/export is intentionally disabled to avoid corrupted profiles. Use sign-in or local persistence instead.</li>
-          </ul>
-          <div class="callout">
-            <div class="calloutTitle">📁 Backup note</div>
-            <p class="small-muted">Clearing browser storage resets your offline data. Sign in to keep a cloud copy before wiping a device.</p>
-          </div>
-        </div>
         </div>
 
         <div id="helpAdvanced" data-help-pane="advanced" style="display:none">
-          <div class="helpSection" id="scoreBreakdown">
-            <h3>Score Breakdown</h3>
+          <div class="helpSection" id="sortingHelp">
+            <h3>Sorting / Matching</h3>
             <ul>
-              <li><strong>Camelot first:</strong> Exact Camelot matches score highest, followed by ±1 number in the same letter.</li>
-              <li><strong>BPM fit:</strong> Smaller BPM gaps raise the score; bigger gaps lower it unless you adjust tempo.</li>
-              <li><strong>Genre cohesion:</strong> Matching genres boost tie-breaks when harmonic scores are similar.</li>
-              <li><strong>Priority strength:</strong> The tie-break slider leans rankings toward your chosen focus without changing the underlying blended score.</li>
+              <li><strong>Top Matches</strong> are sorted by overall compatibility first.</li>
+              <li><strong>Tempo / Camelot / Genre</strong> decide how ties get nudged.</li>
+              <li><strong>Priority Strength</strong> changes how hard the tie-break nudge is.</li>
+              <li><strong>Mixable Only</strong> keeps just the safest key + tempo combos.</li>
             </ul>
           </div>
 
-          <div class="helpSection" id="bpmShift">
-            <h3>BPM Shift Meaning</h3>
+          <div class="helpSection" id="compatHints">
+            <h3>Compatibility Hints</h3>
             <ul>
-              <li><strong>Preview popups</strong> show the BPM delta between two tracks and suggest whether a half-time/double-time shift might be needed.</li>
-              <li><strong>Safe zone:</strong> ±4–6 BPM is usually mix-ready; beyond that, expect to ride pitch/tempo controls.</li>
-              <li><strong>Energy planning:</strong> Faster follow-ups raise intensity, while -BPM transitions mellow the room.</li>
-            </ul>
-          </div>
-
-          <div class="helpSection" id="sandbox">
-            <h3>Sandbox Energy & Limits</h3>
-            <ul>
-              <li><strong>Drag any card</strong> into the Sandbox area (max 4 tracks). The readout shows BPM range, key set, and genre-blend percentage for quick energy checks.</li>
-              <li><strong>Reorder</strong> inside the Sandbox to visualize transition flow; delete with ✕ when iterating ideas.</li>
-              <li><strong>Energy arcs:</strong> Line up +1 Camelot steps or gentle BPM climbs to rehearse a rising-energy mini-set before committing it to the main grid.</li>
-            </ul>
-            <div class="callout">
-              <div class="calloutTitle">🧪 Pro Tip</div>
-              <p class="small-muted">Sandbox limits hard-stop at four tracks. Use that cap to force concise, high-impact sequences.</p>
-            </div>
-          </div>
-
-          <div class="helpSection" id="bandMembersHelp">
-            <h3>Band Members (View-only)</h3>
-            <ul>
-              <li>Band member slots stay visible for profiles but are read-only while the feature is paused.</li>
-              <li>You can still browse saved collaborators inside profiles; invites/edits are disabled until the feature returns.</li>
-            </ul>
-          </div>
-
-          <div class="helpSection" id="genreOverridesHelp">
-            <h3>Admin Genre Overrides</h3>
-            <ul>
-              <li>Admin-only tools let you correct a track’s genre when dataset tags are wrong.</li>
-              <li>Overrides sync with your profile storage (cloud when signed in, local when offline) and update mix suggestions immediately.</li>
-              <li>Use overrides sparingly—stick to clear mislabels so setlists and community data stay consistent.</li>
-            </ul>
-          </div>
-
-          <div class="helpSection" id="limitations">
-            <h3>Limitations & Troubleshooting</h3>
-            <ul>
-              <li><strong>Help controls:</strong> Click outside the panel or press Esc to close. Reopening keeps your tab state and scroll per-pane.</li>
-              <li><strong>Reset filters:</strong> Clear search, toggle Mixable Only off/on, or switch Priority Strength back to Medium for balanced results.</li>
-              <li><strong>Offline mode:</strong> Without Firebase, everything stays on this device. Clearing storage wipes local data.</li>
-            </ul>
-          </div>
-
-          <div class="helpSection" id="tips">
-            <h3>Performance Tips</h3>
-            <ul>
-              <li>Enter transitions on phrase boundaries (8 or 16 bars) for cleaner swaps.</li>
-              <li>When BPM differs by more than 6, try a tempo ramp or half-time FX to bridge the gap.</li>
-              <li>Filter sweeps and reverb tails can hide brief key shifts if you intentionally break Camelot rules.</li>
-              <li>Use the Sandbox to rehearse a 3–4 song story: start on a perfect match, climb +1, then flip to the major on the same number for a finale.</li>
+              <li>Look for the 🎧 icon to spot tracks that are mixable with your selected song.</li>
+              <li>The ±BPM chip shows how far the tempo gap is.</li>
+              <li>Camelot and key pills help you see harmonic neighbors fast.</li>
             </ul>
           </div>
         </div>
@@ -3443,6 +3225,31 @@ function render(){
     // Do not reintroduce manual JSON import/export without a migration plan.
 
     // --------------------- Help modal functions -----------------------
+    function getHelpFlags(){
+      return {
+        hasSetlist: !!document.getElementById('setlistBtn'),
+        hasLiveProfile: true,
+        hasOfflineMode: typeof readCachedTracks === 'function' && 'serviceWorker' in navigator,
+        hasOwnedToggle: !!document.getElementById('ownedFilterBtn'),
+        hasStatsTiles: !!document.querySelector('[data-community-stat]')
+      };
+    }
+
+    function applyHelpFlags(flags){
+      document.querySelectorAll('[data-help-feature]').forEach((el) => {
+        const key = el.dataset.helpFeature;
+        const enabled = !!flags[key];
+        if(el.dataset.helpFeatureMode === 'item'){
+          el.style.display = enabled ? '' : 'none';
+          return;
+        }
+        const content = el.querySelector('[data-help-content]');
+        const coming = el.querySelector('[data-help-coming]');
+        if(content) content.style.display = enabled ? '' : 'none';
+        if(coming) coming.style.display = enabled ? 'none' : 'block';
+      });
+    }
+
     function syncHelpTabsA11y(){
       const tabs = document.querySelectorAll('.helpTabBtn');
       tabs.forEach(btn => {
@@ -3485,6 +3292,7 @@ function render(){
     function openHelp(){
       const modal = document.getElementById('helpModal');
       if(!modal) return;
+      applyHelpFlags(getHelpFlags());
       helpTab = 'basic';
       helpScroll = { basic: 0, advanced: 0 };
       setHelpTab('basic');
