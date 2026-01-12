@@ -667,7 +667,8 @@ if (firebaseEnabled) {
       const email = profile.email || profile.mail || '';
       const oauth = profile.oauth || {};
       const isAdmin = profile.isAdmin === true;
-      return { ...profile, username, djName, email, ownedTracks: ownedArray, oauth, isAdmin };
+      const normalizedSetlist = normalizeSetlistIds(profile.setlistIds || profile.setlist || profile.setlists);
+      return { ...profile, username, djName, email, ownedTracks: ownedArray, setlistIds: normalizedSetlist, setlist: normalizedSetlist, setlists: normalizedSetlist, oauth, isAdmin };
     }
     function buildOwnedMap(ids){
       const map = {};
@@ -770,12 +771,20 @@ if (firebaseEnabled) {
     let userKey = null;
     let localDeviceId = localStorage.getItem('localDeviceId') || null;
     let songs = [];
+    let songsById = {};
     let draftProfile = null;
     let ownedTracks = [];
     let selectedSong = null;
     let sortMode = 'bpm';
     let previewSong = null;
-    let setlist = [];
+    let setlistIds = JSON.parse(localStorage.getItem('setlistIds') || '[]');
+    const legacySetlist = JSON.parse(localStorage.getItem('setlist') || 'null');
+    if (Array.isArray(legacySetlist) && legacySetlist.length && !localStorage.getItem('setlistIds')) {
+      setlistIds = legacySetlist.map(x => x?.id).filter(Boolean);
+      localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
+      localStorage.removeItem('setlist');
+    }
+    setlistIds = normalizeSetlistIds(setlistIds);
     let searchTerm = '';
     let view = 'browser';
     let showOwnedOnly = false;
@@ -877,7 +886,7 @@ if (firebaseEnabled) {
       return `${base}_${key}`;
     }
     function migrateLegacyStorage(){
-      const bases = ['ownedTracks','setlist','genreOverrides','sandboxTrackIds'];
+      const bases = ['ownedTracks','setlist','setlistIds','genreOverrides','sandboxTrackIds'];
       bases.forEach(base=>{
         const legacy = localStorage.getItem(base);
         const namespacedKey = getNamespacedKey(base);
@@ -890,13 +899,26 @@ if (firebaseEnabled) {
     function loadNamespacedState(){
       migrateLegacyStorage();
       ownedTracks = JSON.parse(localStorage.getItem(getNamespacedKey('ownedTracks')) || '[]');
-      setlist = JSON.parse(localStorage.getItem(getNamespacedKey('setlist')) || '[]');
+      const namespacedSetlistIdsKey = getNamespacedKey('setlistIds');
+      const namespacedLegacySetlist = JSON.parse(localStorage.getItem(getNamespacedKey('setlist')) || 'null');
+      const namespacedSetlistIds = JSON.parse(localStorage.getItem(namespacedSetlistIdsKey) || 'null');
+      if(!localStorage.getItem('setlistIds')){
+        if(Array.isArray(namespacedSetlistIds) && namespacedSetlistIds.length){
+          localStorage.setItem('setlistIds', JSON.stringify(normalizeSetlistIds(namespacedSetlistIds)));
+        } else if(Array.isArray(namespacedLegacySetlist) && namespacedLegacySetlist.length){
+          setlistIds = normalizeSetlistIds(namespacedLegacySetlist);
+          localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
+          localStorage.removeItem(getNamespacedKey('setlist'));
+        }
+      }
+      setlistIds = normalizeSetlistIds(JSON.parse(localStorage.getItem('setlistIds') || '[]'));
       genreOverrides = JSON.parse(localStorage.getItem(getNamespacedKey('genreOverrides')) || '{}');
       sandboxIds = JSON.parse(localStorage.getItem(getNamespacedKey('sandboxTrackIds')) || '[]');
     }
     function persistNamespacedState(){
       localStorage.setItem(getNamespacedKey('ownedTracks'), JSON.stringify(ownedTracks));
-      localStorage.setItem(getNamespacedKey('setlist'), JSON.stringify(setlist));
+      localStorage.setItem(getNamespacedKey('setlistIds'), JSON.stringify(setlistIds));
+      localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
       localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
       localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
     }
@@ -1331,6 +1353,11 @@ if (firebaseEnabled) {
       const arr = Array.isArray(ids) ? ids.filter(Boolean) : [];
       return Array.from(new Set(arr)).sort();
     }
+    function normalizeSetlistIds(ids){
+      if(!Array.isArray(ids)) return [];
+      const list = ids.map(item => (typeof item === 'string' ? item : item?.id)).filter(Boolean);
+      return Array.from(new Set(list));
+    }
     async function persistCurrentUserProfile(){
       console.debug('[profile] save clicked', { draftProfile, currentUser });
       if(viewingProfile) throw new Error('Cannot save while viewing another profile');
@@ -1347,8 +1374,8 @@ if (firebaseEnabled) {
           username: currentUser.username,
           djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
           ownedTracks,
-          setlists: currentUser.setlists || setlist || [],
-          setlist: setlist || [],
+          setlists: setlistIds || [],
+          setlist: setlistIds || [],
           bandMembers,
           genreOverrides,
           oauth: currentUser.oauth || {},
@@ -1653,7 +1680,7 @@ if (firebaseEnabled) {
         return;
       }
       const username = getLocalDeviceId();
-      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, isAdmin: false };
+      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlistIds: [], setlists: [], setlist: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, isAdmin: false };
       currentUser = applyAdminFlag(offlineProfile);
       await persistAdminFlagIfNeeded(offlineProfile, currentUser);
       localStorage.setItem('currentUser', currentUser.username);
@@ -1768,6 +1795,7 @@ if (firebaseEnabled) {
     function hasMeaningfulData(profile){
       if(!profile) return false;
       return (profile.ownedTracks && profile.ownedTracks.length) ||
+        (profile.setlistIds && profile.setlistIds.length) ||
         (profile.setlist && profile.setlist.length) ||
         (profile.setlists && profile.setlists.length) ||
         (profile.genreOverrides && Object.keys(profile.genreOverrides).length) ||
@@ -1776,7 +1804,9 @@ if (firebaseEnabled) {
 
     async function promptLocalImport(firebaseUsername){
       const localOwned = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
-      const localSet = JSON.parse(localStorage.getItem('setlist') || '[]');
+      const legacyLocalSet = JSON.parse(localStorage.getItem('setlist') || '[]');
+      const localSetIds = normalizeSetlistIds(JSON.parse(localStorage.getItem('setlistIds') || '[]'));
+      const localSet = localSetIds.length ? localSetIds : normalizeSetlistIds(legacyLocalSet);
       const localGenre = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
 
@@ -1815,6 +1845,7 @@ if (firebaseEnabled) {
           if(deviceDataAvailable){
             return resolve({
               ownedTracks: localOwned,
+              setlistIds: localSet,
               setlist: localSet,
               setlists: localSet,
               genreOverrides: localGenre
@@ -1847,8 +1878,9 @@ if (firebaseEnabled) {
           username: profile.username || defaultUsername,
           djName: profile.djName || defaultUsername,
           ownedTracks: importedProfile?.ownedTracks || profile.ownedTracks || ownedTracks || [],
-          setlists: importedProfile?.setlists || profile.setlists || setlist || [],
-          setlist: importedProfile?.setlist || profile.setlist || profile.setlists || setlist || [],
+          setlistIds: importedProfile?.setlistIds || profile.setlistIds || importedProfile?.setlist || profile.setlist || profile.setlists || setlistIds || [],
+          setlists: importedProfile?.setlists || profile.setlists || setlistIds || [],
+          setlist: importedProfile?.setlist || profile.setlist || profile.setlists || setlistIds || [],
           bandMembers: importedProfile?.bandMembers || profile.bandMembers || bandMembers || [],
           genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {},
           oauth: profile.oauth || {},
@@ -1861,7 +1893,7 @@ if (firebaseEnabled) {
         loadOverridesFromStorage();
         await loadUserOverridesFromBackend();
         ownedTracks = currentUser.ownedTracks || [];
-        setlist = currentUser.setlist || currentUser.setlists || [];
+        setlistIds = normalizeSetlistIds(currentUser.setlistIds || currentUser.setlist || currentUser.setlists || []);
         bandMembers = currentUser.bandMembers || [];
         genreOverrides = currentUser.genreOverrides || {};
         refreshDraftProfileFromCurrentUser();
@@ -1957,7 +1989,7 @@ window.handleLogin = async (event) => {
         applyPreferencesFromProfile(currentUser);
       }
       else {
-        const baseProfile = { username, djName, ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {}, isAdmin: false };
+        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, isAdmin: false };
         currentUser = applyAdminFlag(baseProfile);
         await persistAdminFlagIfNeeded(baseProfile, currentUser);
       }
@@ -1973,7 +2005,7 @@ window.handleLogin = async (event) => {
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
-      currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
+      currentUser = null; draftProfile = null; ownedTracks = []; setlistIds = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
       localStorage.removeItem('currentUser');
       showLoginScreen();
     }
@@ -2009,6 +2041,7 @@ window.handleLogin = async (event) => {
               return enriched;
             }).filter(s=>s && s.bpm>0);
             songs.sort((a,b)=>a.title.localeCompare(b.title));
+            songsById = Object.fromEntries(songs.map(s => [s.id, s]));
             regressionWarnings = knownCorrections.filter(kc=>{
               const track = songs.find(s=>s.id===kc.id);
               return track && track.camelot !== kc.expectedCamelot;
@@ -2029,6 +2062,7 @@ window.handleLogin = async (event) => {
         console.warn('Using cached track data');
         songs = cachedTracks;
         songs.forEach(hydrateKeyInfo);
+        songsById = Object.fromEntries(songs.map(s => [s.id, s]));
         trackSource = 'cache';
         songsLoaded = true;
         logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
@@ -2038,6 +2072,7 @@ window.handleLogin = async (event) => {
       console.warn('endpoints failed, using fallback sample');
       songs = SAMPLE_TRACKS;
       songs.forEach(hydrateKeyInfo);
+      songsById = Object.fromEntries(songs.map(s => [s.id, s]));
       trackSource = 'fallback';
       songsLoaded = true;
       logEvent('songs_fetch_fail', { message: 'network+cache miss; using fallback' });
@@ -2229,7 +2264,7 @@ window.handleLogin = async (event) => {
               <button onclick="selectSong('${song.id}')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
               <button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-id="${song.id}">Preview</button>
               <button onclick="toggleOwned('${song.id}')" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
-              <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Set</button>
+              <button data-action="addSet" data-id="${song.id}" class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Set</button>
               <button onclick="addToSandbox('${song.id}')" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Sandbox</button>
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
@@ -2272,11 +2307,43 @@ window.handleLogin = async (event) => {
 
     function renderSetlist(){
       const setlistEl = document.getElementById('setlistContent'); if(!setlistEl) return;
-      if(setlist.length===0){
-        setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button onclick="switchView('browser')" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
-      } else {
-        setlistEl.innerHTML = `<div class="space-y-4">${setlist.map((song,i)=>`<div class="bg-black/40 backdrop-blur-sm border border-gray-700 rounded-xl p-4 flex items-center gap-4 hover:border-cyan-400 transition"><div class="text-2xl font-bold text-pink-400">${i+1}</div>${song.albumArt?`<img src="${song.albumArt}" class="w-16 h-16 rounded-lg"/>`:''}<div class="flex-1"><div class="font-bold text-lg text-white">${song.title}</div><div class="text-gray-300">${song.artist}</div><div class="text-xs text-orange-300">${song.genre}</div></div><div class="text-xl font-mono font-bold" style="color:${camelotColors[song.camelot]}">${song.camelot}</div><button onclick="removeFromSetlist('${song.id}')" class="p-2 hover:bg-red-500/20 rounded text-red-400 text-xl">✕</button></div>`).join('')}</div>`;
+      if(setlistIds.length===0){
+        setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button data-action="switchView" data-view="browser" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
+        return;
       }
+      if(!songsById || Object.keys(songsById).length === 0){
+        setlistEl.innerHTML = `<div class="text-center py-12 text-white space-y-3">
+          <div class="text-4xl">⏳</div>
+          <p class="text-lg font-semibold">Loading tracks…</p>
+          <p class="text-sm text-gray-300">Setlist will appear in a moment.</p>
+        </div>`;
+        return;
+      }
+      const setlistRows = setlistIds.map((id, i)=>{
+        const song = songsById[id];
+        if(!song){
+          return `<div class="bg-black/40 backdrop-blur-sm border border-red-500/40 rounded-xl p-4 flex items-center gap-4 hover:border-red-400 transition">
+            <div class="text-2xl font-bold text-pink-400">${i+1}</div>
+            <div class="flex-1">
+              <div class="font-bold text-lg text-white">Missing track</div>
+              <div class="text-gray-300 text-sm">Track ID: <span class="font-mono text-orange-300">${id}</span></div>
+            </div>
+            <button data-action="removeSet" data-id="${id}" class="p-2 hover:bg-red-500/20 rounded text-red-400 text-xl">✕</button>
+          </div>`;
+        }
+        return `<div class="bg-black/40 backdrop-blur-sm border border-gray-700 rounded-xl p-4 flex items-center gap-4 hover:border-cyan-400 transition">
+          <div class="text-2xl font-bold text-pink-400">${i+1}</div>
+          ${song.albumArt?`<img src="${song.albumArt}" class="w-16 h-16 rounded-lg"/>`:''}
+          <div class="flex-1">
+            <div class="font-bold text-lg text-white">${song.title}</div>
+            <div class="text-gray-300">${song.artist}</div>
+            <div class="text-xs text-orange-300">${song.genre}</div>
+          </div>
+          <div class="text-xl font-mono font-bold" style="color:${camelotColors[song.camelot]}">${song.camelot}</div>
+          <button data-action="removeSet" data-id="${song.id}" class="p-2 hover:bg-red-500/20 rounded text-red-400 text-xl">✕</button>
+        </div>`;
+      }).join('');
+      setlistEl.innerHTML = `<div class="space-y-4">${setlistRows}</div>`;
     }
 
     function renderProfile(){
@@ -2498,7 +2565,7 @@ window.handleLogin = async (event) => {
 
     async function migrateUsername(oldUsername,newUsername,newDjName){
       const status = document.getElementById('profileStatus');
-      const merged = applyAdminFlag({ ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlist, setlists:setlist, bandMembers, genreOverrides, preferences: currentUser.preferences || { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength } });
+      const merged = applyAdminFlag({ ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlistIds, setlist:setlistIds, setlists:setlistIds, bandMembers, genreOverrides, preferences: currentUser.preferences || { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength } });
       await persistAdminFlagIfNeeded(currentUser, merged);
       if(firestore){
         try{
@@ -2664,9 +2731,9 @@ function render(){
       <main class="max-w-[1400px] mx-auto px-4 py-6 pb-20 space-y-4">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div class="flex gap-2 flex-wrap">
-            <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
-            <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
-            <button id="profileBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
+            <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
+            <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlistIds.length}</span>)</button>
+            <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
           </div>
           ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
         </div>
@@ -2892,14 +2959,6 @@ function render(){
       const app = document.getElementById('app');
       if(!app) return;
       app.addEventListener('click', (e)=>{
-        const addSet = e.target.closest('.addSetBtn');
-        if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); return; }
-        const viewBtn = e.target.closest('#browserBtn, #setlistBtn, #profileBtn, #auditBtn');
-        if(viewBtn){
-          const viewMap = { browserBtn:'browser', setlistBtn:'setlist', profileBtn:'profile', auditBtn:'audit' };
-          const targetView = viewMap[viewBtn.id];
-          if(targetView){ switchView(targetView); }
-        }
         if(e.target.closest('#mixableFilterBtn')){ toggleMixableFilter(); }
         if(e.target.closest('#ownedFilterBtn')){ toggleOwnedFilter(); }
         if(e.target.closest('#clearSearchBtn') || e.target.closest('#panelClearSearchBtn')){ clearSearch(); }
@@ -2963,6 +3022,31 @@ function render(){
         }
       }
     }
+
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-action]');
+      if (!el) return;
+
+      const action = el.dataset.action;
+
+      if (action === 'addSet') {
+        e.preventDefault();
+        addToSetlist(el.dataset.id);
+        return;
+      }
+
+      if (action === 'removeSet') {
+        e.preventDefault();
+        removeFromSetlist(el.dataset.id);
+        return;
+      }
+
+      if (action === 'switchView') {
+        e.preventDefault();
+        switchView(el.dataset.view);
+        return;
+      }
+    });
 
     window.setPriorityStrength = (val) => {
       const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
@@ -3085,21 +3169,26 @@ function render(){
       setupEventListeners();
     };
 
+    function updateSetlistCountUI(){
+      const el = document.getElementById('setlistCount');
+      if(el) el.textContent = setlistIds.length;
+    }
+
     window.addToSetlist = (id) => {
-      const song = songs.find(s=>s.id===id); if(!song) return;
-      if(!setlist.find(s=>s.id===id)){
-        setlist.push(song);
-        persistNamespacedState();
-        const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
-        if(view==='setlist') renderSetlist(); else { if(countEl){ countEl.classList.add('animate-pulse'); setTimeout(()=>countEl.classList.remove('animate-pulse'),800); } }
+      if(!id) return;
+      if(!setlistIds.includes(id)){
+        setlistIds.push(id);
+        localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
+        updateSetlistCountUI();
+        if(view === 'setlist') renderSetlist();
       }
     };
 
     window.removeFromSetlist = (id) => {
-      setlist = setlist.filter(s=>s.id!==id);
-      persistNamespacedState();
+      setlistIds = setlistIds.filter(x => x !== id);
+      localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
+      updateSetlistCountUI();
       renderSetlist();
-      const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
     };
 
     window.switchView = (newView) => {
