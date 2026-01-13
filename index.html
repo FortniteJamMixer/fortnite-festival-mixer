@@ -57,6 +57,14 @@
     @media (min-width: 768px) {
       .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
+    .live-carousel { scroll-snap-type: x mandatory; scroll-behavior: smooth; }
+    .live-carousel > * { scroll-snap-align: start; }
+    .live-carousel.dragging { cursor: grabbing; }
+    .live-carousel::-webkit-scrollbar { height: 6px; }
+    .live-carousel::-webkit-scrollbar-thumb { background: rgba(79,70,229,0.6); border-radius: 999px; }
+    .rating-star { color: rgba(255,255,255,0.35); transition: transform 0.15s ease, color 0.15s ease; }
+    .rating-star.active { color: #fbbf24; transform: translateY(-1px) scale(1.05); }
+    .rating-star-display { color: #fbbf24; }
 
     /* Help modal */
     #helpModal {
@@ -549,10 +557,45 @@ function track(eventName, payload = {}){
     function normalizeLiveProfileFields(profile){
       const streamUrl = normalizeStreamUrlInput(profile?.streamUrl || '');
       const streamUrlValid = isValidStreamUrl(streamUrl);
+      const liveStartedAt = streamUrlValid ? (profile?.liveStartedAt || profile?.liveSince || null) : null;
       return {
         streamUrl,
         isLive: streamUrlValid ? profile?.isLive === true : false,
-        liveSince: streamUrlValid ? (profile?.liveSince || null) : null
+        liveStartedAt
+      };
+    }
+    const RATING_TAGS = ['Vibes', 'Transitions', 'Song Selection', 'Crowd Control', 'FX', 'Mixing'];
+    const RATING_MAX_COMMENT = 140;
+    const RATING_UPDATE_LIMIT = 3;
+    const RATING_WINDOW_MS = 60 * 60 * 1000;
+
+    function normalizeRatingBreakdown(breakdown){
+      const base = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+      if(!breakdown) return base;
+      Object.keys(base).forEach(key=>{
+        const val = Number(breakdown[key] ?? breakdown[Number(key)]);
+        base[key] = Number.isFinite(val) && val > 0 ? Math.floor(val) : 0;
+      });
+      return base;
+    }
+
+    function computeRatingAggregates(breakdown){
+      const ratingBreakdown = normalizeRatingBreakdown(breakdown);
+      const ratingCount = Object.values(ratingBreakdown).reduce((sum, val)=> sum + val, 0);
+      const totalStars = Object.entries(ratingBreakdown).reduce((sum, [stars, count])=> sum + (Number(stars) * count), 0);
+      const avgRating = ratingCount ? Number((totalStars / ratingCount).toFixed(2)) : 0;
+      return { avgRating, ratingCount, ratingBreakdown };
+    }
+
+    function normalizeRatingFields(profile){
+      const ratingBreakdown = normalizeRatingBreakdown(profile?.ratingBreakdown);
+      const computed = computeRatingAggregates(ratingBreakdown);
+      const avgCandidate = Number(profile?.avgRating);
+      const countCandidate = Number(profile?.ratingCount);
+      return {
+        avgRating: Number.isFinite(avgCandidate) ? avgCandidate : computed.avgRating,
+        ratingCount: Number.isFinite(countCandidate) ? countCandidate : computed.ratingCount,
+        ratingBreakdown: ratingBreakdown
       };
     }
 
@@ -568,7 +611,8 @@ function track(eventName, payload = {}){
       const isAdmin = profile.isAdmin === true;
       const normalizedSetlist = normalizeSetlistIds(profile.setlistIds || profile.setlist || profile.setlists);
       const liveDefaults = normalizeLiveProfileFields(profile);
-      return { ...profile, ...liveDefaults, username, djName, email, ownedTracks: ownedArray, setlistIds: normalizedSetlist, setlist: normalizedSetlist, setlists: normalizedSetlist, oauth, isAdmin };
+      const ratingDefaults = normalizeRatingFields(profile);
+      return { ...profile, ...liveDefaults, ...ratingDefaults, username, djName, email, ownedTracks: ownedArray, setlistIds: normalizedSetlist, setlist: normalizedSetlist, setlists: normalizedSetlist, oauth, isAdmin };
     }
     function buildOwnedMap(ids){
       const map = {};
@@ -631,6 +675,127 @@ function track(eventName, payload = {}){
         if (profiles[fallbackName]) return normalizeProfileShape(profiles[fallbackName], fallbackName);
       }
       return identifier ? normalizeProfileShape(profiles[identifier], identifier) || null : null;
+    }
+
+    function getStreamPlatformInfo(streamUrl){
+      if(!streamUrl) return { label: 'Other', icon: '🌐' };
+      try{
+        const host = new URL(streamUrl).hostname.replace('www.','').toLowerCase();
+        if(host.includes('twitch')) return { label: 'Twitch', icon: '🟣' };
+        if(host.includes('youtube') || host.includes('youtu.be')) return { label: 'YouTube', icon: '🔴' };
+        if(host.includes('kick')) return { label: 'Kick', icon: '🟢' };
+        if(host.includes('tiktok')) return { label: 'TikTok', icon: '🎵' };
+      }catch(_){}
+      return { label: 'Other', icon: '🌐' };
+    }
+
+    function getProfileRatingDisplay(profile){
+      const ratingCount = Number(profile?.ratingCount) || 0;
+      const avgRating = Number(profile?.avgRating) || 0;
+      const roundedStars = Math.round(avgRating);
+      const stars = Array.from({ length: 5 }, (_, i)=> i < roundedStars ? '★' : '☆').join('');
+      return { ratingCount, avgRating, stars };
+    }
+
+    function renderRatingBreakdownBars(breakdown, ratingCount){
+      if(!ratingCount) return '';
+      return `<div class="space-y-2">
+        ${[5,4,3,2,1].map(star=>{
+          const count = breakdown[String(star)] || 0;
+          const pct = ratingCount ? Math.round((count / ratingCount) * 100) : 0;
+          return `<div class="flex items-center gap-2 text-xs text-gray-300">
+            <div class="w-6 text-right">${star}★</div>
+            <div class="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+              <div class="h-full bg-amber-400/80" style="width:${pct}%;"></div>
+            </div>
+            <div class="w-10 text-right text-gray-400">${count}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+
+    function getLocalRatings(){
+      return JSON.parse(localStorage.getItem('ratings') || '{}');
+    }
+
+    function saveLocalRatings(ratings){
+      localStorage.setItem('ratings', JSON.stringify(ratings));
+    }
+
+    async function getExistingRating(streamerUsername, raterUsername){
+      if(!streamerUsername || !raterUsername) return null;
+      if(firestore){
+        try{
+          const doc = await firestore.collection('users').doc(streamerUsername).collection('ratings').doc(raterUsername).get();
+          return doc.exists ? doc.data() : null;
+        }catch(err){ console.warn('rating load failed', err); }
+      }
+      const ratings = getLocalRatings();
+      return ratings?.[streamerUsername]?.[raterUsername] || null;
+    }
+
+    function updateAggregatesWithRating(profile, previousStars, nextStars){
+      const ratingBreakdown = normalizeRatingBreakdown(profile?.ratingBreakdown);
+      let ratingCount = Math.max(0, Number(profile?.ratingCount) || 0);
+      if(previousStars){
+        const prevKey = String(previousStars);
+        ratingBreakdown[prevKey] = Math.max(0, (ratingBreakdown[prevKey] || 0) - 1);
+      } else {
+        ratingCount += 1;
+      }
+      const nextKey = String(nextStars);
+      ratingBreakdown[nextKey] = (ratingBreakdown[nextKey] || 0) + 1;
+      const computed = computeRatingAggregates(ratingBreakdown);
+      ratingCount = Math.max(ratingCount, computed.ratingCount);
+      return { avgRating: computed.avgRating, ratingCount, ratingBreakdown };
+    }
+
+    function checkRatingUpdateLimit(streamerUsername, raterUsername){
+      const now = Date.now();
+      const logs = JSON.parse(localStorage.getItem('ratingUpdateLog') || '{}');
+      const streamerLog = logs[streamerUsername] || {};
+      const updates = (streamerLog[raterUsername] || []).filter(ts => now - ts < RATING_WINDOW_MS);
+      if(updates.length >= RATING_UPDATE_LIMIT){
+        const oldest = updates[0];
+        return { allowed: false, retryAt: oldest + RATING_WINDOW_MS };
+      }
+      return { allowed: true, updates, logs };
+    }
+
+    function recordRatingUpdate(streamerUsername, raterUsername, updates, logs){
+      const now = Date.now();
+      const nextUpdates = [...updates, now];
+      const streamerLog = logs[streamerUsername] || {};
+      streamerLog[raterUsername] = nextUpdates;
+      logs[streamerUsername] = streamerLog;
+      localStorage.setItem('ratingUpdateLog', JSON.stringify(logs));
+    }
+
+    async function getLiveUsers(){
+      if(firestore){
+        try{
+          const snap = await firestore.collection('users')
+            .where('isLive','==',true)
+            .orderBy('liveStartedAt','desc')
+            .get();
+          return snap.docs
+            .map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id))
+            .filter(profile=> isValidStreamUrl(profile.streamUrl));
+        }catch(err){
+          console.warn('live users query failed', err);
+        }
+      }
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      const unique = {};
+      Object.values(profiles)
+        .map(profile=> normalizeProfileShape(profile, profile?.username || profile?.uid || ''))
+        .filter(profile=> profile?.isLive && isValidStreamUrl(profile.streamUrl))
+        .forEach(profile=>{
+          const key = profile?.username || profile?.uid;
+          if(key && !unique[key]) unique[key] = profile;
+        });
+      return Object.values(unique)
+        .sort((a,b)=> new Date(b.liveStartedAt || 0) - new Date(a.liveStartedAt || 0));
     }
 
     // ---------------------------- Data ------------------------------
@@ -696,6 +861,16 @@ function track(eventName, payload = {}){
     let friendSearchTerm = '';
     let friendLookupError = '';
     let friendLookupResults = [];
+    let liveNowUsers = [];
+    let liveNowLoading = false;
+    let liveNowLoadedAt = 0;
+    let liveNowError = '';
+    let ratingDraft = { stars: 0, tags: [], comment: '', hasExisting: false };
+    let ratingLoadedFor = '';
+    let ratingLoading = false;
+    let ratingSubmitting = false;
+    let ratingStatusMessage = '';
+    let ratingStatusTone = 'info';
     let genreOverrides = {};
     let sandboxTracks = [];
     let sandboxIds = [];
@@ -1530,7 +1705,7 @@ function track(eventName, payload = {}){
           genreOverrides,
           streamUrl: normalizedStreamUrl,
           isLive: streamUrlValid ? currentUser.isLive === true : false,
-          liveSince: streamUrlValid ? (currentUser.liveSince || null) : null,
+          liveStartedAt: streamUrlValid ? (currentUser.liveStartedAt || currentUser.liveSince || null) : null,
           oauth: currentUser.oauth || {},
           tour: currentUser.tour || {},
           preferences: {
@@ -1602,6 +1777,101 @@ function track(eventName, payload = {}){
       }catch(err){ console.warn('profile lookup failed', err); return []; }
     }
 
+    async function refreshLiveNowUsers(){
+      if(liveNowLoading) return;
+      liveNowLoading = true;
+      liveNowError = '';
+      try{
+        liveNowUsers = await getLiveUsers();
+        liveNowLoadedAt = Date.now();
+      }catch(err){
+        liveNowError = 'Unable to load live profiles right now.';
+      }finally{
+        liveNowLoading = false;
+        renderProfile();
+        setupEventListeners();
+      }
+    }
+
+    function ensureLiveNowLoaded(){
+      const stale = Date.now() - liveNowLoadedAt > 30000;
+      if((!liveNowLoadedAt || stale) && !liveNowLoading){
+        refreshLiveNowUsers();
+      }
+    }
+
+    async function ensureRatingLoaded(streamerUsername){
+      if(!streamerUsername || ratingLoadedFor === streamerUsername || ratingLoading) return;
+      ratingLoadedFor = streamerUsername;
+      ratingLoading = true;
+      ratingDraft = { stars: 0, tags: [], comment: '', hasExisting: false };
+      if(!currentUser){
+        ratingLoading = false;
+        return;
+      }
+      try{
+        const existing = await getExistingRating(streamerUsername, currentUser.username);
+        if(existing){
+          ratingDraft = {
+            stars: Number(existing.stars) || 0,
+            tags: Array.isArray(existing.tags) ? existing.tags : [],
+            comment: existing.comment || '',
+            hasExisting: true
+          };
+        }
+      }catch(err){
+        console.warn('rating preload failed', err);
+      }finally{
+        ratingLoading = false;
+        renderProfile();
+        setupEventListeners();
+      }
+    }
+
+    function updateRatingStarsUI(){
+      const starRow = document.getElementById('ratingStarRow');
+      if(!starRow) return;
+      starRow.querySelectorAll('[data-star]').forEach(btn=>{
+        const starVal = Number(btn.dataset.star);
+        if(starVal <= ratingDraft.stars){
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+        btn.textContent = starVal <= ratingDraft.stars ? '★' : '☆';
+      });
+    }
+
+    function updateRatingTagsUI(){
+      const tagRow = document.getElementById('ratingTagRow');
+      if(!tagRow) return;
+      tagRow.querySelectorAll('[data-tag]').forEach(btn=>{
+        const tag = btn.dataset.tag;
+        if(ratingDraft.tags.includes(tag)){
+          btn.classList.add('border-emerald-400/60','bg-emerald-500/20','text-emerald-100');
+          btn.classList.remove('border-white/10','bg-white/5','text-gray-200');
+        } else {
+          btn.classList.remove('border-emerald-400/60','bg-emerald-500/20','text-emerald-100');
+          btn.classList.add('border-white/10','bg-white/5','text-gray-200');
+        }
+      });
+    }
+
+    window.setRatingStar = (value)=>{
+      ratingDraft.stars = Number(value) || 0;
+      updateRatingStarsUI();
+    };
+
+    window.toggleRatingTag = (tag)=>{
+      if(!RATING_TAGS.includes(tag)) return;
+      if(ratingDraft.tags.includes(tag)){
+        ratingDraft.tags = ratingDraft.tags.filter(t=> t !== tag);
+      } else {
+        ratingDraft.tags = [...ratingDraft.tags, tag];
+      }
+      updateRatingTagsUI();
+    };
+
     function openFriendProfile(profile){
       if(!profile) return;
       viewingProfile = normalizeProfileShape(profile, profile.uid || profile.username || '');
@@ -1609,6 +1879,10 @@ function track(eventName, payload = {}){
       setProfileQueryParam(viewingProfile?.username || viewingProfile?.uid || '');
       friendLookupResults = [];
       friendLookupError = '';
+      ratingStatusMessage = '';
+      ratingStatusTone = 'info';
+      ratingLoadedFor = '';
+      ratingDraft = { stars: 0, tags: [], comment: '', hasExisting: false };
       view = 'profile';
       render();
       setupEventListeners();
@@ -1654,6 +1928,113 @@ function track(eventName, payload = {}){
       setupEventListeners();
     }
 
+    window.viewLiveProfile = async (username)=>{
+      if(!username) return;
+      if(!firebaseAuth?.currentUser){
+        friendLookupError = 'Sign in required to view other profiles.';
+        renderProfile(); setupEventListeners(); return;
+      }
+      const profile = await loadProfileForViewing(username);
+      if(profile){
+        openFriendProfile(profile);
+      } else {
+        friendLookupError = `No profile found for ‘${username}’`;
+        renderProfile(); setupEventListeners();
+      }
+    };
+
+    window.submitRating = async ()=>{
+      ratingStatusMessage = '';
+      ratingStatusTone = 'info';
+      if(!currentUser){
+        ratingStatusMessage = 'Sign in required to rate this DJ.';
+        ratingStatusTone = 'error';
+        renderProfile(); setupEventListeners(); return;
+      }
+      if(!viewingProfile){
+        ratingStatusMessage = 'Open a profile to rate.';
+        ratingStatusTone = 'error';
+        renderProfile(); setupEventListeners(); return;
+      }
+      const streamerUsername = viewingProfile.username || viewingProfile.uid;
+      if(!streamerUsername){
+        ratingStatusMessage = 'Missing streamer profile.';
+        ratingStatusTone = 'error';
+        renderProfile(); setupEventListeners(); return;
+      }
+      const stars = Number(ratingDraft.stars) || 0;
+      if(stars < 1 || stars > 5){
+        ratingStatusMessage = 'Select a 1–5 star rating.';
+        ratingStatusTone = 'error';
+        renderProfile(); setupEventListeners(); return;
+      }
+      const comment = (ratingDraft.comment || '').trim();
+      if(comment.length > RATING_MAX_COMMENT){
+        ratingStatusMessage = `Comment too long. Max ${RATING_MAX_COMMENT} characters.`;
+        ratingStatusTone = 'error';
+        renderProfile(); setupEventListeners(); return;
+      }
+      const tags = Array.isArray(ratingDraft.tags) ? ratingDraft.tags.filter(tag=> RATING_TAGS.includes(tag)) : [];
+      if(tags.length !== (ratingDraft.tags || []).length){
+        ratingStatusMessage = 'Remove invalid tags before submitting.';
+        ratingStatusTone = 'error';
+        renderProfile(); setupEventListeners(); return;
+      }
+      const rateCheck = checkRatingUpdateLimit(streamerUsername, currentUser.username);
+      if(!rateCheck.allowed){
+        const minutes = Math.ceil((rateCheck.retryAt - Date.now()) / 60000);
+        ratingStatusMessage = `Too many updates. Try again in ${minutes} min.`;
+        ratingStatusTone = 'error';
+        renderProfile(); setupEventListeners(); return;
+      }
+      ratingSubmitting = true;
+      renderProfile(); setupEventListeners();
+      try{
+        const previousRating = await getExistingRating(streamerUsername, currentUser.username);
+        const updatedAt = new Date().toISOString();
+        const ratingPayload = { stars, tags, comment, updatedAt };
+        if(firestore){
+          const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+          await firestore.collection('users').doc(streamerUsername).collection('ratings').doc(currentUser.username)
+            .set({ ...ratingPayload, updatedAt: serverTimestamp ? serverTimestamp() : updatedAt }, { merge: true });
+          const profileDoc = await firestore.collection('users').doc(streamerUsername).get();
+          const baseProfile = profileDoc.exists ? normalizeProfileShape(profileDoc.data(), streamerUsername) : viewingProfile;
+          const aggregates = updateAggregatesWithRating(baseProfile || {}, previousRating?.stars, stars);
+          await firestore.collection('users').doc(streamerUsername).set(aggregates, { merge: true });
+          viewingProfile = viewingProfile && (viewingProfile.username === streamerUsername || viewingProfile.uid === streamerUsername)
+            ? { ...viewingProfile, ...aggregates }
+            : viewingProfile;
+        } else {
+          const ratings = getLocalRatings();
+          ratings[streamerUsername] = ratings[streamerUsername] || {};
+          ratings[streamerUsername][currentUser.username] = ratingPayload;
+          saveLocalRatings(ratings);
+          const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+          const existingProfile = normalizeProfileShape(profiles[streamerUsername] || viewingProfile || { username: streamerUsername }, streamerUsername);
+          const aggregates = updateAggregatesWithRating(existingProfile || {}, previousRating?.stars, stars);
+          const mergedProfile = { ...(profiles[streamerUsername] || {}), ...existingProfile, ...aggregates };
+          profiles[streamerUsername] = mergedProfile;
+          localStorage.setItem('userProfiles', JSON.stringify(profiles));
+          if(viewingProfile && (viewingProfile.username === streamerUsername || viewingProfile.uid === streamerUsername)){
+            viewingProfile = { ...viewingProfile, ...aggregates };
+          }
+        }
+        recordRatingUpdate(streamerUsername, currentUser.username, rateCheck.updates || [], rateCheck.logs || {});
+        ratingDraft.hasExisting = true;
+        ratingStatusMessage = 'Rating saved!';
+        ratingStatusTone = 'success';
+        refreshLiveNowUsers();
+      }catch(err){
+        console.error('rating submit failed', err);
+        ratingStatusMessage = 'Rating failed. Please try again.';
+        ratingStatusTone = 'error';
+      }finally{
+        ratingSubmitting = false;
+        renderProfile();
+        setupEventListeners();
+      }
+    };
+
     function setProfileQueryParam(value){
       const params = new URLSearchParams(window.location.search);
       if(value) params.set('profile', value); else params.delete('profile');
@@ -1667,6 +2048,10 @@ function track(eventName, payload = {}){
       friendLookupResults = [];
       friendLookupError = '';
       friendSearchTerm = '';
+      ratingStatusMessage = '';
+      ratingStatusTone = 'info';
+      ratingLoadedFor = '';
+      ratingDraft = { stars: 0, tags: [], comment: '', hasExisting: false };
       setProfileQueryParam(null);
     }
 
@@ -1834,7 +2219,7 @@ function track(eventName, payload = {}){
         return;
       }
       const username = getLocalDeviceId();
-      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlistIds: [], setlists: [], setlist: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, streamUrl: '', isLive: false, liveSince: null, isAdmin: false };
+      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlistIds: [], setlists: [], setlist: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, streamUrl: '', isLive: false, liveStartedAt: null, avgRating: 0, ratingCount: 0, ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 }, isAdmin: false };
       currentUser = applyAdminFlag(offlineProfile);
       await persistAdminFlagIfNeeded(offlineProfile, currentUser);
       localStorage.setItem('currentUser', currentUser.username);
@@ -2040,7 +2425,10 @@ function track(eventName, payload = {}){
           genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {},
           streamUrl: liveDefaults.streamUrl,
           isLive: liveDefaults.isLive,
-          liveSince: liveDefaults.liveSince,
+          liveStartedAt: liveDefaults.liveStartedAt,
+          avgRating: profile.avgRating || 0,
+          ratingCount: profile.ratingCount || 0,
+          ratingBreakdown: normalizeRatingBreakdown(profile.ratingBreakdown),
           oauth: profile.oauth || {},
           tour: profile.tour || {},
           isAdmin: profile.isAdmin === true
@@ -2149,7 +2537,7 @@ window.handleLogin = async (event) => {
         applyPreferencesFromProfile(currentUser);
       }
       else {
-        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, streamUrl: '', isLive: false, liveSince: null, isAdmin: false, tour: {} };
+        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, streamUrl: '', isLive: false, liveStartedAt: null, avgRating: 0, ratingCount: 0, ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 }, isAdmin: false, tour: {} };
         currentUser = applyAdminFlag(baseProfile);
         await persistAdminFlagIfNeeded(baseProfile, currentUser);
       }
@@ -2525,9 +2913,16 @@ window.handleLogin = async (event) => {
       const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
       const liveActive = streamUrlValid && profileOwner?.isLive === true;
       let liveSinceLabel = '';
-      if(profileOwner?.liveSince){
-        const liveDate = new Date(profileOwner.liveSince);
+      if(profileOwner?.liveStartedAt){
+        const liveDate = new Date(profileOwner.liveStartedAt);
         if(!Number.isNaN(liveDate.getTime())) liveSinceLabel = liveDate.toLocaleString();
+      }
+      if(!viewOnly){
+        ensureLiveNowLoaded();
+      }
+      const profileOwnerKey = profileOwner?.username || profileOwner?.uid || '';
+      if(viewOnly && profileOwnerKey){
+        ensureRatingLoaded(profileOwnerKey);
       }
       const ownedIds = profileOwner?.ownedTracks || [];
       const epicLink = profileOwner?.oauth?.epic || null;
@@ -2567,6 +2962,102 @@ window.handleLogin = async (event) => {
         : `<span id="liveStatusPill" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70">OFFLINE</span>`;
       const liveToggleLabel = liveActive ? 'End Live' : 'Go Live';
       const streamHelperText = streamUrlValid ? '' : (viewOnly ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
+      const ratingBreakdown = normalizeRatingBreakdown(profileOwner?.ratingBreakdown);
+      const ratingDisplay = getProfileRatingDisplay(profileOwner);
+      const ratingCountLabel = ratingDisplay.ratingCount === 1 ? '1 rating' : `${ratingDisplay.ratingCount} ratings`;
+      const ratingStatusClass = ratingStatusTone === 'error'
+        ? 'bg-red-500/20 border-red-400/50 text-red-100'
+        : ratingStatusTone === 'success'
+          ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100'
+          : 'bg-white/10 border-white/20 text-gray-200';
+      const ratingSummaryBlock = `
+          <div class="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <div class="text-lg font-bold text-white">Ratings</div>
+              <p class="text-sm text-gray-300">Community feedback for this DJ</p>
+            </div>
+            <div class="text-right">
+              <div class="text-2xl font-bold text-white">${ratingDisplay.avgRating ? ratingDisplay.avgRating.toFixed(1) : '0.0'}</div>
+              <div class="text-xs text-gray-400">${ratingCountLabel}</div>
+            </div>
+          </div>
+          <div class="text-xl rating-star-display">${ratingDisplay.stars}</div>
+          ${ratingDisplay.ratingCount ? renderRatingBreakdownBars(ratingBreakdown, ratingDisplay.ratingCount) : `<div class="text-sm text-gray-400">No ratings yet.</div>`}
+      `;
+      const ratingInputBlock = viewOnly ? `
+          <div class="mt-4 border-t border-white/10 pt-4 space-y-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="text-base font-semibold text-white">Rate this DJ</div>
+              ${ratingLoading ? `<div class="text-xs text-gray-400">Loading your rating…</div>` : ''}
+            </div>
+            ${currentUser ? `
+              <div id="ratingStarRow" class="flex items-center gap-2">
+                ${[1,2,3,4,5].map(star=>`
+                  <button type="button" data-star="${star}" onclick="setRatingStar(${star})" class="rating-star text-2xl ${ratingDraft.stars >= star ? 'active' : ''}" aria-label="${star} star">${star <= ratingDraft.stars ? '★' : '☆'}</button>
+                `).join('')}
+              </div>
+              <div id="ratingTagRow" class="flex flex-wrap gap-2">
+                ${RATING_TAGS.map(tag=>`
+                  <button type="button" data-tag="${tag}" onclick="toggleRatingTag('${tag}')" class="px-3 py-1 rounded-full border text-xs font-semibold ${ratingDraft.tags.includes(tag) ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-white/10 bg-white/5 text-gray-200'}">${tag}</button>
+                `).join('')}
+              </div>
+              <div>
+                <textarea id="ratingCommentInput" maxlength="${RATING_MAX_COMMENT}" rows="3" class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white" placeholder="Optional comment (max ${RATING_MAX_COMMENT} chars)">${ratingDraft.comment || ''}</textarea>
+                <div class="text-xs text-gray-400 text-right mt-1" id="ratingCommentCount">${(ratingDraft.comment || '').length}/${RATING_MAX_COMMENT}</div>
+              </div>
+              <div class="flex items-center gap-3 flex-wrap">
+                <button type="button" onclick="submitRating()" class="px-4 py-2 rounded-lg font-semibold ${ratingSubmitting ? 'bg-gray-600/40 text-gray-200 cursor-not-allowed' : 'bg-amber-500/30 border border-amber-400/50 text-amber-100'}" ${ratingSubmitting ? 'disabled' : ''}>${ratingDraft.hasExisting ? 'Update Rating' : 'Submit Rating'}</button>
+                ${ratingStatusMessage ? `<div class="text-sm px-3 py-2 rounded-lg border ${ratingStatusClass}">${ratingStatusMessage}</div>` : ''}
+              </div>
+            ` : `<div class="text-sm text-gray-300">Sign in to rate this DJ.</div>`}
+          </div>
+      ` : '';
+      const liveNowCards = liveNowUsers.map(profile=>{
+        const username = profile?.username || profile?.uid || '';
+        const djName = profile?.djName || username || 'DJ';
+        const initials = djName.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase();
+        const platform = getStreamPlatformInfo(profile.streamUrl);
+        const rating = getProfileRatingDisplay(profile);
+        return `<div onclick="viewLiveProfile('${username}')" class="min-w-[240px] cursor-pointer bg-black/40 border border-white/10 rounded-xl p-4 hover:border-emerald-400/60 transition">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center font-bold text-white">${initials || 'DJ'}</div>
+            <div class="flex-1">
+              <div class="font-bold text-white">${djName}</div>
+              <div class="text-xs text-gray-400">@${username}</div>
+            </div>
+            <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-green-400 text-black border border-green-200/80 glow-perfect">LIVE</span>
+          </div>
+          <div class="mt-3 flex items-center justify-between text-xs text-gray-300">
+            <span class="px-2 py-1 rounded-full border border-white/10 bg-white/5">${platform.icon} ${platform.label}</span>
+            <span class="text-amber-200 font-semibold">${rating.avgRating ? rating.avgRating.toFixed(1) : '0.0'}★ (${rating.ratingCount})</span>
+          </div>
+          <button type="button" onclick="viewLiveProfile('${username}')" class="mt-3 w-full px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold">View Profile</button>
+        </div>`;
+      }).join('');
+      const liveNowPanel = !viewOnly ? `
+          <div class="panel space-y-3">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="flex items-center gap-2">
+                <div class="text-lg font-bold text-white">🔴 Live Now</div>
+                <span class="px-2 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">(${liveNowUsers.length})</span>
+              </div>
+              <button type="button" onclick="refreshLiveNowUsers()" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs">Refresh</button>
+            </div>
+            ${liveNowLoading ? `<div class="text-sm text-gray-300">Loading live profiles…</div>` : ''}
+            ${liveNowError ? `<div class="text-sm text-red-200">${liveNowError}</div>` : ''}
+            ${!liveNowLoading && !liveNowUsers.length
+              ? `<div class="text-sm text-gray-400">No one is live right now. Add your stream link and go live!</div>`
+              : `<div id="liveNowCarousel" class="live-carousel flex gap-3 overflow-x-auto pb-2 cursor-grab">
+                ${liveNowCards}
+              </div>`}
+          </div>
+      ` : '';
+      const ratingPanel = `
+          <div class="panel space-y-3">
+            ${ratingSummaryBlock}
+            ${ratingInputBlock}
+          </div>
+      `;
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-5xl mx-auto">
           <div class="panel space-y-3">
@@ -2606,6 +3097,7 @@ window.handleLogin = async (event) => {
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
                   <button id="liveToggleBtn" onclick="toggleLiveStatus()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'}" ${viewOnly || !streamUrlValid ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${liveToggleLabel}</button>
+                  <a id="watchStreamBtn" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-lg bg-blue-500/20 border border-blue-400/40 text-blue-100 text-sm font-semibold" style="display:${streamUrlValid ? 'inline-flex' : 'none'};">Watch Stream</a>
                   ${livePill}
                   ${liveSinceLabel && liveActive ? `<span class="text-xs text-gray-400">Live since ${liveSinceLabel}</span>` : ''}
                 </div>
@@ -2618,6 +3110,9 @@ window.handleLogin = async (event) => {
             </div>
             <div id="profileStatus" class="text-sm text-cyan-200"></div>
           </div>
+
+          ${liveNowPanel}
+          ${ratingPanel}
 
           ${showConnectedAccounts ? `
           <div class="panel space-y-3">
@@ -2712,6 +3207,15 @@ window.handleLogin = async (event) => {
         pill.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70';
         pill.style.boxShadow = '';
       }
+      const watchBtn = document.getElementById('watchStreamBtn');
+      if(watchBtn){
+        if(valid){
+          watchBtn.setAttribute('href', normalized);
+          watchBtn.style.display = 'inline-flex';
+        } else {
+          watchBtn.style.display = 'none';
+        }
+      }
     }
 
     window.toggleLiveStatus = async () => {
@@ -2728,16 +3232,17 @@ window.handleLogin = async (event) => {
       }
       draftProfile = draftProfile || cloneProfile(currentUser) || {};
       const nextIsLive = !(draftProfile.isLive ?? currentUser.isLive ?? false);
-      const nextLiveSince = nextIsLive ? (draftProfile.liveSince || currentUser.liveSince || new Date().toISOString()) : null;
+      const nextLiveStartedAt = nextIsLive ? (draftProfile.liveStartedAt || currentUser.liveStartedAt || currentUser.liveSince || new Date().toISOString()) : null;
       draftProfile.streamUrl = normalizedStreamUrl;
       draftProfile.isLive = nextIsLive;
-      draftProfile.liveSince = nextLiveSince;
+      draftProfile.liveStartedAt = nextLiveStartedAt;
       const previousProfile = currentUser;
-      currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveSince: nextLiveSince });
+      currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt });
       await persistAdminFlagIfNeeded(previousProfile, currentUser);
       try{
         if(status) status.textContent = nextIsLive ? 'Going live...' : 'Ending live...';
         await persistCurrentUserProfile();
+        refreshLiveNowUsers();
         renderProfile();
         setupEventListeners();
         if(status) status.textContent = nextIsLive ? 'Live ✅' : 'Offline ✅';
@@ -2879,9 +3384,9 @@ window.handleLogin = async (event) => {
       const streamUrlInput = (document.getElementById('profileStreamUrl')?.value || '').trim();
       const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlInput);
       const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
-      const existingLiveSince = draftProfile?.liveSince || currentUser.liveSince || null;
+      const existingLiveStartedAt = draftProfile?.liveStartedAt || currentUser.liveStartedAt || currentUser.liveSince || null;
       const nextIsLive = streamUrlValid ? (draftProfile?.isLive ?? currentUser.isLive ?? false) : false;
-      const nextLiveSince = nextIsLive ? (existingLiveSince || new Date().toISOString()) : null;
+      const nextLiveStartedAt = nextIsLive ? (existingLiveStartedAt || new Date().toISOString()) : null;
       if(!usernamePattern.test(newUsername)){
         if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
         alert('Username must be 3-20 chars, letters/numbers/underscore only');
@@ -2892,8 +3397,8 @@ window.handleLogin = async (event) => {
       draftProfile.djName = newDjName;
       draftProfile.streamUrl = normalizedStreamUrl;
       draftProfile.isLive = nextIsLive;
-      draftProfile.liveSince = nextLiveSince;
-      currentUser = { ...currentUser, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveSince: nextLiveSince };
+      draftProfile.liveStartedAt = nextLiveStartedAt;
+      currentUser = { ...currentUser, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt };
       const usernameChanged = newUsername !== currentUser.username;
       const djChanged = newDjName !== currentUser.djName;
       try{
@@ -2908,6 +3413,7 @@ window.handleLogin = async (event) => {
           if(djChanged) updateBandReferencesLocal(currentUser.username,currentUser.username,newDjName);
           await persistCurrentUserProfile();
         }
+        refreshLiveNowUsers();
         render(); setupEventListeners();
         const statusEl = document.getElementById('profileStatus');
         if(statusEl) statusEl.textContent = 'Saved ✅';
@@ -3270,6 +3776,11 @@ function render(){
           draftProfile.streamUrl = e.target.value;
           updateStreamControlsFromInput();
         }
+        if(e.target.id === 'ratingCommentInput'){
+          ratingDraft.comment = e.target.value;
+          const countEl = document.getElementById('ratingCommentCount');
+          if(countEl) countEl.textContent = `${ratingDraft.comment.length}/${RATING_MAX_COMMENT}`;
+        }
         if(e.target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(e.target.value); }
       });
       app.addEventListener('change', (e)=>{
@@ -3311,6 +3822,45 @@ function render(){
           if(auditBtn) auditBtn.onclick = (e)=>{ e.stopPropagation(); openAuditFromMenu(); };
         }
       }
+      setupLiveNowCarousel();
+      updateRatingStarsUI();
+      updateRatingTagsUI();
+    }
+
+    function setupLiveNowCarousel(){
+      const carousel = document.getElementById('liveNowCarousel');
+      if(!carousel || carousel.dataset.bound) return;
+      carousel.dataset.bound = 'true';
+      let isDown = false;
+      let startX = 0;
+      let scrollLeft = 0;
+      carousel.addEventListener('mousedown', (e)=>{
+        isDown = true;
+        carousel.classList.add('dragging');
+        startX = e.pageX - carousel.offsetLeft;
+        scrollLeft = carousel.scrollLeft;
+      });
+      carousel.addEventListener('mouseleave', ()=>{
+        isDown = false;
+        carousel.classList.remove('dragging');
+      });
+      carousel.addEventListener('mouseup', ()=>{
+        isDown = false;
+        carousel.classList.remove('dragging');
+      });
+      carousel.addEventListener('mousemove', (e)=>{
+        if(!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - carousel.offsetLeft;
+        const walk = (x - startX) * 1.2;
+        carousel.scrollLeft = scrollLeft - walk;
+      });
+      carousel.addEventListener('wheel', (e)=>{
+        if(Math.abs(e.deltaY) > Math.abs(e.deltaX)){
+          carousel.scrollLeft += e.deltaY;
+          e.preventDefault();
+        }
+      }, { passive: false });
     }
 
     document.addEventListener('click', (e) => {
@@ -4491,7 +5041,7 @@ function render(){
     document.addEventListener('click', (e)=>{ const preview = e.target.closest('.previewBtn'); if(preview){ e.preventDefault(); onPreviewClick(preview.dataset.id); } const addSet = e.target.closest('.addSetBtn'); if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); } });
 
     // ---------------- Expose some helpers for debugging ----------------
-    window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile; window.startTour = startTour;
+    window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile; window.startTour = startTour; window.refreshLiveNowUsers = refreshLiveNowUsers;
   </script>
 </body>
 </html>
