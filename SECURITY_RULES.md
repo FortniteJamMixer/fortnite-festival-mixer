@@ -44,15 +44,22 @@ service cloud.firestore {
         request.auth.uid == resource.data.toUid
       );
       allow update: if request.auth != null && (
-        request.auth.uid == resource.data.fromUid ||
-        request.auth.uid == resource.data.toUid
+        (request.auth.uid == resource.data.fromUid
+          && request.resource.data.fromUid == resource.data.fromUid
+          && request.resource.data.toUid == resource.data.toUid
+          && request.resource.data.status == "canceled")
+        ||
+        (request.auth.uid == resource.data.toUid
+          && request.resource.data.fromUid == resource.data.fromUid
+          && request.resource.data.toUid == resource.data.toUid
+          && request.resource.data.status in ["accepted", "declined"])
       );
       allow delete: if false;
     }
 
     match /friends/{uid}/list/{friendUid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && (request.auth.uid == uid || request.auth.uid == friendUid);
     }
 
     // Per-visitor docs are server-only.

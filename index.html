@@ -1058,6 +1058,7 @@ function track(eventName, payload = {}){
     let profileOwnedSearch = '';
     let friendSearchTerm = '';
     let socialFriendSearchTerm = '';
+    let socialFriendSearchDebounce = null;
     let socialFriendSearchResults = [];
     let socialFriendSearchLoading = false;
     let socialFriendSearchError = '';
@@ -1069,6 +1070,7 @@ function track(eventName, payload = {}){
     let friendsError = '';
     let friendLookupError = '';
     let friendLookupResults = [];
+    let profileOwnedPagerOwnerKey = '';
     let liveNowUsers = [];
     let liveNowLoading = false;
     let liveNowLoadedAt = 0;
@@ -1102,12 +1104,13 @@ function track(eventName, payload = {}){
       source: 'auto',
       lastFocused: null
     };
-    const PAGE_SIZE_OPTIONS = [12,24,48];
+    const PAGE_SIZE_OPTIONS = [12,24,48,96];
     const PAGE_SIZE_KEY = 'jamMixer.pageSize';
     const CURRENT_PAGE_KEY = 'jamMixer.currentPage';
     const DEFAULT_PAGE_SIZE = 24;
-    let currentPage = 1;
-    let pageSize = DEFAULT_PAGE_SIZE;
+    let friendPanelTab = 'friends';
+    let mainPager = null;
+    let profileOwnedPager = null;
     let priorityStrength = 'medium';
     let keyMatchMode = (localStorage.getItem('jamMixer.keyMatchMode') || 'camelot') === 'semitone' ? 'semitone' : 'camelot';
     let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
@@ -1223,17 +1226,127 @@ function track(eventName, payload = {}){
       localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
       localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
     }
-    function loadPaginationPreferences(){
+    function createPaginationState({ pageIndex = 0, pageSize = DEFAULT_PAGE_SIZE } = {}){
+      return { pageIndex, pageSize, pageSizeOptions: PAGE_SIZE_OPTIONS };
+    }
+    function loadPaginationPreferences(pager){
+      if(!pager) return;
       const storedSize = parseInt(localStorage.getItem(PAGE_SIZE_KEY) || '', 10);
-      if(PAGE_SIZE_OPTIONS.includes(storedSize)) pageSize = storedSize;
+      if(PAGE_SIZE_OPTIONS.includes(storedSize)) pager.pageSize = storedSize;
       const storedPage = parseInt(sessionStorage.getItem(CURRENT_PAGE_KEY) || '', 10);
-      if(Number.isFinite(storedPage) && storedPage > 0) currentPage = storedPage;
+      if(Number.isFinite(storedPage)){
+        pager.pageIndex = storedPage > 0 ? storedPage - 1 : 0;
+      }
     }
-    function persistPaginationState(){
-      localStorage.setItem(PAGE_SIZE_KEY, String(pageSize));
-      sessionStorage.setItem(CURRENT_PAGE_KEY, String(currentPage));
+    function persistPageSizePreference(pager){
+      if(!pager) return;
+      localStorage.setItem(PAGE_SIZE_KEY, String(pager.pageSize));
     }
-    loadPaginationPreferences();
+    function persistMainPagerState(){
+      if(!mainPager) return;
+      persistPageSizePreference(mainPager);
+      sessionStorage.setItem(CURRENT_PAGE_KEY, String(mainPager.pageIndex + 1));
+    }
+    function paginate(list, pageIndex, pageSize){
+      const totalItems = list.length;
+      const totalPages = totalItems ? Math.ceil(totalItems / pageSize) : 0;
+      const safePageIndex = totalPages ? Math.min(Math.max(pageIndex, 0), totalPages - 1) : 0;
+      const startIndex = safePageIndex * pageSize;
+      const pageItems = totalItems ? list.slice(startIndex, startIndex + pageSize) : [];
+      const from = totalItems ? startIndex + 1 : 0;
+      const to = totalItems ? Math.min(totalItems, startIndex + pageItems.length) : 0;
+      return { pageItems, totalItems, totalPages, from, to, pageIndex: safePageIndex };
+    }
+    function setPageSize(pager, size){
+      if(!pager) return;
+      const nextSize = Number(size);
+      if(!PAGE_SIZE_OPTIONS.includes(nextSize)) return;
+      if(pager.pageSize === nextSize) return;
+      pager.pageSize = nextSize;
+      pager.pageIndex = 0;
+    }
+    function nextPage(pager, totalPages){
+      if(!pager || totalPages <= 0) return;
+      pager.pageIndex = Math.min(pager.pageIndex + 1, totalPages - 1);
+    }
+    function prevPage(pager){
+      if(!pager) return;
+      pager.pageIndex = Math.max(pager.pageIndex - 1, 0);
+    }
+    function resetPage(pager){
+      if(!pager) return;
+      pager.pageIndex = 0;
+    }
+    function renderPaginationBar(targetEl, paginationState, callbacks, meta){
+      if(!targetEl || !paginationState || !meta) return;
+      const { totalItems, totalPages, from, to } = meta;
+      const pageIndex = paginationState.pageIndex;
+      const isEmpty = totalItems === 0;
+      const rangeLabel = isEmpty
+        ? 'Showing 0 of 0 tracks'
+        : `Showing ${from}–${to} of ${totalItems} tracks`;
+      const pageLabelCurrent = isEmpty ? 0 : pageIndex + 1;
+      const pageLabelTotal = isEmpty ? 0 : totalPages;
+      const container = document.createElement('div');
+      container.className = 'flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-2 bg-black/30 border border-white/5 rounded-lg px-3 py-3';
+      const left = document.createElement('div');
+      left.className = 'flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-200';
+      left.innerHTML = `<span class="font-semibold text-white">${rangeLabel}</span><span class="text-xs text-gray-400">Page ${pageLabelCurrent} of ${pageLabelTotal}</span>`;
+      const middle = document.createElement('div');
+      middle.className = 'flex flex-wrap items-center gap-3';
+      const label = document.createElement('label');
+      label.className = 'flex items-center gap-2 text-sm text-gray-200';
+      const labelText = document.createElement('span');
+      labelText.textContent = 'Page size';
+      const select = document.createElement('select');
+      select.className = 'pageSizeSelect bg-white/10 border border-white/10 rounded-lg px-3 py-2 min-h-[44px] text-white';
+      select.disabled = isEmpty;
+      paginationState.pageSizeOptions.forEach(size=>{
+        const opt = document.createElement('option');
+        opt.value = String(size);
+        opt.textContent = `${size} / page`;
+        if(paginationState.pageSize === size) opt.selected = true;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', (e)=>{
+        const nextSize = Number(e.target.value);
+        if(callbacks?.onPageSizeChange) callbacks.onPageSizeChange(nextSize);
+      });
+      label.appendChild(labelText);
+      label.appendChild(select);
+      middle.appendChild(label);
+      const controls = document.createElement('div');
+      controls.className = 'flex items-center gap-2';
+      const prevBtn = document.createElement('button');
+      prevBtn.className = `px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${pageIndex===0 || isEmpty ? 'opacity-50 cursor-not-allowed' : ''}`;
+      prevBtn.textContent = 'Previous';
+      prevBtn.disabled = pageIndex === 0 || isEmpty;
+      prevBtn.addEventListener('click', ()=>{
+        if(callbacks?.onPageChange) callbacks.onPageChange(pageIndex - 1);
+      });
+      const pageInfo = document.createElement('div');
+      pageInfo.className = 'text-sm font-semibold text-white px-2';
+      pageInfo.textContent = `Page ${pageLabelCurrent} / ${pageLabelTotal}`;
+      const nextBtn = document.createElement('button');
+      nextBtn.className = `px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${pageIndex >= totalPages - 1 || isEmpty ? 'opacity-50 cursor-not-allowed' : ''}`;
+      nextBtn.textContent = 'Next';
+      nextBtn.disabled = pageIndex >= totalPages - 1 || isEmpty;
+      nextBtn.addEventListener('click', ()=>{
+        if(callbacks?.onPageChange) callbacks.onPageChange(pageIndex + 1);
+      });
+      controls.appendChild(prevBtn);
+      controls.appendChild(pageInfo);
+      controls.appendChild(nextBtn);
+      middle.appendChild(controls);
+      container.appendChild(left);
+      container.appendChild(middle);
+      targetEl.innerHTML = '';
+      targetEl.appendChild(container);
+    }
+    mainPager = createPaginationState();
+    profileOwnedPager = createPaginationState();
+    loadPaginationPreferences(mainPager);
+    profileOwnedPager.pageSize = mainPager.pageSize;
     function cloneProfile(profile){
       if(!profile) return null;
       try { return structuredClone(profile); } catch(_) { return JSON.parse(JSON.stringify(profile)); }
@@ -1907,6 +2020,7 @@ function track(eventName, payload = {}){
         const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
         const usernameLower = normalizeUsernameLower(currentUser.username);
         const djNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
+        const displayNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
         const avatar = ensureAvatar(currentUser);
         const bio = (currentUser.bio || '').slice(0, PROFILE_BIO_MAX);
         const themeAccent = currentUser.themeAccent || THEME_ACCENTS[0].id;
@@ -1919,6 +2033,7 @@ function track(eventName, payload = {}){
           djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
           usernameLower,
           djNameLower,
+          displayNameLower,
           searchTokens: buildSearchTokens(usernameLower),
           bio,
           themeAccent,
@@ -2083,6 +2198,15 @@ function track(eventName, payload = {}){
       }
     }
 
+    function getFriendStatus(currentUid, otherUid){
+      if(!currentUid || !otherUid) return 'none';
+      if(currentUid === otherUid) return 'self';
+      if(friendsList.some(item=> item.friendUid === otherUid)) return 'friends';
+      if(friendRequestsIncoming.some(req=> req.fromUid === otherUid)) return 'incoming_pending';
+      if(friendRequestsOutgoing.some(req=> req.toUid === otherUid)) return 'outgoing_pending';
+      return 'none';
+    }
+
     async function searchProfilesForFriends(){
       if(!isOnlineProfileMode() || viewingProfile) return;
       const queryRaw = (socialFriendSearchTerm || '').trim();
@@ -2098,18 +2222,23 @@ function track(eventName, payload = {}){
         const collection = getProfileCollection();
         if(!collection) throw new Error('Profile collection unavailable');
         const resultsMap = {};
-        const exactUsernameSnap = await collection.where('usernameLower','==',queryLower).where('isPublic','==',true).get();
-        exactUsernameSnap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
-        const exactDjSnap = await collection.where('djNameLower','==',queryLower).where('isPublic','==',true).get();
-        exactDjSnap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
-        if(Object.keys(resultsMap).length === 0 && queryLower.length > 1){
-          const tokenSnap = await collection.where('searchTokens','array-contains',queryLower).where('isPublic','==',true).limit(8).get();
-          tokenSnap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
-        }
+        const prefixQuery = async (field)=>{
+          const snap = await collection
+            .where(field, '>=', queryLower)
+            .where(field, '<=', queryLower + '\uf8ff')
+            .where('isPublic', '==', true)
+            .limit(20)
+            .get();
+          snap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
+        };
+        await Promise.all([
+          prefixQuery('displayNameLower'),
+          prefixQuery('usernameLower')
+        ]);
         const currentUid = firebaseAuth.currentUser.uid;
         socialFriendSearchResults = Object.values(resultsMap)
           .filter(profile=> profile?.uid !== currentUid)
-          .slice(0, 10);
+          .slice(0, 20);
       }catch(err){
         console.warn('friend search failed', err);
         socialFriendSearchError = 'Search failed. Try again later.';
@@ -2294,6 +2423,12 @@ function track(eventName, payload = {}){
       searchProfilesForFriends();
     };
 
+    window.setFriendPanelTab = (tab)=>{
+      friendPanelTab = tab === 'requests' ? 'requests' : 'friends';
+      renderProfile();
+      setupEventListeners();
+    };
+
     window.sendFriendRequest = async (toUid)=>{
       if(!isOnlineProfileMode() || !toUid) return;
       const fromUid = firebaseAuth.currentUser.uid;
@@ -2301,6 +2436,13 @@ function track(eventName, payload = {}){
       try{
         const requestId = `${fromUid}_${toUid}`;
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+        const reciprocalId = `${toUid}_${fromUid}`;
+        const reciprocalRef = firestore.collection('friendRequests').doc(reciprocalId);
+        const reciprocalSnap = await reciprocalRef.get();
+        if(reciprocalSnap.exists && reciprocalSnap.data()?.status === 'pending'){
+          await acceptFriendRequest(reciprocalId, toUid);
+          return;
+        }
         await firestore.collection('friendRequests').doc(requestId).set({
           fromUid,
           toUid,
@@ -2324,6 +2466,12 @@ function track(eventName, payload = {}){
         const batch = firestore.batch();
         const requestRef = firestore.collection('friendRequests').doc(requestId);
         batch.update(requestRef, { status: 'accepted' });
+        const reciprocalId = `${uid}_${fromUid}`;
+        const reciprocalRef = firestore.collection('friendRequests').doc(reciprocalId);
+        const reciprocalSnap = await reciprocalRef.get();
+        if(reciprocalSnap.exists && reciprocalSnap.data()?.status === 'pending'){
+          batch.update(reciprocalRef, { status: 'accepted' });
+        }
         const myFriendRef = firestore.collection('friends').doc(uid).collection('list').doc(fromUid);
         const theirFriendRef = firestore.collection('friends').doc(fromUid).collection('list').doc(uid);
         batch.set(myFriendRef, { friendUid: fromUid, createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString() }, { merge: true });
@@ -2341,12 +2489,44 @@ function track(eventName, payload = {}){
     window.rejectFriendRequest = async (requestId)=>{
       if(!isOnlineProfileMode()) return;
       try{
-        await firestore.collection('friendRequests').doc(requestId).set({ status: 'rejected' }, { merge: true });
+        await firestore.collection('friendRequests').doc(requestId).set({ status: 'declined' }, { merge: true });
         await refreshFriendsData(true);
         renderProfile(); setupEventListeners();
       }catch(err){
         console.warn('reject request failed', err);
         friendsError = 'Unable to reject request.';
+        renderProfile(); setupEventListeners();
+      }
+    };
+
+    window.cancelFriendRequest = async (requestId)=>{
+      if(!isOnlineProfileMode()) return;
+      try{
+        await firestore.collection('friendRequests').doc(requestId).set({ status: 'canceled' }, { merge: true });
+        await refreshFriendsData(true);
+        renderProfile(); setupEventListeners();
+      }catch(err){
+        console.warn('cancel request failed', err);
+        friendsError = 'Unable to cancel request.';
+        renderProfile(); setupEventListeners();
+      }
+    };
+
+    window.removeFriend = async (friendUid)=>{
+      if(!isOnlineProfileMode() || !friendUid) return;
+      try{
+        const uid = firebaseAuth.currentUser.uid;
+        const batch = firestore.batch();
+        const myFriendRef = firestore.collection('friends').doc(uid).collection('list').doc(friendUid);
+        const theirFriendRef = firestore.collection('friends').doc(friendUid).collection('list').doc(uid);
+        batch.delete(myFriendRef);
+        batch.delete(theirFriendRef);
+        await batch.commit();
+        await refreshFriendsData(true);
+        renderProfile(); setupEventListeners();
+      }catch(err){
+        console.warn('remove friend failed', err);
+        friendsError = 'Unable to remove friend.';
         renderProfile(); setupEventListeners();
       }
     };
@@ -2450,6 +2630,7 @@ function track(eventName, payload = {}){
       if(!profile) return;
       viewingProfile = normalizeProfileShape(profile, profile.uid || profile.username || '');
       profileOwnedSearch = '';
+      resetPage(profileOwnedPager);
       setProfileQueryParam(viewingProfile?.username || viewingProfile?.uid || '');
       friendLookupResults = [];
       friendLookupError = '';
@@ -2622,6 +2803,8 @@ function track(eventName, payload = {}){
     function clearViewedProfile(){
       viewingProfile = null;
       profileOwnedSearch = '';
+      resetPage(profileOwnedPager);
+      profileOwnedPagerOwnerKey = '';
       friendLookupResults = [];
       friendLookupError = '';
       friendSearchTerm = '';
@@ -3263,9 +3446,9 @@ window.handleLogin = async (event) => {
       });
     }
 
-    function resetPagination(){
-      currentPage = 1;
-      persistPaginationState();
+    function resetMainPagination(){
+      resetPage(mainPager);
+      persistMainPagerState();
     }
 
     const setCamelotOverride = async (trackId,value)=>{
@@ -3353,14 +3536,13 @@ window.handleLogin = async (event) => {
       }
 
       const songListEl = document.getElementById('songList'); if(!songListEl) return;
-      const totalPages = Math.max(1, Math.ceil(scored.length / pageSize));
-      if(currentPage > totalPages) currentPage = totalPages;
-      if(currentPage < 1) currentPage = 1;
-      persistPaginationState();
-      const startIndex = (currentPage - 1) * pageSize;
-      const pageEntries = scored.slice(startIndex, startIndex + pageSize);
-      const showingStart = scored.length ? startIndex + 1 : 0;
-      const showingEnd = scored.length ? Math.min(scored.length, startIndex + pageEntries.length) : 0;
+      const pagination = paginate(scored, mainPager.pageIndex, mainPager.pageSize);
+      if(pagination.pageIndex !== mainPager.pageIndex) mainPager.pageIndex = pagination.pageIndex;
+      persistMainPagerState();
+      const pageEntries = pagination.pageItems;
+      const showingStart = pagination.from;
+      const showingEnd = pagination.to;
+      const totalPages = pagination.totalPages;
 
       const priorityNames = { bpm:'Tempo', camelot:'Camelot', genre:'Genre' };
       const priorityDescriptions = {
@@ -3449,36 +3631,33 @@ window.handleLogin = async (event) => {
         `;
       }).join('');
 
-      const buildPaginationControls = ()=>{
-        const pageSizeOptions = PAGE_SIZE_OPTIONS.map(size=>`<option value="${size}" ${pageSize===size?'selected':''}>${size} / page</option>`).join('');
-        return `
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-2 bg-black/30 border border-white/5 rounded-lg px-3 py-3">
-          <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-200">
-            <span class="font-semibold text-white">Showing ${showingStart}–${showingEnd} of ${scored.length} tracks</span>
-            <span class="text-xs text-gray-400">Page ${currentPage} of ${totalPages}</span>
-          </div>
-          <div class="flex flex-wrap items-center gap-3">
-            <label class="flex items-center gap-2 text-sm text-gray-200">
-              <span>Page size</span>
-              <select class="pageSizeSelect bg-white/10 border border-white/10 rounded-lg px-3 py-2 min-h-[44px] text-white" onchange="setPageSize(this.value)">${pageSizeOptions}</select>
-            </label>
-            <div class="flex items-center gap-2">
-              <button class="px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${currentPage===1?'opacity-50 cursor-not-allowed':''}" onclick="changePage(-1)" ${currentPage===1?'disabled':''}>Previous</button>
-              <div class="text-sm font-semibold text-white px-2">Page ${currentPage} / ${totalPages}</div>
-              <button class="px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${currentPage===totalPages?'opacity-50 cursor-not-allowed':''}" onclick="changePage(1)" ${currentPage===totalPages?'disabled':''}>Next</button>
-            </div>
-          </div>
-        </div>`;
-      };
-
-      const paginationTop = scored.length ? buildPaginationControls() : '';
-      const paginationBottom = scored.length ? buildPaginationControls() : '';
-
       const listContent = scored.length
-        ? `${paginationTop}<div class="song-grid grid gap-4">${cardGrid}</div>${paginationBottom}`
+        ? `<div id="mainPaginationTop"></div><div class="song-grid grid gap-4">${cardGrid}</div><div id="mainPaginationBottom"></div>`
         : `<div class="panel p-6 text-center text-gray-300 space-y-3"><div>No songs match your filters yet.</div><button onclick="clearFilters()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-sm text-white">Clear filters</button></div>`;
 
       songListEl.innerHTML = priorityHeader + listContent;
+      const scrollTarget = songListEl;
+      if(scored.length){
+        const renderPagination = (targetId)=>{
+          const targetEl = document.getElementById(targetId);
+          renderPaginationBar(targetEl, mainPager, {
+            onPageChange: (nextIndex)=>{
+              mainPager.pageIndex = Math.max(0, nextIndex);
+              persistMainPagerState();
+              renderSongList();
+              scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            },
+            onPageSizeChange: (nextSize)=>{
+              setPageSize(mainPager, nextSize);
+              persistMainPagerState();
+              renderSongList();
+              scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, { totalItems: scored.length, totalPages, from: showingStart, to: showingEnd });
+        };
+        renderPagination('mainPaginationTop');
+        renderPagination('mainPaginationBottom');
+      }
       bindGenreEditors(songListEl);
     }
 
@@ -3569,6 +3748,10 @@ window.handleLogin = async (event) => {
         if(friendsEnabled) refreshFriendsData();
       }
       const profileOwnerKey = profileOwner?.username || profileOwner?.uid || '';
+      if(profileOwnerKey && profileOwnedPagerOwnerKey !== profileOwnerKey){
+        profileOwnedPagerOwnerKey = profileOwnerKey;
+        resetPage(profileOwnedPager);
+      }
       if(viewOnly && profileOwnerKey){
         ensureRatingLoaded(profileOwnerKey);
       }
@@ -3589,7 +3772,9 @@ window.handleLogin = async (event) => {
           return !term || s.title.toLowerCase().includes(term) || s.artist.toLowerCase().includes(term);
         })
         .sort((a,b)=> a.title.localeCompare(b.title));
-      const ownedCards = ownedFiltered.map(song=>{
+      const ownedPagination = paginate(ownedFiltered, profileOwnedPager.pageIndex, profileOwnedPager.pageSize);
+      if(ownedPagination.pageIndex !== profileOwnedPager.pageIndex) profileOwnedPager.pageIndex = ownedPagination.pageIndex;
+      const ownedCards = ownedPagination.pageItems.map(song=>{
         const camelotColor = camelotColors[song.camelot] || '#4b5563';
         return `<div class="flex gap-3 bg-black/40 border border-white/10 rounded-xl p-3 hover:border-cyan-500/40 transition">
           ${song.albumArt ? `<img src="${song.albumArt}" class="w-16 h-16 rounded-lg object-cover" alt="${song.title} cover"/>` : `<div class="w-16 h-16 rounded-lg bg-white/5 flex items-center justify-center text-xl">🎵</div>`}
@@ -3805,24 +3990,24 @@ window.handleLogin = async (event) => {
             </div>
           </details>
       ` : '';
-      const friendUidSet = new Set(friendsList.map(item=>item.friendUid));
-      const outgoingRequestSet = new Set(friendRequestsOutgoing.map(req=>req.toUid));
-      const incomingRequestMap = new Map(friendRequestsIncoming.map(req=>[req.fromUid, req]));
       const friendSearchResultsHtml = socialFriendSearchResults.map(profile=>{
         const uid = profile.uid || profile.username || '';
-        const isFriend = friendUidSet.has(uid);
-        const outgoing = outgoingRequestSet.has(uid);
-        const incomingReq = incomingRequestMap.get(uid);
+        const status = getFriendStatus(firebaseAuth?.currentUser?.uid, uid);
+        const incomingReq = friendRequestsIncoming.find(req=>req.fromUid === uid);
+        const outgoingReq = friendRequestsOutgoing.find(req=>req.toUid === uid);
         const liveBadge = profile.isLive ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>` : '';
         let actionMarkup = '';
-        if(isFriend){
+        if(status === 'friends'){
           actionMarkup = `<span class="px-3 py-1 rounded-full text-xs bg-white/10 border border-white/20 text-gray-200">Friends</span>`;
-        } else if(outgoing){
-          actionMarkup = `<span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Requested</span>`;
-        } else if(incomingReq){
+        } else if(status === 'outgoing_pending'){
+          actionMarkup = `<div class="flex gap-2 items-center">
+            <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Requested</span>
+            ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
+          </div>`;
+        } else if(status === 'incoming_pending'){
           actionMarkup = `<div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${incomingReq.id}','${incomingReq.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${incomingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Reject</button>
+            <button onclick="acceptFriendRequest('${incomingReq?.id || ''}','${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button onclick="rejectFriendRequest('${incomingReq?.id || ''}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
           </div>`;
         } else if(profile.allowFriendRequests === false){
           actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
@@ -3855,7 +4040,23 @@ window.handleLogin = async (event) => {
           </div>
           <div class="flex gap-2">
             <button onclick="acceptFriendRequest('${req.id}','${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Reject</button>
+            <button onclick="rejectFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+          </div>
+        </div>`;
+      }).join('');
+      const outgoingRequestsHtml = friendRequestsOutgoing.map(req=>{
+        const profile = req.toProfile || { username: req.toUid, djName: req.toUid };
+        return `<div class="flex items-center justify-between gap-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+          <div class="flex items-center gap-2">
+            ${renderProfileAvatarMarkup(profile, 32)}
+            <div>
+              <div class="text-sm font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || req.toUid || '')}</div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-500/20 border border-purple-400/40 text-purple-100">Pending</span>
+            <button onclick="cancelFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
           </div>
         </div>`;
       }).join('');
@@ -3874,6 +4075,8 @@ window.handleLogin = async (event) => {
           <div class="flex items-center gap-2">
             ${liveBadge}
             ${watchBtn}
+            <button onclick="viewLiveProfile('${profile.username || profile.uid || item.friendUid || ''}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold">View Profile</button>
+            <button onclick="removeFriend('${item.friendUid}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Remove</button>
           </div>
         </div>`;
       }).join('');
@@ -3881,25 +4084,36 @@ window.handleLogin = async (event) => {
           <div class="panel space-y-4">
             <div class="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <div class="text-lg font-bold text-white">Friends</div>
-                <p class="text-sm text-gray-300">Search DJs and manage friend requests.</p>
+                <div class="text-lg font-bold text-white">Friends / Bandmates</div>
+                <p class="text-sm text-gray-300">Search DJs and manage requests.</p>
               </div>
               <span class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Social-lite</span>
             </div>
             ${friendsEnabled ? '' : `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Friends require Online mode.</div>`}
             <div class="flex flex-col sm:flex-row gap-2">
-              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search username or DJ name…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
+              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
               <button onclick="searchFriends()" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">Search</button>
             </div>
             ${socialFriendSearchLoading ? `<div class="text-sm text-gray-300">Searching…</div>` : ''}
             ${socialFriendSearchError ? `<div class="text-sm text-red-200">${socialFriendSearchError}</div>` : ''}
             ${friendSearchResultsHtml ? `<div class="space-y-2">${friendSearchResultsHtml}</div>` : (socialFriendSearchTerm && !socialFriendSearchLoading ? `<div class="text-sm text-gray-400">No matches found.</div>` : '')}
-            <div class="grid md:grid-cols-2 gap-3">
-              <div class="space-y-2">
-                <div class="text-sm font-semibold text-white">Friend Requests</div>
-                ${friendsLoading ? `<div class="text-xs text-gray-400">Loading requests…</div>` : ''}
-                ${incomingRequestsHtml || `<div class="text-xs text-gray-400">No incoming requests.</div>`}
+            <div class="flex items-center gap-2 text-xs">
+              <button onclick="setFriendPanelTab('friends')" class="px-3 py-1 rounded-full border ${friendPanelTab==='friends'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Friends (${friendsList.length})</button>
+              <button onclick="setFriendPanelTab('requests')" class="px-3 py-1 rounded-full border ${friendPanelTab==='requests'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Requests (${friendRequestsIncoming.length + friendRequestsOutgoing.length})</button>
+            </div>
+            ${friendPanelTab === 'requests' ? `
+              <div class="grid md:grid-cols-2 gap-3">
+                <div class="space-y-2">
+                  <div class="text-sm font-semibold text-white">Incoming Requests</div>
+                  ${friendsLoading ? `<div class="text-xs text-gray-400">Loading requests…</div>` : ''}
+                  ${incomingRequestsHtml || `<div class="text-xs text-gray-400">No incoming requests.</div>`}
+                </div>
+                <div class="space-y-2">
+                  <div class="text-sm font-semibold text-white">Outgoing Requests</div>
+                  ${outgoingRequestsHtml || `<div class="text-xs text-gray-400">No outgoing requests.</div>`}
+                </div>
               </div>
+            ` : `
               <div class="space-y-2">
                 <div class="flex items-center justify-between">
                   <div class="text-sm font-semibold text-white">Friends List</div>
@@ -3909,7 +4123,7 @@ window.handleLogin = async (event) => {
                   ${friendsListHtml || `<div class="text-xs text-gray-400">No friends yet.</div>`}
                 </div>
               </div>
-            </div>
+            `}
           </div>
       ` : '';
       profileEl.innerHTML = `
@@ -4022,11 +4236,32 @@ window.handleLogin = async (event) => {
                 ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to My Profile</button>` : ''}
               </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div id="profileOwnedList" class="grid grid-cols-1 md:grid-cols-2 gap-3">
               ${ownedCards || ownedEmpty}
             </div>
+            <div id="profileOwnedPagination"></div>
           </div>
         </div>`;
+      const ownedPaginationEl = document.getElementById('profileOwnedPagination');
+      const ownedListEl = document.getElementById('profileOwnedList');
+      if(ownedPaginationEl){
+        renderPaginationBar(ownedPaginationEl, profileOwnedPager, {
+          onPageChange: (nextIndex)=>{
+            profileOwnedPager.pageIndex = Math.max(0, nextIndex);
+            persistPageSizePreference(profileOwnedPager);
+            renderProfile();
+            if(ownedListEl) ownedListEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          },
+          onPageSizeChange: (nextSize)=>{
+            setPageSize(profileOwnedPager, nextSize);
+            persistPageSizePreference(profileOwnedPager);
+            setPageSize(mainPager, nextSize);
+            persistMainPagerState();
+            renderProfile();
+            if(ownedListEl) ownedListEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, { totalItems: ownedFiltered.length, totalPages: ownedPagination.totalPages, from: ownedPagination.from, to: ownedPagination.to });
+      }
       updateTourUI();
     }
 
@@ -4632,11 +4867,15 @@ function render(){
           if(clearSearchBtn) clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
           const panelClear = document.getElementById('panelClearSearchBtn');
           if(panelClear){ panelClear.disabled = !searchTerm; panelClear.style.opacity = searchTerm ? '1' : '0.55'; panelClear.style.cursor = searchTerm ? 'pointer' : 'not-allowed'; }
-          resetPagination();
+          resetMainPagination();
           renderSongList();
         }
         if(e.target.id === 'auditSearchInput'){ auditSearch = e.target.value; renderAuditView(); }
-        if(e.target.id === 'ownedSearchInput'){ profileOwnedSearch = e.target.value; renderProfile(); }
+        if(e.target.id === 'ownedSearchInput'){
+          profileOwnedSearch = e.target.value;
+          resetPage(profileOwnedPager);
+          renderProfile();
+        }
         if(e.target.id === 'profileUsername' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = e.target.value; }
         if(e.target.id === 'profileDjName' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = e.target.value; }
         if(e.target.id === 'profileStreamUrl' && !viewingProfile){
@@ -4650,6 +4889,8 @@ function render(){
         }
         if(e.target.id === 'socialFriendSearchInput'){
           socialFriendSearchTerm = e.target.value;
+          if(socialFriendSearchDebounce) clearTimeout(socialFriendSearchDebounce);
+          socialFriendSearchDebounce = setTimeout(()=>{ searchProfilesForFriends(); }, 300);
         }
         if(e.target.id === 'ratingCommentInput'){
           ratingDraft.comment = e.target.value;
@@ -4794,7 +5035,7 @@ function render(){
     window.setKeyMatchMode = (mode) => {
       keyMatchMode = mode === 'semitone' ? 'semitone' : 'camelot';
       persistKeyMatchSettings();
-      resetPagination();
+      resetMainPagination();
       render();
       setupEventListeners();
     };
@@ -4814,24 +5055,14 @@ function render(){
 
     window.setSortMode = (mode) => {
       sortMode = mode;
-      resetPagination();
+      resetMainPagination();
       render();
       setupEventListeners();
     };
 
-    window.setPageSize = (val) => {
-      const nextSize = Number(val);
-      if(!PAGE_SIZE_OPTIONS.includes(nextSize)) return;
-      if(nextSize === pageSize) return;
-      pageSize = nextSize;
-      resetPagination();
-      persistPaginationState();
-      renderSongList();
-    };
-
     window.selectSong = (id) => {
       selectedSong = songs.find(s=>s.id===id);
-      resetPagination();
+      resetMainPagination();
       render();
       setupEventListeners();
     };
@@ -4859,7 +5090,7 @@ function render(){
       if(clearSearchBtn) clearSearchBtn.style.display = 'none';
       const panelClearBtn = document.getElementById('panelClearSearchBtn');
       if(panelClearBtn){ panelClearBtn.disabled = true; panelClearBtn.style.opacity = '0.55'; panelClearBtn.style.cursor = 'not-allowed'; }
-      resetPagination();
+      resetMainPagination();
       renderSongList();
     };
 
@@ -4868,7 +5099,7 @@ function render(){
       showOwnedOnly = false;
       showMixableOnly = false;
       selectedGenre = 'All';
-      resetPagination();
+      resetMainPagination();
       render();
       setupEventListeners();
     };
@@ -4949,14 +5180,14 @@ function render(){
     window.toggleMixableFilter = () => {
       if(!selectedSong){ alert('Select a song first to see mixable tracks!'); return; }
       showMixableOnly = !showMixableOnly;
-      resetPagination();
+      resetMainPagination();
       render();
       setupEventListeners();
     };
 
     window.toggleOwnedFilter = () => {
       showOwnedOnly = !showOwnedOnly;
-      resetPagination();
+      resetMainPagination();
       render();
       setupEventListeners();
     };
@@ -5008,13 +5239,6 @@ function render(){
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function clearSandbox(){ sandboxTracks=[]; sandboxIds=[]; renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
-
-    function changePage(delta){
-      currentPage += delta;
-      if(currentPage < 1) currentPage = 1;
-      persistPaginationState();
-      renderSongList();
-    }
 
     // NOTE:
     // Import / Export was intentionally removed.
