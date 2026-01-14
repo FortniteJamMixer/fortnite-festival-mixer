@@ -5301,8 +5301,22 @@ function render(){
       if(includeFeatures && featureKey){
         content.dataset.helpContent = '';
       }
-      const body = Array.isArray(section?.body) ? section.body : [];
-      content.appendChild(buildListElement(body, listTag));
+      const bullets = Array.isArray(section?.bullets)
+        ? section.bullets
+        : Array.isArray(section?.body)
+          ? section.body
+          : [];
+      if(bullets.length){
+        content.appendChild(buildListElement(bullets, listTag));
+      }
+      const steps = Array.isArray(section?.steps) ? section.steps : [];
+      if(steps.length){
+        const stepsLabel = document.createElement('p');
+        stepsLabel.className = 'small-muted';
+        stepsLabel.textContent = 'Steps';
+        content.appendChild(stepsLabel);
+        content.appendChild(buildListElement(steps, 'ol'));
+      }
       wrapper.appendChild(content);
 
       if(includeFeatures && featureKey){
@@ -5714,7 +5728,8 @@ function render(){
           <div class="text-xs text-cyan-200 font-semibold">Section ${index + 1}</div>
           <input class="admin-editor-input" data-field="basic-section-id" data-index="${index}" value="${escapeHtml(section.id || '')}" placeholder="id (setlist, live, offline...)" />
           <input class="admin-editor-input" data-field="basic-section-title" data-index="${index}" value="${escapeHtml(section.title || '')}" placeholder="Title" />
-          <textarea class="admin-editor-textarea" data-field="basic-section-body" data-index="${index}" placeholder="One line per bullet">${escapeHtml((section.body || []).join('\\n'))}</textarea>
+          <textarea class="admin-editor-textarea" data-field="basic-section-bullets" data-index="${index}" placeholder="One line per bullet">${escapeHtml(((section.bullets || section.body) || []).join('\\n'))}</textarea>
+          <textarea class="admin-editor-textarea" data-field="basic-section-steps" data-index="${index}" placeholder="Optional steps (one per line)">${escapeHtml((section.steps || []).join('\\n'))}</textarea>
           <div class="admin-editor-inline-actions">
             <button class="admin-editor-btn" data-action="move-up" data-target="basicSections" data-index="${index}">↑</button>
             <button class="admin-editor-btn" data-action="move-down" data-target="basicSections" data-index="${index}">↓</button>
@@ -5742,7 +5757,8 @@ function render(){
           <div class="text-xs text-cyan-200 font-semibold">Advanced ${index + 1}</div>
           <input class="admin-editor-input" data-field="advanced-section-id" data-index="${index}" value="${escapeHtml(section.id || '')}" placeholder="id (sorting...)" />
           <input class="admin-editor-input" data-field="advanced-section-title" data-index="${index}" value="${escapeHtml(section.title || '')}" placeholder="Title" />
-          <textarea class="admin-editor-textarea" data-field="advanced-section-body" data-index="${index}" placeholder="One line per bullet">${escapeHtml((section.body || []).join('\\n'))}</textarea>
+          <textarea class="admin-editor-textarea" data-field="advanced-section-bullets" data-index="${index}" placeholder="One line per bullet">${escapeHtml(((section.bullets || section.body) || []).join('\\n'))}</textarea>
+          <textarea class="admin-editor-textarea" data-field="advanced-section-steps" data-index="${index}" placeholder="Optional steps (one per line)">${escapeHtml((section.steps || []).join('\\n'))}</textarea>
           <div class="admin-editor-inline-actions">
             <button class="admin-editor-btn" data-action="move-up" data-target="advancedSections" data-index="${index}">↑</button>
             <button class="admin-editor-btn" data-action="move-down" data-target="advancedSections" data-index="${index}">↓</button>
@@ -5828,7 +5844,7 @@ function render(){
           <div class="admin-editor-header">
             <div>
               <div class="text-lg font-bold text-white">Help Editor</div>
-              <div class="text-xs text-cyan-200">Edit basic + advanced help content. One line per bullet.</div>
+              <div class="text-xs text-cyan-200">Edit basic + advanced help content. One line per bullet or step.</div>
             </div>
             <button class="admin-editor-btn" data-action="close-editor">Close</button>
           </div>
@@ -5867,9 +5883,9 @@ function render(){
         const index = Number(btn.dataset.index);
         if(action === 'add-item'){
           if(target === 'quickStart') helpEditorState.basic.quickStart.push('New step');
-          if(target === 'basicSections') helpEditorState.basic.sections.push({ id: 'new_section', title: 'New Section', body: ['New bullet'] });
+          if(target === 'basicSections') helpEditorState.basic.sections.push({ id: 'new_section', title: 'New Section', bullets: ['New bullet'], steps: [] });
           if(target === 'faq') helpEditorState.basic.faq.push({ id: 'new_faq', q: 'New question?', a: ['New answer.'] });
-          if(target === 'advancedSections') helpEditorState.advanced.sections.push({ id: 'new_advanced', title: 'New Advanced Section', body: ['New bullet'] });
+          if(target === 'advancedSections') helpEditorState.advanced.sections.push({ id: 'new_advanced', title: 'New Advanced Section', bullets: ['New bullet'], steps: [] });
           renderAdminHelpEditor();
           return;
         }
@@ -5899,13 +5915,15 @@ function render(){
         if(field === 'quickStart'){ helpEditorState.basic.quickStart[index] = value; }
         if(field === 'basic-section-id'){ helpEditorState.basic.sections[index].id = value; }
         if(field === 'basic-section-title'){ helpEditorState.basic.sections[index].title = value; }
-        if(field === 'basic-section-body'){ helpEditorState.basic.sections[index].body = splitLines(value); }
+        if(field === 'basic-section-bullets'){ helpEditorState.basic.sections[index].bullets = splitLines(value); }
+        if(field === 'basic-section-steps'){ helpEditorState.basic.sections[index].steps = splitLines(value); }
         if(field === 'faq-id'){ helpEditorState.basic.faq[index].id = value; }
         if(field === 'faq-q'){ helpEditorState.basic.faq[index].q = value; }
         if(field === 'faq-a'){ helpEditorState.basic.faq[index].a = splitLines(value); }
         if(field === 'advanced-section-id'){ helpEditorState.advanced.sections[index].id = value; }
         if(field === 'advanced-section-title'){ helpEditorState.advanced.sections[index].title = value; }
-        if(field === 'advanced-section-body'){ helpEditorState.advanced.sections[index].body = splitLines(value); }
+        if(field === 'advanced-section-bullets'){ helpEditorState.advanced.sections[index].bullets = splitLines(value); }
+        if(field === 'advanced-section-steps'){ helpEditorState.advanced.sections[index].steps = splitLines(value); }
         const preview = modal.querySelector('[data-editor-preview]');
         if(preview) renderHelpPreview(preview, helpEditorState);
       });

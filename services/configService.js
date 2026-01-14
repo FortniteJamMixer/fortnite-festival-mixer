@@ -40,9 +40,12 @@
     if (!section || typeof section !== 'object') return null;
     const id = toCleanString(section.id);
     const title = toCleanString(section.title);
-    const body = toStringArray(section.body);
-    if (!id || !title || body.length === 0) return null;
-    return { id, title, body };
+    const bullets = toStringArray(section.bullets ?? section.body);
+    const steps = toStringArray(section.steps);
+    if (!id || !title || bullets.length === 0) return null;
+    const normalized = { id, title, bullets };
+    if (steps.length) normalized.steps = steps;
+    return normalized;
   };
 
   const normalizeFaq = (faq) => {
