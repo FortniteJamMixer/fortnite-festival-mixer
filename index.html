@@ -18,6 +18,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <script src="/constants/appMeta.js"></script>
   <script src="/services/configService.js"></script>
@@ -65,6 +66,13 @@
     .rating-star { color: rgba(255,255,255,0.35); transition: transform 0.15s ease, color 0.15s ease; }
     .rating-star.active { color: #fbbf24; transform: translateY(-1px) scale(1.05); }
     .rating-star-display { color: #fbbf24; }
+    .profile-accent-border { border-color: var(--profile-accent, #ff6b9d); }
+    .profile-accent-glow { box-shadow: 0 0 18px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
+    .profile-accent-pill { background: rgba(255,255,255,0.06); border: 1px solid var(--profile-accent, #ff6b9d); color: #fff; }
+    .avatar-preview { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); }
+    .avatar-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
+    .avatar-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
+    .profile-toggle { accent-color: var(--profile-accent, #ff6b9d); }
 
     /* Help modal */
     #helpModal {
@@ -461,7 +469,7 @@ function buildExportFilename(username = 'profile'){
   return `${BRAND.EXPORT_PREFIX}-${safeName}.json`;
 }
 
-let firebaseApp = null, firebaseAuth = null, firestore = null;
+let firebaseApp = null, firebaseAuth = null, firestore = null, firebaseStorage = null;
 let firebaseAuthUnsub = null;
 let authSettledUser = null;
 let authProcessing = false;
@@ -471,6 +479,7 @@ if (firebaseEnabled) {
     firebaseApp = firebase.initializeApp(firebaseConfig);
     firebaseAuth = firebase.auth();
     firestore = firebase.firestore();
+    firebaseStorage = firebase.storage ? firebase.storage() : null;
     firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
       console.warn('Firebase persistence failed', err);
       logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
@@ -599,6 +608,139 @@ function track(eventName, payload = {}){
       };
     }
 
+    const PROFILE_COLLECTION = 'profiles';
+    const LEGACY_PROFILE_COLLECTION = 'users';
+    const PROFILE_BIO_MAX = 160;
+    const AVATAR_PALETTES = [
+      { id: 'neon', label: 'Neon Pop', colors: ['#ff6b9d', '#7c3aed', '#22d3ee', '#facc15'] },
+      { id: 'midnight', label: 'Midnight', colors: ['#111827', '#334155', '#38bdf8', '#a855f7'] },
+      { id: 'sunset', label: 'Sunset', colors: ['#fb7185', '#f97316', '#facc15', '#f472b6'] },
+      { id: 'mint', label: 'Mintwave', colors: ['#22d3ee', '#14b8a6', '#34d399', '#a7f3d0'] },
+      { id: 'orbit', label: 'Orbit', colors: ['#60a5fa', '#818cf8', '#f472b6', '#c084fc'] }
+    ];
+    const AVATAR_ICONS = ['🎧','⭐','⚡','🎵','🪩','💿','✨'];
+    const THEME_ACCENTS = [
+      { id: 'pink-pop', label: 'Pink Pop', color: '#ff6b9d' },
+      { id: 'electric-blue', label: 'Electric Blue', color: '#38bdf8' },
+      { id: 'neon-violet', label: 'Neon Violet', color: '#a855f7' },
+      { id: 'sunset-gold', label: 'Sunset Gold', color: '#facc15' },
+      { id: 'mint-laser', label: 'Mint Laser', color: '#34d399' }
+    ];
+
+    function getProfileCollection(){
+      return firestore ? firestore.collection(PROFILE_COLLECTION) : null;
+    }
+
+    function getLegacyProfileCollection(){
+      return firestore ? firestore.collection(LEGACY_PROFILE_COLLECTION) : null;
+    }
+
+    function normalizeUsernameLower(value){
+      return (value || '').trim().toLowerCase();
+    }
+
+    function buildSearchTokens(value){
+      const normalized = normalizeUsernameLower(value);
+      const maxTokens = Math.min(20, normalized.length);
+      const tokens = [];
+      for(let i=1; i<=maxTokens; i+=1){
+        tokens.push(normalized.slice(0, i));
+      }
+      return tokens;
+    }
+
+    function hexToRgba(hex, alpha = 0.45){
+      const clean = (hex || '').replace('#','');
+      const normalized = clean.length === 3
+        ? clean.split('').map(ch => ch + ch).join('')
+        : clean;
+      if(normalized.length !== 6) return `rgba(255,107,157,${alpha})`;
+      const r = parseInt(normalized.slice(0,2), 16);
+      const g = parseInt(normalized.slice(2,4), 16);
+      const b = parseInt(normalized.slice(4,6), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+
+    function resolveThemeAccent(accent){
+      const preset = THEME_ACCENTS.find(item => item.id === accent);
+      if(preset) return preset.color;
+      if(/^#([0-9a-f]{3}){1,2}$/i.test(accent || '')) return accent;
+      return THEME_ACCENTS[0].color;
+    }
+
+    function createSeededRandom(seed){
+      let hash = 0;
+      String(seed || '').split('').forEach((char)=>{
+        hash = ((hash << 5) - hash) + char.charCodeAt(0);
+        hash |= 0;
+      });
+      let value = Math.abs(hash) || 1;
+      return () => {
+        value = (value * 9301 + 49297) % 233280;
+        return value / 233280;
+      };
+    }
+
+    function ensureAvatar(profile){
+      const fallbackSeed = profile?.username || profile?.uid || localDeviceId || Math.random().toString(36).slice(2, 8);
+      const avatar = profile?.avatar || {};
+      const palette = avatar.palette || AVATAR_PALETTES[0].id;
+      const seed = avatar.seed || fallbackSeed;
+      const icon = avatar.icon || '';
+      const photoURL = avatar.photoURL || '';
+      const type = avatar.type === 'upload' && photoURL ? 'upload' : 'generated';
+      return { type, seed, palette, icon, photoURL };
+    }
+
+    function buildAvatarSvg(seed, paletteId, icon){
+      const palette = AVATAR_PALETTES.find(item=>item.id === paletteId) || AVATAR_PALETTES[0];
+      const random = createSeededRandom(seed);
+      const colors = [...palette.colors];
+      const bg = colors[Math.floor(random() * colors.length)];
+      const ring = colors[Math.floor(random() * colors.length)];
+      const accent = colors[Math.floor(random() * colors.length)];
+      const accentTwo = colors[Math.floor(random() * colors.length)];
+      const wobble = Math.floor(random() * 8);
+      const iconMark = icon || '';
+      return `
+        <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+          <defs>
+            <linearGradient id="grad" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="${bg}"/>
+              <stop offset="100%" stop-color="${accent}"/>
+            </linearGradient>
+          </defs>
+          <rect width="256" height="256" rx="48" fill="url(#grad)"/>
+          <circle cx="128" cy="128" r="92" fill="${accentTwo}" opacity="0.22"/>
+          <circle cx="${96 + wobble}" cy="${104 + wobble}" r="68" fill="${bg}" opacity="0.35"/>
+          <circle cx="128" cy="128" r="96" fill="none" stroke="${ring}" stroke-width="10" opacity="0.7"/>
+          ${iconMark ? `<text x="50%" y="54%" text-anchor="middle" font-size="92" font-family="sans-serif" fill="white">${iconMark}</text>` : ''}
+        </svg>
+      `.trim();
+    }
+
+    function getAvatarDataUrl(avatar){
+      if(avatar.type === 'upload' && avatar.photoURL) return avatar.photoURL;
+      const svg = buildAvatarSvg(avatar.seed, avatar.palette, avatar.icon);
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    }
+
+    function getDisplayAvatar(profile){
+      const avatar = ensureAvatar(profile);
+      const viewerUid = firebaseAuth?.currentUser?.uid;
+      if(avatar.type === 'upload' && avatar.photoURL && profile?.uid === viewerUid){
+        return avatar;
+      }
+      return { ...avatar, type: 'generated', photoURL: '' };
+    }
+
+    function renderProfileAvatarMarkup(profile, size = 48, extraClass = ''){
+      const avatar = getDisplayAvatar(profile);
+      const src = getAvatarDataUrl(avatar);
+      const label = escapeHtml(profile?.djName || profile?.username || 'DJ');
+      return `<img src="${src}" alt="${label} avatar" class="rounded-full object-cover avatar-preview ${extraClass}" style="width:${size}px;height:${size}px;" />`;
+    }
+
     // Backend save/load wrappers (Firestore or localStorage)
     function normalizeProfileShape(profile, fallbackId){
       if(!profile) return null;
@@ -612,7 +754,36 @@ function track(eventName, payload = {}){
       const normalizedSetlist = normalizeSetlistIds(profile.setlistIds || profile.setlist || profile.setlists);
       const liveDefaults = normalizeLiveProfileFields(profile);
       const ratingDefaults = normalizeRatingFields(profile);
-      return { ...profile, ...liveDefaults, ...ratingDefaults, username, djName, email, ownedTracks: ownedArray, setlistIds: normalizedSetlist, setlist: normalizedSetlist, setlists: normalizedSetlist, oauth, isAdmin };
+      const avatar = ensureAvatar(profile);
+      const bio = (profile.bio || '').slice(0, PROFILE_BIO_MAX);
+      const themeAccent = profile.themeAccent || THEME_ACCENTS[0].id;
+      const isPublic = profile.isPublic !== false;
+      const allowFriendRequests = profile.allowFriendRequests !== false;
+      const usernameLower = profile.usernameLower || normalizeUsernameLower(username);
+      const djNameLower = profile.djNameLower || normalizeUsernameLower(djName);
+      const searchTokens = Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower);
+      return {
+        ...profile,
+        ...liveDefaults,
+        ...ratingDefaults,
+        username,
+        djName,
+        email,
+        ownedTracks: ownedArray,
+        setlistIds: normalizedSetlist,
+        setlist: normalizedSetlist,
+        setlists: normalizedSetlist,
+        oauth,
+        isAdmin,
+        bio,
+        themeAccent,
+        avatar,
+        isPublic,
+        allowFriendRequests,
+        usernameLower,
+        djNameLower,
+        searchTokens
+      };
     }
     function buildOwnedMap(ids){
       const map = {};
@@ -625,11 +796,21 @@ function track(eventName, payload = {}){
       const profileKey = profile.uid || firebaseUser?.uid || profile.username;
       const ownedIds = profile.ownedTracks || [];
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+      const usernameLower = normalizeUsernameLower(profile.username || profileKey);
+      const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
       const payload = {
         ...profile,
         uid: profileKey,
         username: profile.username || profileKey,
         djName: profile.djName || profile.username || profileKey,
+        usernameLower,
+        djNameLower,
+        searchTokens: Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower),
+        bio: (profile.bio || '').slice(0, PROFILE_BIO_MAX),
+        themeAccent: profile.themeAccent || THEME_ACCENTS[0].id,
+        avatar: ensureAvatar(profile),
+        isPublic: profile.isPublic !== false,
+        allowFriendRequests: profile.allowFriendRequests !== false,
         email: profile.email || firebaseUser?.email || '',
         ownedTracks: ownedIds,
         ownedMap: buildOwnedMap(ownedIds),
@@ -638,7 +819,10 @@ function track(eventName, payload = {}){
       let backendOk = true;
       if (firestore && firebaseUser && profileKey) {
         try {
-          await firestore.collection('users').doc(profileKey).set(payload, { merge: true });
+          const collection = getProfileCollection();
+          if(collection){
+            await collection.doc(profileKey).set(payload, { merge: true });
+          }
         } catch (e) {
           console.warn('Firestore save failed', e);
           backendOk = false;
@@ -656,13 +840,23 @@ function track(eventName, payload = {}){
       const lookupKey = identifier || firebaseUser?.uid;
       if (firestore && lookupKey) {
         try {
-          const doc = await firestore.collection('users').doc(lookupKey).get();
-          if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
+          const primaryCollection = getProfileCollection();
+          const legacyCollection = getLegacyProfileCollection();
+          if(primaryCollection){
+            const doc = await primaryCollection.doc(lookupKey).get();
+            if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
+          }
+          if(legacyCollection){
+            const legacyDoc = await legacyCollection.doc(lookupKey).get();
+            if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), lookupKey);
+          }
           if (firebaseUser?.email) {
             const emailKey = firebaseUser.email.split('@')[0];
             if (emailKey && emailKey !== lookupKey) {
-              const legacyDoc = await firestore.collection('users').doc(emailKey).get();
-              if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), emailKey);
+              if(legacyCollection){
+                const legacyDoc = await legacyCollection.doc(emailKey).get();
+                if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), emailKey);
+              }
             }
           }
         } catch (e) { console.warn('Firestore load failed', e); }
@@ -726,7 +920,9 @@ function track(eventName, payload = {}){
       if(!streamerUsername || !raterUsername) return null;
       if(firestore){
         try{
-          const doc = await firestore.collection('users').doc(streamerUsername).collection('ratings').doc(raterUsername).get();
+          const collection = getProfileCollection();
+          if(!collection) return null;
+          const doc = await collection.doc(streamerUsername).collection('ratings').doc(raterUsername).get();
           return doc.exists ? doc.data() : null;
         }catch(err){ console.warn('rating load failed', err); }
       }
@@ -774,7 +970,9 @@ function track(eventName, payload = {}){
     async function getLiveUsers(){
       if(firestore){
         try{
-          const snap = await firestore.collection('users')
+          const collection = getProfileCollection();
+          if(!collection) return [];
+          const snap = await collection
             .where('isLive','==',true)
             .orderBy('liveStartedAt','desc')
             .get();
@@ -859,6 +1057,16 @@ function track(eventName, payload = {}){
     let viewingProfile = null;
     let profileOwnedSearch = '';
     let friendSearchTerm = '';
+    let socialFriendSearchTerm = '';
+    let socialFriendSearchResults = [];
+    let socialFriendSearchLoading = false;
+    let socialFriendSearchError = '';
+    let friendRequestsIncoming = [];
+    let friendRequestsOutgoing = [];
+    let friendsList = [];
+    let friendsLoading = false;
+    let friendsLoadedAt = 0;
+    let friendsError = '';
     let friendLookupError = '';
     let friendLookupResults = [];
     let liveNowUsers = [];
@@ -1423,7 +1631,9 @@ function track(eventName, payload = {}){
       localStorage.setItem('bpmOverrides_v1', JSON.stringify(bpmOverridesStore));
       if(isAdmin() && firestore && firebaseAuth?.currentUser){
         try{
-          await firestore.collection('users').doc(firebaseAuth.currentUser.uid).set({
+          const collection = getProfileCollection();
+          if(!collection) return;
+          await collection.doc(firebaseAuth.currentUser.uid).set({
             camelotOverrides: camelotOverridesStore,
             bpmOverrides: bpmOverridesStore
           },{merge:true});
@@ -1433,7 +1643,9 @@ function track(eventName, payload = {}){
     async function loadUserOverridesFromBackend(){
       if(isAdmin() && firestore && firebaseAuth?.currentUser){
         try{
-          const doc = await firestore.collection('users').doc(firebaseAuth.currentUser.uid).get();
+          const collection = getProfileCollection();
+          if(!collection) return;
+          const doc = await collection.doc(firebaseAuth.currentUser.uid).get();
           if(doc.exists){
             const data = doc.data()||{};
             if(data.camelotOverrides) camelotOverridesStore = data.camelotOverrides;
@@ -1693,11 +1905,26 @@ function track(eventName, payload = {}){
         syncPreferencesIntoProfile();
         const normalizedStreamUrl = normalizeStreamUrlInput(currentUser.streamUrl || '');
         const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
+        const usernameLower = normalizeUsernameLower(currentUser.username);
+        const djNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
+        const avatar = ensureAvatar(currentUser);
+        const bio = (currentUser.bio || '').slice(0, PROFILE_BIO_MAX);
+        const themeAccent = currentUser.themeAccent || THEME_ACCENTS[0].id;
+        const isPublic = currentUser.isPublic !== false;
+        const allowFriendRequests = currentUser.allowFriendRequests !== false;
         const mergedProfile = {
           ...currentUser,
           uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
           username: currentUser.username,
           djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
+          usernameLower,
+          djNameLower,
+          searchTokens: buildSearchTokens(usernameLower),
+          bio,
+          themeAccent,
+          avatar,
+          isPublic,
+          allowFriendRequests,
           ownedTracks,
           setlists: setlistIds || [],
           setlist: setlistIds || [],
@@ -1753,8 +1980,16 @@ function track(eventName, payload = {}){
       const firebaseUser = firebaseAuth?.currentUser;
       if(firestore && (firebaseUser || username)){
         try{
-          const doc = await firestore.collection('users').doc(firebaseUser?.uid || username).get();
-          if(doc.exists) return normalizeProfileShape(doc.data(), firebaseUser?.uid || username);
+          const collection = getProfileCollection();
+          const legacyCollection = getLegacyProfileCollection();
+          if(collection){
+            const doc = await collection.doc(firebaseUser?.uid || username).get();
+            if(doc.exists) return normalizeProfileShape(doc.data(), firebaseUser?.uid || username);
+          }
+          if(legacyCollection){
+            const legacyDoc = await legacyCollection.doc(firebaseUser?.uid || username).get();
+            if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), firebaseUser?.uid || username);
+          }
         }catch(e){ console.warn('Firestore load failed',e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
@@ -1765,17 +2000,356 @@ function track(eventName, payload = {}){
     async function loadProfileForViewing(username){
       if(!username) return null;
       const profile = await loadUserProfileFromBackend(username) || await loadUserProfile(username);
+      if(profile?.isPublic === false){
+        const ownerId = firebaseAuth?.currentUser?.uid || currentUser?.uid || currentUser?.username;
+        if(ownerId !== profile.uid && ownerId !== profile.username){
+          return null;
+        }
+      }
       viewingProfile = profile || null;
       return viewingProfile;
     }
 
-    async function fetchProfilesByField(field, value){
+    async function fetchProfilesByField(field, value, { publicOnly = true } = {}){
       if(!firestore || !value) return [];
       try{
-        const snap = await firestore.collection('users').where(field,'==',value).get();
+        const collection = getProfileCollection();
+        if(!collection) return [];
+        let query = collection.where(field,'==',value);
+        if(publicOnly) query = query.where('isPublic','==',true);
+        const snap = await query.get();
         return snap.docs.map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id));
       }catch(err){ console.warn('profile lookup failed', err); return []; }
     }
+
+    function isOnlineProfileMode(){
+      return !!firebaseAuth?.currentUser && !!firestore && !isOffline;
+    }
+
+    async function fetchProfilesByUids(uids){
+      const collection = getProfileCollection();
+      if(!collection) return {};
+      const unique = Array.from(new Set(uids)).filter(Boolean);
+      const results = await Promise.all(unique.map(async (uid)=>{
+        try{
+          const doc = await collection.doc(uid).get();
+          if(doc.exists) return [uid, normalizeProfileShape({ ...doc.data(), uid }, uid)];
+        }catch(err){ console.warn('profile fetch failed', err); }
+        return [uid, null];
+      }));
+      return results.reduce((acc, [uid, profile])=>{
+        if(profile) acc[uid] = profile;
+        return acc;
+      }, {});
+    }
+
+    async function refreshFriendsData(force=false){
+      if(!isOnlineProfileMode() || viewingProfile || friendsLoading) return;
+      const now = Date.now();
+      if(!force && now - friendsLoadedAt < 20000) return;
+      friendsLoading = true;
+      friendsError = '';
+      try{
+        const uid = firebaseAuth.currentUser.uid;
+        const requestsRef = firestore.collection('friendRequests');
+        const incomingSnap = await requestsRef.where('toUid','==',uid).where('status','==','pending').get();
+        const outgoingSnap = await requestsRef.where('fromUid','==',uid).where('status','==','pending').get();
+        const friendsSnap = await firestore.collection('friends').doc(uid).collection('list').get();
+        const incoming = incomingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
+        const outgoing = outgoingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
+        const friendDocs = friendsSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
+        const profileMap = await fetchProfilesByUids([
+          ...incoming.map(req=>req.fromUid),
+          ...outgoing.map(req=>req.toUid),
+          ...friendDocs.map(doc=>doc.friendUid || doc.id)
+        ]);
+        friendRequestsIncoming = incoming.map(req=>({ ...req, fromProfile: profileMap[req.fromUid] || null }));
+        friendRequestsOutgoing = outgoing.map(req=>({ ...req, toProfile: profileMap[req.toUid] || null }));
+        friendsList = friendDocs.map(doc=>({
+          friendUid: doc.friendUid || doc.id,
+          createdAt: doc.createdAt || null,
+          profile: profileMap[doc.friendUid || doc.id] || null
+        }));
+        friendsLoadedAt = now;
+      }catch(err){
+        console.warn('friends refresh failed', err);
+        friendsError = 'Unable to load friends right now.';
+      } finally {
+        friendsLoading = false;
+        if(!viewingProfile){
+          renderProfile();
+          setupEventListeners();
+        }
+      }
+    }
+
+    async function searchProfilesForFriends(){
+      if(!isOnlineProfileMode() || viewingProfile) return;
+      const queryRaw = (socialFriendSearchTerm || '').trim();
+      socialFriendSearchError = '';
+      socialFriendSearchResults = [];
+      if(!queryRaw){
+        renderProfile(); setupEventListeners(); return;
+      }
+      socialFriendSearchLoading = true;
+      renderProfile(); setupEventListeners();
+      try{
+        const queryLower = normalizeUsernameLower(queryRaw);
+        const collection = getProfileCollection();
+        if(!collection) throw new Error('Profile collection unavailable');
+        const resultsMap = {};
+        const exactUsernameSnap = await collection.where('usernameLower','==',queryLower).where('isPublic','==',true).get();
+        exactUsernameSnap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
+        const exactDjSnap = await collection.where('djNameLower','==',queryLower).where('isPublic','==',true).get();
+        exactDjSnap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
+        if(Object.keys(resultsMap).length === 0 && queryLower.length > 1){
+          const tokenSnap = await collection.where('searchTokens','array-contains',queryLower).where('isPublic','==',true).limit(8).get();
+          tokenSnap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
+        }
+        const currentUid = firebaseAuth.currentUser.uid;
+        socialFriendSearchResults = Object.values(resultsMap)
+          .filter(profile=> profile?.uid !== currentUid)
+          .slice(0, 10);
+      }catch(err){
+        console.warn('friend search failed', err);
+        socialFriendSearchError = 'Search failed. Try again later.';
+      } finally {
+        socialFriendSearchLoading = false;
+        renderProfile(); setupEventListeners();
+      }
+    }
+
+    function getEditableDraftProfile(){
+      if(viewingProfile) return null;
+      draftProfile = draftProfile || cloneProfile(currentUser) || {};
+      return draftProfile;
+    }
+
+    function updateDraftProfile(patch){
+      const draft = getEditableDraftProfile();
+      if(!draft) return null;
+      Object.assign(draft, patch);
+      return draft;
+    }
+
+    function updateDraftAvatar(patch){
+      const draft = getEditableDraftProfile();
+      if(!draft) return null;
+      const avatar = ensureAvatar(draft);
+      draft.avatar = { ...avatar, ...patch };
+      return draft.avatar;
+    }
+
+    function updateAvatarPreview(avatar){
+      const resolved = avatar || ensureAvatar(draftProfile || currentUser || {});
+      const src = getAvatarDataUrl(resolved);
+      const preview = document.getElementById('profileAvatarPreview');
+      if(preview) preview.src = src;
+      const builderPreview = document.getElementById('avatarBuilderPreview');
+      if(builderPreview) builderPreview.src = src;
+      const seedLabel = document.getElementById('avatarSeedLabel');
+      if(seedLabel) seedLabel.textContent = resolved.seed;
+      const typeLabel = document.getElementById('profileAvatarTypeLabel');
+      if(typeLabel) typeLabel.textContent = resolved.type === 'upload' && resolved.photoURL ? 'Photo' : 'Generated';
+    }
+
+    function updateAvatarSelection(selector, activeValue){
+      document.querySelectorAll(selector).forEach(btn=>{
+        const isActive = btn.dataset[selector.includes('palette') ? 'avatarPalette' : selector.includes('icon') ? 'avatarIcon' : 'themeAccent'] === activeValue;
+        btn.classList.toggle('active', isActive);
+      });
+    }
+
+    function applyThemeAccentPreview(accentId){
+      const color = resolveThemeAccent(accentId);
+      const root = document.querySelector('#profileView > div');
+      if(root){
+        root.style.setProperty('--profile-accent', color);
+        root.style.setProperty('--profile-accent-glow', hexToRgba(color, 0.45));
+      }
+    }
+
+    function updateBioCounter(text){
+      const counter = document.getElementById('profileBioCounter');
+      if(counter) counter.textContent = `${text.length}/${PROFILE_BIO_MAX}`;
+    }
+
+    window.setAvatarPalette = (paletteId)=>{
+      const avatar = updateDraftAvatar({ palette: paletteId, type: 'generated' });
+      if(!avatar) return;
+      updateAvatarPreview(avatar);
+      updateAvatarSelection('[data-avatar-palette]', paletteId);
+    };
+
+    window.setAvatarIcon = (icon)=>{
+      const avatar = updateDraftAvatar({ icon, type: 'generated' });
+      if(!avatar) return;
+      updateAvatarPreview(avatar);
+      updateAvatarSelection('[data-avatar-icon]', icon);
+    };
+
+    window.randomizeAvatarSeed = ()=>{
+      const seed = Math.random().toString(36).slice(2, 10);
+      const avatar = updateDraftAvatar({ seed, type: 'generated' });
+      if(!avatar) return;
+      updateAvatarPreview(avatar);
+    };
+
+    window.switchToGeneratedAvatar = ()=>{
+      const avatar = updateDraftAvatar({ type: 'generated', photoURL: '' });
+      if(!avatar) return;
+      updateAvatarPreview(avatar);
+    };
+
+    window.setThemeAccent = (accentId)=>{
+      updateDraftProfile({ themeAccent: accentId });
+      applyThemeAccentPreview(accentId);
+      updateAvatarSelection('[data-theme-accent]', accentId);
+      const label = THEME_ACCENTS.find(item=>item.id === accentId)?.label || 'Custom';
+      const labelEl = document.getElementById('profileThemeLabel');
+      if(labelEl) labelEl.textContent = `Theme: ${label}`;
+    };
+
+    window.triggerAvatarUpload = ()=>{
+      const input = document.getElementById('avatarUploadInput');
+      if(input && !input.disabled) input.click();
+    };
+
+    function loadImageFromFile(file){
+      return new Promise((resolve, reject)=>{
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = ()=>{
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = (err)=>{
+          URL.revokeObjectURL(url);
+          reject(err);
+        };
+        img.src = url;
+      });
+    }
+
+    async function resizeAvatarFile(file){
+      const img = await loadImageFromFile(file);
+      const size = 512;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const minSide = Math.min(img.width, img.height);
+      const sx = (img.width - minSide) / 2;
+      const sy = (img.height - minSide) / 2;
+      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+      const targetType = 'image/webp';
+      let quality = 0.9;
+      let blob = await new Promise(resolve => canvas.toBlob(resolve, targetType, quality));
+      if(!blob){
+        quality = 0.85;
+        blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      }
+      const maxBytes = 200 * 1024;
+      while(blob && blob.size > maxBytes && quality > 0.5){
+        quality -= 0.1;
+        blob = await new Promise(resolve => canvas.toBlob(resolve, blob.type || targetType, quality));
+      }
+      if(!blob) throw new Error('Image conversion failed');
+      return blob;
+    }
+
+    window.handleAvatarUpload = async (file)=>{
+      if(!file) return;
+      const status = document.getElementById('avatarUploadStatus');
+      if(!firebaseAuth?.currentUser || !firebaseStorage){
+        if(status) status.textContent = 'Upload unavailable.';
+        return;
+      }
+      const allowedTypes = ['image/jpeg','image/png','image/webp'];
+      if(!allowedTypes.includes(file.type)){
+        if(status) status.textContent = 'Use JPG, PNG, or WebP.';
+        return;
+      }
+      try{
+        if(status) status.textContent = 'Resizing...';
+        const blob = await resizeAvatarFile(file);
+        const uid = firebaseAuth.currentUser.uid;
+        const ext = blob.type.includes('webp') ? 'webp' : 'jpg';
+        const ref = firebaseStorage.ref().child(`avatars/${uid}.${ext}`);
+        if(status) status.textContent = 'Uploading...';
+        await ref.put(blob, { contentType: blob.type });
+        const photoURL = await ref.getDownloadURL();
+        const avatar = updateDraftAvatar({ type: 'upload', photoURL });
+        if(status) status.textContent = 'Uploaded ✓';
+        updateAvatarPreview(avatar);
+      }catch(err){
+        console.error('avatar upload failed', err);
+        if(status) status.textContent = 'Upload failed.';
+      }
+    };
+
+    window.searchFriends = ()=>{
+      const input = document.getElementById('socialFriendSearchInput');
+      if(input) socialFriendSearchTerm = input.value || '';
+      searchProfilesForFriends();
+    };
+
+    window.sendFriendRequest = async (toUid)=>{
+      if(!isOnlineProfileMode() || !toUid) return;
+      const fromUid = firebaseAuth.currentUser.uid;
+      if(fromUid === toUid) return;
+      try{
+        const requestId = `${fromUid}_${toUid}`;
+        const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+        await firestore.collection('friendRequests').doc(requestId).set({
+          fromUid,
+          toUid,
+          status: 'pending',
+          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+        }, { merge: true });
+        await refreshFriendsData(true);
+        await searchProfilesForFriends();
+      }catch(err){
+        console.warn('friend request failed', err);
+        socialFriendSearchError = 'Friend request failed.';
+        renderProfile(); setupEventListeners();
+      }
+    };
+
+    window.acceptFriendRequest = async (requestId, fromUid)=>{
+      if(!isOnlineProfileMode()) return;
+      try{
+        const uid = firebaseAuth.currentUser.uid;
+        const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+        const batch = firestore.batch();
+        const requestRef = firestore.collection('friendRequests').doc(requestId);
+        batch.update(requestRef, { status: 'accepted' });
+        const myFriendRef = firestore.collection('friends').doc(uid).collection('list').doc(fromUid);
+        const theirFriendRef = firestore.collection('friends').doc(fromUid).collection('list').doc(uid);
+        batch.set(myFriendRef, { friendUid: fromUid, createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString() }, { merge: true });
+        batch.set(theirFriendRef, { friendUid: uid, createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString() }, { merge: true });
+        await batch.commit();
+        await refreshFriendsData(true);
+        renderProfile(); setupEventListeners();
+      }catch(err){
+        console.warn('accept request failed', err);
+        friendsError = 'Unable to accept request.';
+        renderProfile(); setupEventListeners();
+      }
+    };
+
+    window.rejectFriendRequest = async (requestId)=>{
+      if(!isOnlineProfileMode()) return;
+      try{
+        await firestore.collection('friendRequests').doc(requestId).set({ status: 'rejected' }, { merge: true });
+        await refreshFriendsData(true);
+        renderProfile(); setupEventListeners();
+      }catch(err){
+        console.warn('reject request failed', err);
+        friendsError = 'Unable to reject request.';
+        renderProfile(); setupEventListeners();
+      }
+    };
 
     async function refreshLiveNowUsers(){
       if(liveNowLoading) return;
@@ -1905,13 +2479,14 @@ function track(eventName, payload = {}){
         renderProfile(); setupEventListeners(); return;
       }
       if(!input){ friendLookupError = 'Enter a DJ name or username to view.'; renderProfile(); setupEventListeners(); return; }
-      const tryMatches = async (field)=> await fetchProfilesByField(field, input);
+      const normalizedInput = normalizeUsernameLower(input);
+      const tryMatches = async (field, value)=> await fetchProfilesByField(field, value);
       try{
-        const usernameHits = await tryMatches('username');
+        const usernameHits = await tryMatches('usernameLower', normalizedInput);
         if(usernameHits.length === 1) return openFriendProfile(usernameHits[0]);
         if(usernameHits.length > 1){ friendLookupResults = usernameHits; renderProfile(); setupEventListeners(); return; }
 
-        const djHits = await tryMatches('djName');
+        const djHits = await tryMatches('djNameLower', normalizedInput);
         if(djHits.length === 1) return openFriendProfile(djHits[0]);
         if(djHits.length > 1){ friendLookupResults = djHits; renderProfile(); setupEventListeners(); return; }
 
@@ -1995,12 +2570,14 @@ function track(eventName, payload = {}){
         const ratingPayload = { stars, tags, comment, updatedAt };
         if(firestore){
           const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-          await firestore.collection('users').doc(streamerUsername).collection('ratings').doc(currentUser.username)
+          const collection = getProfileCollection();
+          if(!collection) throw new Error('Profile collection unavailable');
+          await collection.doc(streamerUsername).collection('ratings').doc(currentUser.username)
             .set({ ...ratingPayload, updatedAt: serverTimestamp ? serverTimestamp() : updatedAt }, { merge: true });
-          const profileDoc = await firestore.collection('users').doc(streamerUsername).get();
+          const profileDoc = await collection.doc(streamerUsername).get();
           const baseProfile = profileDoc.exists ? normalizeProfileShape(profileDoc.data(), streamerUsername) : viewingProfile;
           const aggregates = updateAggregatesWithRating(baseProfile || {}, previousRating?.stars, stars);
-          await firestore.collection('users').doc(streamerUsername).set(aggregates, { merge: true });
+          await collection.doc(streamerUsername).set(aggregates, { merge: true });
           viewingProfile = viewingProfile && (viewingProfile.username === streamerUsername || viewingProfile.uid === streamerUsername)
             ? { ...viewingProfile, ...aggregates }
             : viewingProfile;
@@ -2219,7 +2796,31 @@ function track(eventName, payload = {}){
         return;
       }
       const username = getLocalDeviceId();
-      const offlineProfile = { username, djName: username, ownedTracks: ownedTracks || [], setlistIds: [], setlists: [], setlist: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {}, streamUrl: '', isLive: false, liveStartedAt: null, avgRating: 0, ratingCount: 0, ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 }, isAdmin: false };
+      const offlineProfile = {
+        username,
+        djName: username,
+        ownedTracks: ownedTracks || [],
+        setlistIds: [],
+        setlists: [],
+        setlist: [],
+        bandMembers: bandMembers || [],
+        genreOverrides: genreOverrides || {},
+        streamUrl: '',
+        isLive: false,
+        liveStartedAt: null,
+        avgRating: 0,
+        ratingCount: 0,
+        ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 },
+        bio: '',
+        themeAccent: THEME_ACCENTS[0].id,
+        avatar: { type: 'generated', seed: username, palette: AVATAR_PALETTES[0].id, icon: '' },
+        isPublic: true,
+        allowFriendRequests: true,
+        usernameLower: normalizeUsernameLower(username),
+        djNameLower: normalizeUsernameLower(username),
+        searchTokens: buildSearchTokens(username),
+        isAdmin: false
+      };
       currentUser = applyAdminFlag(offlineProfile);
       await persistAdminFlagIfNeeded(offlineProfile, currentUser);
       localStorage.setItem('currentUser', currentUser.username);
@@ -2537,7 +3138,32 @@ window.handleLogin = async (event) => {
         applyPreferencesFromProfile(currentUser);
       }
       else {
-        const baseProfile = { username, djName, ownedTracks: [], setlistIds: [], setlists: [], setlist: [], bandMembers: [], genreOverrides: {}, streamUrl: '', isLive: false, liveStartedAt: null, avgRating: 0, ratingCount: 0, ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 }, isAdmin: false, tour: {} };
+        const baseProfile = {
+          username,
+          djName,
+          ownedTracks: [],
+          setlistIds: [],
+          setlists: [],
+          setlist: [],
+          bandMembers: [],
+          genreOverrides: {},
+          streamUrl: '',
+          isLive: false,
+          liveStartedAt: null,
+          avgRating: 0,
+          ratingCount: 0,
+          ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 },
+          bio: '',
+          themeAccent: THEME_ACCENTS[0].id,
+          avatar: { type: 'generated', seed: username, palette: AVATAR_PALETTES[0].id, icon: '' },
+          isPublic: true,
+          allowFriendRequests: true,
+          usernameLower: normalizeUsernameLower(username),
+          djNameLower: normalizeUsernameLower(djName),
+          searchTokens: buildSearchTokens(username),
+          isAdmin: false,
+          tour: {}
+        };
         currentUser = applyAdminFlag(baseProfile);
         await persistAdminFlagIfNeeded(baseProfile, currentUser);
       }
@@ -2908,6 +3534,27 @@ window.handleLogin = async (event) => {
       const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
       const usernameVal = editableProfile?.username || '';
       const djVal = editableProfile?.djName || usernameVal;
+      const avatar = getDisplayAvatar(editableProfile);
+      const avatarSrc = getAvatarDataUrl(avatar);
+      const bio = (editableProfile?.bio || '').slice(0, PROFILE_BIO_MAX);
+      const themeAccentId = editableProfile?.themeAccent || THEME_ACCENTS[0].id;
+      const accentColor = resolveThemeAccent(themeAccentId);
+      const accentGlow = hexToRgba(accentColor, 0.45);
+      const themeLabel = THEME_ACCENTS.find(item=>item.id === themeAccentId)?.label || 'Custom';
+      const isPublicProfile = editableProfile?.isPublic !== false;
+      const allowFriendRequests = editableProfile?.allowFriendRequests !== false;
+      const profileAccentStyle = `--profile-accent:${accentColor}; --profile-accent-glow:${accentGlow};`;
+      const friendsEnabled = isOnlineProfileMode() && !viewOnly;
+      const uploadEnabled = !!firebaseStorage && !!firebaseAuth?.currentUser && !isOffline && !viewOnly;
+      const uploadDisabledReason = !firebaseAuth?.currentUser
+        ? 'Sign in to upload.'
+        : isOffline
+          ? 'Go online to upload.'
+          : !firebaseStorage
+            ? 'Storage not configured.'
+            : viewOnly
+              ? 'View-only mode.'
+              : '';
       const streamUrlValue = editableProfile?.streamUrl || '';
       const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlValue);
       const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
@@ -2919,6 +3566,7 @@ window.handleLogin = async (event) => {
       }
       if(!viewOnly){
         ensureLiveNowLoaded();
+        if(friendsEnabled) refreshFriendsData();
       }
       const profileOwnerKey = profileOwner?.username || profileOwner?.uid || '';
       if(viewOnly && profileOwnerKey){
@@ -3058,8 +3706,214 @@ window.handleLogin = async (event) => {
             ${ratingInputBlock}
           </div>
       `;
+      const avatarTypeLabel = avatar.type === 'upload' && avatar.photoURL ? 'Photo' : 'Generated';
+      const bioDisplay = bio
+        ? `<p class="text-sm text-gray-200">${escapeHtml(bio)}</p>`
+        : `<p class="text-sm text-gray-400">Add a short bio to show your vibe.</p>`;
+      const paletteButtons = AVATAR_PALETTES.map(preset=>`
+        <button type="button" onclick="setAvatarPalette('${preset.id}')" data-avatar-palette="${preset.id}" class="avatar-option px-3 py-2 rounded-lg text-xs font-semibold ${avatar.palette === preset.id ? 'active' : ''}">
+          ${preset.label}
+        </button>
+      `).join('');
+      const iconButtons = AVATAR_ICONS.map(icon=>`
+        <button type="button" onclick="setAvatarIcon('${icon}')" data-avatar-icon="${icon}" class="avatar-option w-10 h-10 rounded-lg text-lg ${avatar.icon === icon ? 'active' : ''}">${icon}</button>
+      `).join('');
+      const themeButtons = THEME_ACCENTS.map(item=>`
+        <button type="button" onclick="setThemeAccent('${item.id}')" data-theme-accent="${item.id}" class="avatar-option px-3 py-2 rounded-full text-xs font-semibold ${themeAccentId === item.id ? 'active' : ''}">
+          ${item.label}
+        </button>
+      `).join('');
+      const profileHero = `
+          <div class="flex flex-col md:flex-row gap-4 items-start md:items-center bg-black/40 border rounded-xl p-4 profile-accent-border profile-accent-glow">
+            <div class="flex items-center gap-4">
+              <div class="relative">
+                <img id="profileAvatarPreview" src="${avatarSrc}" alt="${escapeHtml(djVal || usernameVal || 'DJ')} avatar" class="w-24 h-24 rounded-full object-cover avatar-preview border-2 profile-accent-border" />
+                <span id="profileAvatarTypeLabel" class="absolute -bottom-1 -right-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-black/70 border border-white/10">${avatarTypeLabel}</span>
+              </div>
+            </div>
+            <div class="flex-1 space-y-2">
+              <div>
+                <div class="text-xl font-bold text-white">${escapeHtml(djVal || usernameVal || 'DJ')}</div>
+                <div class="text-sm text-gray-300">@${escapeHtml(usernameVal || '')}</div>
+              </div>
+              ${bioDisplay}
+              <div class="flex flex-wrap gap-2">
+                <span id="profileThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Theme: ${themeLabel}</span>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">Myspace vibes</span>
+              </div>
+            </div>
+          </div>
+      `;
+      const customizePanel = !viewOnly ? `
+          <details class="panel space-y-3" open>
+            <summary class="cursor-pointer text-lg font-bold text-white">Customize</summary>
+            <div class="space-y-4">
+              <div class="space-y-3">
+                <div class="text-sm font-semibold text-white">Generated Avatar Builder</div>
+                <div class="flex flex-wrap gap-3 items-center">
+                  <div class="flex items-center gap-3">
+                    <img id="avatarBuilderPreview" src="${avatarSrc}" alt="Avatar preview" class="w-20 h-20 rounded-full object-cover avatar-preview border profile-accent-border" />
+                    <div class="text-xs text-gray-400">Seed: <span id="avatarSeedLabel" class="text-white font-semibold">${escapeHtml(avatar.seed)}</span></div>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="randomizeAvatarSeed()" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Randomize Seed</button>
+                    ${avatar.type === 'upload' ? `<button type="button" onclick="switchToGeneratedAvatar()" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Use Generated</button>` : ''}
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2">${paletteButtons}</div>
+                <div class="flex flex-wrap gap-2 items-center">
+                  <span class="text-xs text-gray-400">Icon:</span>
+                  <button type="button" onclick="setAvatarIcon('')" data-avatar-icon="" class="avatar-option w-10 h-10 rounded-lg text-xs ${avatar.icon ? '' : 'active'}">None</button>
+                  ${iconButtons}
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Upload Photo (optional)</div>
+                <div class="flex flex-wrap gap-2 items-center">
+                  <input id="avatarUploadInput" type="file" accept="image/png,image/jpeg,image/webp" ${uploadEnabled ? '' : 'disabled'} class="hidden" />
+                  <button type="button" onclick="triggerAvatarUpload()" ${uploadEnabled ? '' : 'disabled'} title="${uploadDisabledReason}" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${uploadEnabled ? '' : 'opacity-60 cursor-not-allowed'}">Upload Photo</button>
+                  <div id="avatarUploadStatus" class="text-xs text-gray-400"></div>
+                </div>
+                <div class="text-xs text-gray-400">We resize to 512×512 and compress to keep it fast.</div>
+              </div>
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Bio</div>
+                <textarea id="profileBioInput" maxlength="${PROFILE_BIO_MAX}" rows="3" class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white" placeholder="Add a short bio...">${escapeHtml(bio)}</textarea>
+                <div id="profileBioCounter" class="text-xs text-gray-400 text-right">${bio.length}/${PROFILE_BIO_MAX}</div>
+              </div>
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Theme Accent</div>
+                <div class="flex flex-wrap gap-2">${themeButtons}</div>
+              </div>
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Privacy</div>
+                <div class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                  <div>
+                    <div class="text-sm font-semibold text-white">Public Profile</div>
+                    <div class="text-xs text-gray-400">Hide from search when off.</div>
+                  </div>
+                  <input id="profilePublicToggle" type="checkbox" class="profile-toggle" ${isPublicProfile ? 'checked' : ''} />
+                </div>
+                <div class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                  <div>
+                    <div class="text-sm font-semibold text-white">Allow Friend Requests</div>
+                    <div class="text-xs text-gray-400">Block new requests when off.</div>
+                  </div>
+                  <input id="profileFriendRequestsToggle" type="checkbox" class="profile-toggle" ${allowFriendRequests ? 'checked' : ''} />
+                </div>
+              </div>
+            </div>
+          </details>
+      ` : '';
+      const friendUidSet = new Set(friendsList.map(item=>item.friendUid));
+      const outgoingRequestSet = new Set(friendRequestsOutgoing.map(req=>req.toUid));
+      const incomingRequestMap = new Map(friendRequestsIncoming.map(req=>[req.fromUid, req]));
+      const friendSearchResultsHtml = socialFriendSearchResults.map(profile=>{
+        const uid = profile.uid || profile.username || '';
+        const isFriend = friendUidSet.has(uid);
+        const outgoing = outgoingRequestSet.has(uid);
+        const incomingReq = incomingRequestMap.get(uid);
+        const liveBadge = profile.isLive ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>` : '';
+        let actionMarkup = '';
+        if(isFriend){
+          actionMarkup = `<span class="px-3 py-1 rounded-full text-xs bg-white/10 border border-white/20 text-gray-200">Friends</span>`;
+        } else if(outgoing){
+          actionMarkup = `<span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Requested</span>`;
+        } else if(incomingReq){
+          actionMarkup = `<div class="flex gap-2">
+            <button onclick="acceptFriendRequest('${incomingReq.id}','${incomingReq.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button onclick="rejectFriendRequest('${incomingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Reject</button>
+          </div>`;
+        } else if(profile.allowFriendRequests === false){
+          actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
+        } else {
+          actionMarkup = `<button onclick="sendFriendRequest('${uid}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Add Friend</button>`;
+        }
+        return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
+          <div class="flex items-center gap-3">
+            ${renderProfileAvatarMarkup(profile, 40)}
+            <div>
+              <div class="font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || uid || '')}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            ${liveBadge}
+            ${actionMarkup}
+          </div>
+        </div>`;
+      }).join('');
+      const incomingRequestsHtml = friendRequestsIncoming.map(req=>{
+        const profile = req.fromProfile || { username: req.fromUid, djName: req.fromUid };
+        return `<div class="flex items-center justify-between gap-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+          <div class="flex items-center gap-2">
+            ${renderProfileAvatarMarkup(profile, 32)}
+            <div>
+              <div class="text-sm font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || req.fromUid || '')}</div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="acceptFriendRequest('${req.id}','${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button onclick="rejectFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Reject</button>
+          </div>
+        </div>`;
+      }).join('');
+      const friendsListHtml = friendsList.map(item=>{
+        const profile = item.profile || { username: item.friendUid, djName: item.friendUid };
+        const liveBadge = profile.isLive ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>` : '';
+        const watchBtn = profile.streamUrl && profile.isLive ? `<button onclick="viewLiveProfile('${profile.username || profile.uid || ''}')" class="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs font-semibold">Watch</button>` : '';
+        return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
+          <div class="flex items-center gap-3">
+            ${renderProfileAvatarMarkup(profile, 40)}
+            <div>
+              <div class="font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || item.friendUid || '')}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            ${liveBadge}
+            ${watchBtn}
+          </div>
+        </div>`;
+      }).join('');
+      const friendsPanel = !viewOnly ? `
+          <div class="panel space-y-4">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <div class="text-lg font-bold text-white">Friends</div>
+                <p class="text-sm text-gray-300">Search DJs and manage friend requests.</p>
+              </div>
+              <span class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Social-lite</span>
+            </div>
+            ${friendsEnabled ? '' : `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Friends require Online mode.</div>`}
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search username or DJ name…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
+              <button onclick="searchFriends()" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">Search</button>
+            </div>
+            ${socialFriendSearchLoading ? `<div class="text-sm text-gray-300">Searching…</div>` : ''}
+            ${socialFriendSearchError ? `<div class="text-sm text-red-200">${socialFriendSearchError}</div>` : ''}
+            ${friendSearchResultsHtml ? `<div class="space-y-2">${friendSearchResultsHtml}</div>` : (socialFriendSearchTerm && !socialFriendSearchLoading ? `<div class="text-sm text-gray-400">No matches found.</div>` : '')}
+            <div class="grid md:grid-cols-2 gap-3">
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Friend Requests</div>
+                ${friendsLoading ? `<div class="text-xs text-gray-400">Loading requests…</div>` : ''}
+                ${incomingRequestsHtml || `<div class="text-xs text-gray-400">No incoming requests.</div>`}
+              </div>
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="text-sm font-semibold text-white">Friends List</div>
+                  ${friendsError ? `<span class="text-xs text-red-200">${friendsError}</span>` : ''}
+                </div>
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  ${friendsListHtml || `<div class="text-xs text-gray-400">No friends yet.</div>`}
+                </div>
+              </div>
+            </div>
+          </div>
+      ` : '';
       profileEl.innerHTML = `
-        <div class="space-y-4 max-w-5xl mx-auto">
+        <div class="space-y-4 max-w-5xl mx-auto" style="${profileAccentStyle}">
           <div class="panel space-y-3">
             <div class="flex items-center justify-between">
               <div>
@@ -3069,6 +3923,7 @@ window.handleLogin = async (event) => {
               <div class="text-sm px-3 py-1 rounded-full ${viewOnly ? 'bg-purple-500/20 border border-purple-400/40 text-purple-100' : 'bg-cyan-500/20 border border-cyan-400/40 text-cyan-100'}">${viewOnly ? 'View only' : 'Editable'}</div>
             </div>
             ${viewOnly ? `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Viewing ${djVal || usernameVal}'s public profile. Editing is disabled.</div>` : ''}
+            ${profileHero}
             <div class="grid gap-4 md:grid-cols-2">
               <div>
                 <label class="text-sm text-gray-300">Email</label>
@@ -3104,7 +3959,7 @@ window.handleLogin = async (event) => {
               </div>
             </div>
             <div class="flex gap-3 flex-wrap">
-              ${viewOnly ? '' : `<button onclick="saveProfileSettings()" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Save Profile</button>`}
+              ${viewOnly ? '' : `<button onclick="saveProfileSettings()" class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold profile-accent-glow">Save Profile</button>`}
               <button onclick="switchView('browser')" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
               ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Back to My Profile</button>` : ''}
             </div>
@@ -3113,6 +3968,8 @@ window.handleLogin = async (event) => {
 
           ${liveNowPanel}
           ${ratingPanel}
+          ${customizePanel}
+          ${friendsPanel}
 
           ${showConnectedAccounts ? `
           <div class="panel space-y-3">
@@ -3338,13 +4195,24 @@ window.handleLogin = async (event) => {
       await persistAdminFlagIfNeeded(currentUser, merged);
       if(firestore){
         try{
-          const oldRef = firestore.collection('users').doc(oldUsername);
-          const newRef = firestore.collection('users').doc(newUsername);
+          const collection = getProfileCollection();
+          if(!collection) throw new Error('Profile collection unavailable');
+          const oldRef = collection.doc(oldUsername);
+          const newRef = collection.doc(newUsername);
           const snap = await oldRef.get();
-          const payload = snap.exists ? { ...snap.data(), username:newUsername, djName:newDjName } : merged;
+          const payload = snap.exists
+            ? {
+              ...snap.data(),
+              username: newUsername,
+              djName: newDjName,
+              usernameLower: normalizeUsernameLower(newUsername),
+              djNameLower: normalizeUsernameLower(newDjName),
+              searchTokens: buildSearchTokens(newUsername)
+            }
+            : merged;
           await newRef.set(payload, { merge:true });
           try{
-            const snapshot = await firestore.collection('users').get();
+            const snapshot = await collection.get();
             const batch = firestore.batch();
             let needsCommit = false;
             snapshot.forEach(doc=>{
@@ -3776,6 +4644,13 @@ function render(){
           draftProfile.streamUrl = e.target.value;
           updateStreamControlsFromInput();
         }
+        if(e.target.id === 'profileBioInput' && !viewingProfile){
+          const draft = updateDraftProfile({ bio: e.target.value.slice(0, PROFILE_BIO_MAX) });
+          if(draft) updateBioCounter(draft.bio || '');
+        }
+        if(e.target.id === 'socialFriendSearchInput'){
+          socialFriendSearchTerm = e.target.value;
+        }
         if(e.target.id === 'ratingCommentInput'){
           ratingDraft.comment = e.target.value;
           const countEl = document.getElementById('ratingCommentCount');
@@ -3786,9 +4661,21 @@ function render(){
       app.addEventListener('change', (e)=>{
         if(e.target.id === 'keyMatchModeSelect'){ setKeyMatchMode(e.target.value); }
         if(e.target.id === 'includeOppositeModeToggle'){ toggleIncludeOppositeMode(e.target.checked); }
+        if(e.target.id === 'profilePublicToggle' && !viewingProfile){
+          updateDraftProfile({ isPublic: e.target.checked });
+        }
+        if(e.target.id === 'profileFriendRequestsToggle' && !viewingProfile){
+          updateDraftProfile({ allowFriendRequests: e.target.checked });
+        }
+        if(e.target.id === 'avatarUploadInput'){
+          const file = e.target.files?.[0] || null;
+          if(file) window.handleAvatarUpload(file);
+          e.target.value = '';
+        }
       });
       app.addEventListener('keydown', (e)=>{
         if(e.target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
+        if(e.target.id === 'socialFriendSearchInput' && e.key === 'Enter'){ e.preventDefault(); searchProfilesForFriends(); }
       });
       appDelegatesBound = true;
     }
@@ -4953,7 +5840,7 @@ function render(){
       if(currentUser && (currentUser.username === profileParam || currentUser.uid === profileParam)){
         viewingProfile = null; setProfileQueryParam(null); return;
       }
-      const matches = await fetchProfilesByField('username', profileParam);
+      const matches = await fetchProfilesByField('usernameLower', normalizeUsernameLower(profileParam));
       const profile = matches[0] || await loadProfileForViewing(profileParam);
       if(profile){
         viewingProfile = normalizeProfileShape(profile, profile.username || profile.uid);
