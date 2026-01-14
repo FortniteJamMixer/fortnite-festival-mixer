@@ -7,8 +7,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function isAdmin() {
       return request.auth != null && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.isAdmin == true ||
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == "admin"
       );
     }
 
@@ -23,17 +23,36 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Profile + ratings (client-owned docs).
-    match /users/{userId} {
-      allow read: if true;
+    // Profiles + ratings (client-owned docs).
+    match /profiles/{userId} {
+      allow read: if resource.data.isPublic == true || (request.auth != null && request.auth.uid == userId);
       // Only allow users to update their own profile.
       allow write: if request.auth != null && request.auth.uid == userId;
 
       match /ratings/{raterId} {
-        allow read: if true;
+        allow read: if get(/databases/$(database)/documents/profiles/$(userId)).data.isPublic == true
+          || (request.auth != null && request.auth.uid == userId);
         // Raters can only write their own rating doc.
         allow write: if request.auth != null && request.auth.uid == raterId;
       }
+    }
+
+    match /friendRequests/{requestId} {
+      allow create: if request.auth != null && request.resource.data.fromUid == request.auth.uid;
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.fromUid ||
+        request.auth.uid == resource.data.toUid
+      );
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.fromUid ||
+        request.auth.uid == resource.data.toUid
+      );
+      allow delete: if false;
+    }
+
+    match /friends/{uid}/list/{friendUid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid;
     }
 
     // Per-visitor docs are server-only.
@@ -60,8 +79,20 @@ service cloud.firestore {
 }
 ```
 
+## Storage (avatars)
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /avatars/{uid}.{ext} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
+```
+
 Notes:
 - Presence writes are authenticated via anonymous auth; clients only touch their own `presence/{uid}` node.
 - Community stats remain read-only on the client; all increments/peaks are computed in serverless API routes.
 - Firebase Console: Auth → Sign-in method → Anonymous must be turned ON for presence to function.
-- If you key user documents by username (instead of auth UID), update `userId`/`raterId` checks accordingly (e.g., compare against a username stored in a custom claim or document field).
+- If you key profile documents by username (instead of auth UID), update `userId`/`raterId` checks accordingly (e.g., compare against a username stored in a custom claim or document field).
