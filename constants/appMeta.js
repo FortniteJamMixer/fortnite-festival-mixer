@@ -72,8 +72,8 @@ const HELP_CONTENT = {
         id: 'profile_picture_rules',
         title: 'Profile Picture Rules',
         bullets: [
-          'Verified avatars are moderated automatically.',
-          'Local-only avatars are visible only on your device.',
+          'Verified avatars are online-only and may pause to keep the app free.',
+          'Local-only photos stay on your device and aren’t visible to others.',
           'Rejected images are not stored.',
           'Verified uploads require Online mode.'
         ]
@@ -135,8 +135,8 @@ const HELP_CONTENT = {
         title: 'Avatar (Generated + Local + Verified)',
         bullets: [
           'Generated Avatar Builder lets you choose a palette, icon, and seed.',
-          'Local Avatar stays private on this device only.',
-          'Verified Avatar is moderated before it becomes public.',
+          'Local-only photos stay on your device and aren’t visible to others.',
+          'Verified avatars are online-only and may pause to keep the app free.',
           'If Storage is not configured or you are Offline, verified upload is disabled.'
         ]
       },

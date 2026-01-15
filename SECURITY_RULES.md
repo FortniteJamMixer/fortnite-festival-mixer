@@ -18,9 +18,24 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /appStats/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /appConfig/{document=**} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /avatarReports/{reportId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if isAdmin();
     }
 
     // Profiles + ratings (client-owned docs).
