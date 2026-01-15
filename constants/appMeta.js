@@ -69,13 +69,23 @@ const HELP_CONTENT = {
         ]
       },
       {
+        id: 'profile_picture_rules',
+        title: 'Profile Picture Rules',
+        bullets: [
+          'Verified avatars are moderated automatically.',
+          'Local-only avatars are visible only on your device.',
+          'Rejected images are not stored.',
+          'Verified uploads require Online mode.'
+        ]
+      },
+      {
         id: 'offline',
         title: 'Offline vs Online mode',
         bullets: [
           'Online mode syncs your Profile to Firestore.',
           'Offline mode uses cached tracks and local storage.',
           'Friends / Bandmates and search are disabled offline.',
-          'Avatar uploads are disabled offline.'
+          'Verified avatars require Online mode.'
         ]
       }
     ],
@@ -122,11 +132,12 @@ const HELP_CONTENT = {
       },
       {
         id: 'avatar',
-        title: 'Avatar (Generated + Optional Upload)',
+        title: 'Avatar (Generated + Local + Verified)',
         bullets: [
           'Generated Avatar Builder lets you choose a palette, icon, and seed.',
-          'Upload Photo is optional and resizes/compresses in the browser.',
-          'If Storage is not configured or you are Offline, upload is disabled.'
+          'Local Avatar stays private on this device only.',
+          'Verified Avatar is moderated before it becomes public.',
+          'If Storage is not configured or you are Offline, verified upload is disabled.'
         ]
       },
       {
@@ -236,6 +247,10 @@ const DEFAULT_WHATS_NEW = {
     {
       id: 'help_refresh',
       text: 'Help modal got a cleanup for faster guidance.'
+    },
+    {
+      id: 'verified_avatars',
+      text: 'Verified avatars now support moderation and public display.'
     }
   ]
 };
