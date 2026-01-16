@@ -70,6 +70,9 @@
     .profile-accent-border { border-color: var(--profile-accent, #ff6b9d); }
     .profile-accent-glow { box-shadow: 0 0 18px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
     .profile-accent-pill { background: rgba(255,255,255,0.06); border: 1px solid var(--profile-accent, #ff6b9d); color: #fff; }
+    .profile-avatar-action { cursor: pointer; }
+    .profile-avatar-action:focus-visible { outline: 2px solid var(--profile-accent, #ff6b9d); outline-offset: 4px; }
+    .profile-avatar-overlay { pointer-events: none; }
     .avatar-preview { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); }
     .avatar-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
     .avatar-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
@@ -384,6 +387,7 @@ const BRAND = Object.freeze({
   BROWSER_TITLE: 'Fortnite Jam Mixer – Cross-Browser Edition'
 });
 const DEBUG_UI = false;
+const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).get('debug') === '1');
 let profileScriptError = null;
 document.title = BRAND.BROWSER_TITLE;
 
@@ -407,6 +411,15 @@ function logEvent(type, payload = {}) {
     localStorage.setItem('debugLogs', JSON.stringify(existing));
   } catch (e) {
     console.warn('Failed to persist debug log', e);
+  }
+}
+
+function debugProfileLog(message, data = {}){
+  if(!DEBUG_PROFILE) return;
+  if(Object.keys(data || {}).length){
+    console.log(`[debug][profile] ${message}`, data);
+  } else {
+    console.log(`[debug][profile] ${message}`);
   }
 }
 
@@ -477,11 +490,12 @@ function buildExportFilename(username = 'profile'){
 let firebaseApp = null, firebaseAuth = null, firestore = null, firebaseStorage = null, firebaseFunctions = null;
 let firebaseAuthUnsub = null;
 let avatarStatusUnsub = null;
+let userProfileUnsub = null;
 let authSettledUser = null;
 let authProcessing = false;
 let authInFlight = false;
 const DEFAULT_VERIFIED_AVATAR_CONFIG = Object.freeze({
-  verifiedAvatarsEnabled: true,
+  verifiedAvatarsEnabled: false,
   verifiedAvatarsPausedReason: '',
   verifiedAvatarsPausedAt: null,
   verifiedAvatarsDailyGlobalLimit: 200,
@@ -490,7 +504,9 @@ const DEFAULT_VERIFIED_AVATAR_CONFIG = Object.freeze({
 });
 let verifiedAvatarConfig = { ...DEFAULT_VERIFIED_AVATAR_CONFIG };
 let verifiedAvatarConfigLoaded = false;
+let verifiedAvatarConfigMissing = false;
 let verifiedAvatarConfigUnsub = null;
+let appConfigLoaded = false;
 const AVATAR_REPORT_COLLECTION = 'avatarReports';
 const LOCAL_BLOCKED_AVATARS_KEY = 'ffmBlockedAvatars';
 if (firebaseEnabled) {
@@ -506,7 +522,7 @@ if (firebaseEnabled) {
     });
     console.log('Firebase initialized');
     logEvent('firebase_init', { projectId: firebaseConfig.projectId });
-    subscribeVerifiedAvatarConfig();
+    listenAppConfig();
   } catch (e) {
     console.warn('Firebase init failed', e);
     logEvent('firebase_init_fail', { message: e?.message, code: e?.code });
@@ -783,15 +799,29 @@ function track(eventName, payload = {}){
       };
     }
 
-    function subscribeVerifiedAvatarConfig(){
+    function listenAppConfig(){
       if(!firestore) return;
       if(verifiedAvatarConfigUnsub){
         verifiedAvatarConfigUnsub();
         verifiedAvatarConfigUnsub = null;
       }
       verifiedAvatarConfigUnsub = firestore.collection('appConfig').doc('public').onSnapshot((doc)=>{
-        verifiedAvatarConfig = normalizeVerifiedAvatarConfig(doc.data() || {});
+        const data = doc.exists ? (doc.data() || {}) : {};
+        verifiedAvatarConfigMissing = !doc.exists;
+        verifiedAvatarConfig = normalizeVerifiedAvatarConfig({
+          ...data,
+          ...(verifiedAvatarConfigMissing ? { verifiedAvatarsEnabled: false, verifiedAvatarsPausedReason: 'Verified avatars not configured yet' } : {})
+        });
         verifiedAvatarConfigLoaded = true;
+        appConfigLoaded = true;
+        window.appConfig = {
+          ...(window.appConfig || {}),
+          public: verifiedAvatarConfig
+        };
+        debugProfileLog('appConfig loaded', {
+          enabled: verifiedAvatarConfig?.verifiedAvatarsEnabled === true,
+          missing: verifiedAvatarConfigMissing
+        });
         renderProfile();
         setupEventListeners();
       }, (err)=>{
@@ -800,10 +830,13 @@ function track(eventName, payload = {}){
     }
 
     function isVerifiedAvatarFeatureEnabled(){
-      return verifiedAvatarConfig?.verifiedAvatarsEnabled !== false;
+      return verifiedAvatarConfig?.verifiedAvatarsEnabled === true;
     }
 
     function getVerifiedAvatarPausedCopy(){
+      if(verifiedAvatarConfigMissing){
+        return 'Verified avatars not configured yet.';
+      }
       const reason = verifiedAvatarConfig?.verifiedAvatarsPausedReason || 'daily free quota reached';
       return `Verified avatars paused (${reason}). Try again tomorrow.`;
     }
@@ -2534,11 +2567,30 @@ function track(eventName, payload = {}){
       }, true);
     }
 
+    function openProfileEditor(){
+      if(viewingProfile){
+        view = 'profile';
+        render();
+        setupEventListeners();
+        renderProfile();
+        debugProfileLog('profile editor open blocked (view-only)');
+        return;
+      }
+      profileEditMode = true;
+      view = 'profile';
+      render();
+      setupEventListeners();
+      renderProfile();
+      debugProfileLog('profile editor opened');
+    }
+    window.openProfileEditor = openProfileEditor;
+
     function bindProfileHandlers(){
-      if(profileHandlersBound) return;
+      if(profileHandlersBound || window.__profileEventsBound) return;
       const app = document.getElementById('app');
       if(!app) return;
       if(DEBUG_UI) console.log('[debug][profile] bindProfileHandlers');
+      window.__profileEventsBound = true;
       app.addEventListener('click', (e)=>{
         const toggle = e.target.closest('[data-profile-action="toggle-edit"]');
         if(toggle){
@@ -2547,6 +2599,20 @@ function track(eventName, payload = {}){
           renderProfile();
           setupEventListeners();
           return;
+        }
+        const editTrigger = e.target.closest('[data-action="open-profile-editor"]');
+        if(editTrigger){
+          debugProfileLog('avatar edit click detected');
+          openProfileEditor();
+        }
+      });
+      app.addEventListener('keydown', (e)=>{
+        const trigger = e.target.closest?.('[data-action="open-profile-editor"]');
+        if(!trigger) return;
+        if(e.key === 'Enter' || e.key === ' '){
+          e.preventDefault();
+          debugProfileLog('avatar edit keydown detected', { key: e.key });
+          openProfileEditor();
         }
       });
       profileHandlersBound = true;
@@ -2751,29 +2817,34 @@ function track(eventName, payload = {}){
       }
     };
 
-    window.handleVerifiedAvatarUpload = async (file)=>{
+    async function startAvatarVerify(file){
       if(!file) return;
       const status = document.getElementById('avatarVerifyStatus');
       const rulesAccepted = (draftProfile || currentUser || {}).rulesAccepted === true;
       if(!firebaseAuth?.currentUser || !firebaseStorage || !firebaseFunctions){
         if(status) status.textContent = 'Verification unavailable.';
+        debugProfileLog('verify blocked', { reason: 'missing firebase services' });
         return;
       }
       if(!isVerifiedAvatarFeatureEnabled()){
         if(status) status.textContent = getVerifiedAvatarPausedCopy();
+        debugProfileLog('verify blocked', { reason: 'feature disabled' });
         return;
       }
       if(isOffline){
         if(status) status.textContent = 'Go online to verify.';
+        debugProfileLog('verify blocked', { reason: 'offline' });
         return;
       }
       if(!rulesAccepted){
         if(status) status.textContent = 'Accept the rules first.';
+        debugProfileLog('verify blocked', { reason: 'rules not accepted' });
         return;
       }
       const allowedTypes = ['image/jpeg','image/png','image/webp'];
       if(!allowedTypes.includes(file.type)){
         if(status) status.textContent = 'Use JPG, PNG, or WebP.';
+        debugProfileLog('verify blocked', { reason: 'unsupported file type', type: file.type });
         return;
       }
       try{
@@ -2781,23 +2852,28 @@ function track(eventName, payload = {}){
         const reservation = await reserveVerifiedAvatarSlot();
         if(!reservation?.allowed){
           if(status) status.textContent = reservation?.reason || 'Verification unavailable.';
+          debugProfileLog('verify blocked', { reason: reservation?.reason || 'quota denied' });
           return;
         }
         if(status) status.textContent = 'Resizing...';
-        const blob = await resizeAvatarFile(file, 320, 140 * 1024);
+        const blob = await resizeAvatarFile(file, 256, 140 * 1024);
         const uid = firebaseAuth.currentUser.uid;
         const ref = firebaseStorage.ref().child(`avatarsPending/${uid}.webp`);
         if(status) status.textContent = 'Uploading for review...';
         await ref.put(blob, { contentType: blob.type });
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+        const updatedAtLocal = new Date().toISOString();
+        const avatarPayload = {
+          ...sanitizeAvatarForSave(draftProfile || currentUser || {}),
+          status: 'pending',
+          updatedAt: updatedAtLocal
+        };
+        const rulesAcceptedAtValue = (draftProfile || currentUser || {}).rulesAcceptedAt || updatedAtLocal;
+        const avatarPayloadForWrite = { ...avatarPayload };
         const pendingPayload = {
-          avatar: {
-            ...sanitizeAvatarForSave(draftProfile || currentUser || {}),
-            status: 'pending',
-            updatedAt: new Date().toISOString()
-          },
+          avatar: avatarPayloadForWrite,
           rulesAccepted: true,
-          rulesAcceptedAt: (draftProfile || currentUser || {}).rulesAcceptedAt || new Date().toISOString()
+          rulesAcceptedAt: rulesAcceptedAtValue
         };
         if(serverTimestamp){
           pendingPayload.avatar.updatedAt = serverTimestamp();
@@ -2805,14 +2881,26 @@ function track(eventName, payload = {}){
         }
         if(firestore && uid){
           await getProfileCollection()?.doc(uid).set(pendingPayload, { merge: true });
+          await firestore.collection('users').doc(uid).set({
+            avatar: avatarPayloadForWrite,
+            rulesAccepted: true,
+            rulesAcceptedAt: pendingPayload.rulesAcceptedAt || rulesAcceptedAtValue
+          }, { merge: true });
         }
-        updateDraftAvatar({ mode: 'verified', status: 'pending', updatedAt: new Date().toISOString() });
+        updateDraftAvatar({ mode: 'verified', status: 'pending', updatedAt: updatedAtLocal });
         if(status) status.textContent = 'Pending review...';
         updateAvatarPreview();
+        debugProfileLog('verify upload started', { uid });
       }catch(err){
         console.error('avatar verification failed', err);
         if(status) status.textContent = 'Verification failed.';
+        debugProfileLog('verify failed', { error: err?.message || err });
       }
+    }
+
+    window.startAvatarVerify = startAvatarVerify;
+    window.handleVerifiedAvatarUpload = async (file)=>{
+      await startAvatarVerify(file);
     };
 
     window.triggerVerifiedAvatarUpload = ()=>{
@@ -3676,18 +3764,58 @@ function track(eventName, payload = {}){
       });
     }
 
+    function listenUserProfile(uid){
+      if(!firestore || !uid) return;
+      if(userProfileUnsub){
+        userProfileUnsub();
+        userProfileUnsub = null;
+      }
+      userProfileUnsub = firestore.collection('users').doc(uid).onSnapshot((doc)=>{
+        if(!doc.exists) return;
+        const data = doc.data() || {};
+        if(!currentUser) return;
+        const previousStatus = currentUser?.avatar?.status || 'none';
+        if(data.avatar){
+          currentUser.avatar = { ...ensureAvatar(currentUser), ...data.avatar };
+        }
+        if(typeof data.rulesAccepted !== 'undefined'){
+          currentUser.rulesAccepted = data.rulesAccepted === true;
+          currentUser.rulesAcceptedAt = data.rulesAcceptedAt || null;
+        }
+        if(draftProfile){
+          draftProfile.avatar = { ...ensureAvatar(draftProfile), ...data.avatar };
+          draftProfile.rulesAccepted = currentUser.rulesAccepted;
+          draftProfile.rulesAcceptedAt = currentUser.rulesAcceptedAt;
+        }
+        if(previousStatus !== currentUser?.avatar?.status){
+          updateAvatarPreview();
+        }
+        if(!viewingProfile){
+          renderProfile();
+          setupEventListeners();
+        }
+      }, (err)=>{
+        console.warn('user profile listener failed', err);
+      });
+    }
+
     function setupFirebaseAuthListener() {
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
         if (user) {
           await resolveAuthSuccess(user);
           setupAvatarStatusListener(user.uid);
+          listenUserProfile(user.uid);
         } else {
           authSettledUser = null;
           currentUser = null;
           if(avatarStatusUnsub){
             avatarStatusUnsub();
             avatarStatusUnsub = null;
+          }
+          if(userProfileUnsub){
+            userProfileUnsub();
+            userProfileUnsub = null;
           }
           showLoginScreen();
         }
@@ -4182,9 +4310,9 @@ window.handleLogin = async (event) => {
       const verifiedError = verifiedStatus === 'error';
       const localUploadEnabled = !viewOnly;
       const localUploadActive = localUploadEnabled && profileEditable && rulesAccepted;
-      const verifiedUploadEnabled = verifiedFeatureEnabled && !!firebaseStorage && !!firebaseAuth?.currentUser && !isOffline && !viewOnly && !!firebaseFunctions;
-      const verifiedUploadActive = verifiedUploadEnabled && profileEditable && rulesAccepted;
-      const verifiedToggleDisabled = !verifiedFeatureEnabled || !profileEditable || (!verifiedModeActive && (!firebaseAuth?.currentUser || isOffline || !firebaseStorage));
+      const verifiedUploadEnabled = verifiedFeatureEnabled && !!firebaseStorage && !!firebaseAuth?.currentUser && !isOffline && !viewOnly && !!firebaseFunctions && rulesAccepted;
+      const verifiedUploadActive = verifiedUploadEnabled && profileEditable;
+      const verifiedToggleDisabled = !verifiedFeatureEnabled || !profileEditable || !rulesAccepted || (!verifiedModeActive && (!firebaseAuth?.currentUser || isOffline || !firebaseStorage));
       const localUploadDisabledReason = viewOnly
         ? 'View-only mode.'
         : !profileEditable
@@ -4197,22 +4325,30 @@ window.handleLogin = async (event) => {
         : !profileEditable
           ? 'Enable Edit mode to verify.'
           : !verifiedFeatureEnabled
-            ? 'Verified avatars are paused to keep the app free.'
-          : !firebaseAuth?.currentUser
-            ? 'Sign in to verify.'
-            : isOffline
-              ? 'Go online to verify.'
-              : !firebaseStorage
-                ? 'Storage not configured.'
-                : !firebaseFunctions
-                  ? 'Verification functions unavailable.'
-                : !rulesAccepted
-                  ? 'Accept the rules first.'
-                  : '';
+            ? verifiedPausedCopy
+            : !firebaseAuth?.currentUser
+              ? 'Sign in to verify.'
+              : isOffline
+                ? 'Go online to verify.'
+                : !firebaseStorage
+                  ? 'Storage not configured.'
+                  : !firebaseFunctions
+                    ? 'Verification functions unavailable.'
+                    : !rulesAccepted
+                      ? 'Accept the rules first.'
+                      : '';
+      const verifiedDisabledReasonLine = verifiedUploadActive ? '' : (verifiedUploadDisabledReason || '');
+      if(verifiedDisabledReasonLine){
+        debugProfileLog('verify disabled reason', { reason: verifiedDisabledReasonLine });
+      }
+      const verifiedPauseIntro = verifiedAvatarConfigMissing
+        ? 'Verified avatars not configured yet.'
+        : 'Verified avatars are paused to keep the app free. You can still use Generated or Local-only photos.';
+      const verifiedPauseDetail = verifiedAvatarConfigMissing ? '' : verifiedPausedCopy;
       const verifiedPauseBanner = !verifiedFeatureEnabled
         ? `<div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/40 rounded px-3 py-2 space-y-1">
-            <div>Verified avatars are paused to keep the app free. You can still use Generated or Local-only photos.</div>
-            <div>${escapeHtml(verifiedPausedCopy)}</div>
+            <div>${escapeHtml(verifiedPauseIntro)}</div>
+            ${verifiedPauseDetail ? `<div>${escapeHtml(verifiedPauseDetail)}</div>` : ''}
           </div>`
         : '';
       const editDisabledAttr = profileEditable ? '' : 'disabled';
@@ -4416,9 +4552,12 @@ window.handleLogin = async (event) => {
       const profileHero = `
           <div class="flex flex-col md:flex-row gap-4 items-start md:items-center bg-black/40 border rounded-xl p-4 profile-accent-border profile-accent-glow">
             <div class="flex items-center gap-4">
-              <div class="relative">
-                <img id="profileAvatarPreview" src="${avatarSrc}" alt="${escapeHtml(djVal || usernameVal || 'DJ')} avatar" class="w-24 h-24 rounded-full object-cover avatar-preview border-2 profile-accent-border" />
-                <span id="profileAvatarTypeLabel" class="absolute -bottom-1 -right-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-black/70 border border-white/10">${avatarTypeLabel}</span>
+              <div class="profile-avatar-action flex flex-col items-center gap-2" role="button" tabindex="0" data-action="open-profile-editor" aria-label="Edit Profile">
+                <div class="relative">
+                  <img id="profileAvatarPreview" src="${avatarSrc}" alt="${escapeHtml(djVal || usernameVal || 'DJ')} avatar" class="w-24 h-24 rounded-full object-cover avatar-preview border-2 profile-accent-border" />
+                </div>
+                <span class="profile-accent-pill px-4 py-1.5 rounded-full text-xs font-semibold shadow-sm">Edit Profile</span>
+                <span id="profileAvatarTypeLabel" class="profile-avatar-overlay px-2 py-1 rounded-full text-[10px] font-semibold bg-black/70 border border-white/10">${avatarTypeLabel}</span>
               </div>
             </div>
             <div class="flex-1 space-y-2">
@@ -4488,6 +4627,7 @@ window.handleLogin = async (event) => {
                   <button type="button" onclick="triggerVerifiedAvatarUpload()" ${verifiedUploadActive ? '' : 'disabled'} title="${verifiedUploadDisabledReason}" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${verifiedUploadActive ? '' : 'opacity-60 cursor-not-allowed'}">Verify &amp; Publish</button>
                   <div id="avatarVerifyStatus" class="text-xs text-gray-400"></div>
                 </div>
+                ${verifiedDisabledReasonLine ? `<div class="text-xs text-amber-200">${escapeHtml(verifiedDisabledReasonLine)}</div>` : ''}
                 <div class="text-xs text-gray-400">Verified requires Online mode. Only approved avatars are visible to others.</div>
                 ${verifiedPending ? `<div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/40 rounded px-3 py-2">Pending review…</div>` : ''}
                 ${verifiedApproved ? `<div class="text-xs text-emerald-200 bg-emerald-500/10 border border-emerald-400/40 rounded px-3 py-2">Approved ✓</div>` : ''}
