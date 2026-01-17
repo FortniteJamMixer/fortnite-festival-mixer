@@ -18,8 +18,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-functions-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <script src="/constants/appMeta.js"></script>
   <script src="/services/configService.js"></script>
@@ -73,9 +71,18 @@
     .profile-avatar-action { cursor: pointer; }
     .profile-avatar-action:focus-visible { outline: 2px solid var(--profile-accent, #ff6b9d); outline-offset: 4px; }
     .profile-avatar-overlay { pointer-events: none; }
-    .avatar-preview { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); }
-    .avatar-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
-    .avatar-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
+    .persona-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
+    .persona-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); transform: scale(1.04); }
+    .persona-option:hover { box-shadow: 0 0 16px rgba(255,255,255,0.2); transform: translateY(-1px) scale(1.02); }
+    .persona-badge { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .persona-badge svg { display: block; }
+    .persona-energy { position: absolute; right: -4px; bottom: -4px; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+    .persona-ring { animation: personaPulse 3s ease-in-out infinite; }
+    .persona-spark { animation: personaSpark 2.2s ease-in-out infinite; }
+    .persona-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .persona-card:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 16px rgba(56,189,248,0.3); }
+    @keyframes personaPulse { 0%,100% { opacity: 0.85; } 50% { opacity: 0.55; } }
+    @keyframes personaSpark { 0%,100% { transform: translateY(0); opacity: 0.8; } 50% { transform: translateY(-3px); opacity: 1; } }
     .profile-toggle { accent-color: var(--profile-accent, #ff6b9d); }
 
     /* Help modal */
@@ -563,42 +570,24 @@ function buildExportFilename(username = 'profile'){
   return `${BRAND.EXPORT_PREFIX}-${safeName}.json`;
 }
 
-let firebaseApp = null, firebaseAuth = null, firestore = null, firebaseStorage = null, firebaseFunctions = null;
+let firebaseApp = null, firebaseAuth = null, firestore = null;
 let firebaseAuthUnsub = null;
-let avatarStatusUnsub = null;
 let userProfileUnsub = null;
 let authSettledUser = null;
 let authProcessing = false;
 let authInFlight = false;
-const DEFAULT_VERIFIED_AVATAR_CONFIG = Object.freeze({
-  verifiedAvatarsEnabled: false,
-  verifiedAvatarsPausedReason: '',
-  verifiedAvatarsPausedAt: null,
-  verifiedAvatarsDailyGlobalLimit: 200,
-  verifiedAvatarsDailyUserLimit: 3,
-  verifiedAvatarsCooldownSeconds: 120
-});
-let verifiedAvatarConfig = { ...DEFAULT_VERIFIED_AVATAR_CONFIG };
-let verifiedAvatarConfigLoaded = false;
-let verifiedAvatarConfigMissing = false;
-let verifiedAvatarConfigUnsub = null;
 let appConfigLoaded = false;
-const AVATAR_REPORT_COLLECTION = 'avatarReports';
-const LOCAL_BLOCKED_AVATARS_KEY = 'ffmBlockedAvatars';
 if (firebaseEnabled) {
   try {
     firebaseApp = firebase.initializeApp(firebaseConfig);
     firebaseAuth = firebase.auth();
     firestore = firebase.firestore();
-    firebaseStorage = firebase.storage ? firebase.storage() : null;
-    firebaseFunctions = firebase.functions ? firebase.functions() : null;
     firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
       console.warn('Firebase persistence failed', err);
       logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
     });
     console.log('Firebase initialized');
     logEvent('firebase_init', { projectId: firebaseConfig.projectId });
-    listenAppConfig();
   } catch (e) {
     console.warn('Firebase init failed', e);
     logEvent('firebase_init_fail', { message: e?.message, code: e?.code });
@@ -724,14 +713,143 @@ function track(eventName, payload = {}){
     const PROFILE_COLLECTION = 'profiles';
     const LEGACY_PROFILE_COLLECTION = 'users';
     const PROFILE_BIO_MAX = 160;
-    const AVATAR_PALETTES = [
-      { id: 'neon', label: 'Neon Pop', colors: ['#ff6b9d', '#7c3aed', '#22d3ee', '#facc15'] },
-      { id: 'midnight', label: 'Midnight', colors: ['#111827', '#334155', '#38bdf8', '#a855f7'] },
-      { id: 'sunset', label: 'Sunset', colors: ['#fb7185', '#f97316', '#facc15', '#f472b6'] },
-      { id: 'mint', label: 'Mintwave', colors: ['#22d3ee', '#14b8a6', '#34d399', '#a7f3d0'] },
-      { id: 'orbit', label: 'Orbit', colors: ['#60a5fa', '#818cf8', '#f472b6', '#c084fc'] }
+    const PERSONA_STORAGE_KEYS = Object.freeze({
+      id: 'profilePersonaId',
+      theme: 'profilePersonaTheme',
+      seed: 'profilePersonaSeed'
+    });
+    const PERSONA_THEMES = [
+      { id: 'neonPop', label: 'Neon Pop', ring: ['#ff6b9d', '#38bdf8'], background: ['#1e1b4b', '#0f172a'], accent: '#facc15', glow: 'rgba(255,107,157,0.55)', particle: '#fef3c7' },
+      { id: 'midnight', label: 'Midnight', ring: ['#0ea5e9', '#6366f1'], background: ['#0f172a', '#111827'], accent: '#38bdf8', glow: 'rgba(56,189,248,0.4)', particle: '#e0f2fe' },
+      { id: 'sunset', label: 'Sunset', ring: ['#fb7185', '#f97316'], background: ['#3b0a2a', '#1f2937'], accent: '#facc15', glow: 'rgba(249,115,22,0.4)', particle: '#fde68a' },
+      { id: 'mintwave', label: 'Mintwave', ring: ['#22d3ee', '#34d399'], background: ['#0f172a', '#064e3b'], accent: '#a7f3d0', glow: 'rgba(52,211,153,0.4)', particle: '#ccfbf1' },
+      { id: 'orbit', label: 'Orbit', ring: ['#60a5fa', '#c084fc'], background: ['#111827', '#312e81'], accent: '#f472b6', glow: 'rgba(192,132,252,0.45)', particle: '#fbcfe8' }
     ];
-    const AVATAR_ICONS = ['🎧','⭐','⚡','🎵','🪩','💿','✨'];
+    const PERSONAS = Object.freeze({
+      raver: {
+        id: 'raver',
+        name: 'Raver',
+        energy: '⚡',
+        render: ({ theme }) => `
+          <circle cx="128" cy="86" r="22" fill="${theme.accent}" opacity="0.9"/>
+          <path d="M58 128 L96 96" stroke="${theme.accent}" stroke-width="10" stroke-linecap="round"/>
+          <path d="M198 128 L160 96" stroke="${theme.accent}" stroke-width="10" stroke-linecap="round"/>
+          <path d="M92 188 L128 138 L164 188" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+          <circle cx="68" cy="116" r="6" fill="${theme.particle}"/>
+          <circle cx="188" cy="116" r="6" fill="${theme.particle}"/>
+        `
+      },
+      mc: {
+        id: 'mc',
+        name: 'MC',
+        energy: '🎤',
+        render: ({ theme }) => `
+          <circle cx="128" cy="90" r="22" fill="${theme.accent}" opacity="0.95"/>
+          <rect x="96" y="70" width="64" height="16" rx="8" fill="${theme.ring[0]}" opacity="0.9"/>
+          <path d="M92 168 L128 128 L164 168" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="178" y="120" width="18" height="40" rx="6" fill="${theme.ring[1]}" opacity="0.9"/>
+          <circle cx="187" cy="112" r="10" fill="${theme.accent}"/>
+        `
+      },
+      breaker: {
+        id: 'breaker',
+        name: 'Breaker',
+        energy: '🔥',
+        render: ({ theme }) => `
+          <circle cx="110" cy="92" r="18" fill="${theme.accent}" opacity="0.95"/>
+          <path d="M70 172 L122 132 L170 154" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M156 104 L182 70" stroke="${theme.ring[1]}" stroke-width="12" stroke-linecap="round"/>
+          <path d="M84 130 L52 92" stroke="${theme.ring[0]}" stroke-width="12" stroke-linecap="round"/>
+        `
+      },
+      turntablist: {
+        id: 'turntablist',
+        name: 'Turntablist',
+        energy: '🎧',
+        render: ({ theme }) => `
+          <circle cx="128" cy="78" r="20" fill="${theme.accent}" opacity="0.95"/>
+          <rect x="64" y="120" width="128" height="48" rx="14" fill="rgba(255,255,255,0.12)" stroke="${theme.ring[1]}" stroke-width="4"/>
+          <circle cx="104" cy="144" r="16" fill="${theme.ring[0]}" opacity="0.9"/>
+          <circle cx="152" cy="144" r="12" fill="${theme.ring[1]}" opacity="0.9"/>
+          <path d="M110 178 L128 148 L146 178" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+        `
+      },
+      producer: {
+        id: 'producer',
+        name: 'Producer',
+        energy: '💻',
+        render: ({ theme }) => `
+          <circle cx="128" cy="80" r="20" fill="${theme.accent}" opacity="0.95"/>
+          <rect x="70" y="120" width="116" height="54" rx="10" fill="rgba(255,255,255,0.1)" stroke="${theme.ring[0]}" stroke-width="4"/>
+          <path d="M86 148 L106 138 L126 146 L146 132 L170 140" stroke="${theme.accent}" stroke-width="6" stroke-linecap="round"/>
+        `
+      },
+      rocker: {
+        id: 'rocker',
+        name: 'Rock Shredder',
+        energy: '🎸',
+        render: ({ theme }) => `
+          <circle cx="108" cy="86" r="20" fill="${theme.accent}" opacity="0.95"/>
+          <path d="M88 160 L132 118 L176 170" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="188" cy="178" r="14" fill="${theme.ring[1]}" opacity="0.9"/>
+          <rect x="150" y="146" width="48" height="10" rx="5" fill="${theme.ring[0]}"/>
+        `
+      },
+      disco: {
+        id: 'disco',
+        name: 'Disco Diva',
+        energy: '✨',
+        render: ({ theme }) => `
+          <circle cx="128" cy="78" r="20" fill="${theme.accent}" opacity="0.95"/>
+          <circle cx="128" cy="122" r="22" fill="rgba(255,255,255,0.18)" stroke="${theme.ring[0]}" stroke-width="4"/>
+          <path d="M90 176 L128 136 L166 176" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="112" cy="118" r="6" fill="${theme.particle}"/>
+          <circle cx="144" cy="126" r="6" fill="${theme.particle}"/>
+        `
+      },
+      cyber: {
+        id: 'cyber',
+        name: 'Cyber DJ',
+        energy: '🛸',
+        render: ({ theme }) => `
+          <circle cx="128" cy="88" r="22" fill="${theme.accent}" opacity="0.95"/>
+          <rect x="90" y="78" width="76" height="18" rx="9" fill="${theme.ring[1]}" opacity="0.9"/>
+          <path d="M88 170 L128 130 L168 170" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M104 108 L152 108" stroke="${theme.particle}" stroke-width="4" stroke-linecap="round"/>
+        `
+      },
+      punk: {
+        id: 'punk',
+        name: 'Punk',
+        energy: '🔊',
+        render: ({ theme }) => `
+          <circle cx="128" cy="86" r="20" fill="${theme.accent}" opacity="0.95"/>
+          <path d="M112 64 L128 40 L144 64" stroke="${theme.ring[0]}" stroke-width="8" stroke-linecap="round"/>
+          <rect x="70" y="130" width="116" height="46" rx="12" fill="rgba(255,255,255,0.12)" stroke="${theme.ring[1]}" stroke-width="4"/>
+          <circle cx="102" cy="152" r="10" fill="${theme.accent}"/>
+          <circle cx="154" cy="152" r="10" fill="${theme.accent}"/>
+        `
+      },
+      kpop: {
+        id: 'kpop',
+        name: 'K-Pop',
+        energy: '⭐',
+        render: ({ theme }) => `
+          <circle cx="128" cy="84" r="20" fill="${theme.accent}" opacity="0.95"/>
+          <path d="M94 178 L128 136 L162 178" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M70 118 L90 88" stroke="${theme.ring[0]}" stroke-width="8" stroke-linecap="round"/>
+          <path d="M186 118 L166 88" stroke="${theme.ring[1]}" stroke-width="8" stroke-linecap="round"/>
+          <circle cx="70" cy="124" r="6" fill="${theme.particle}"/>
+          <circle cx="186" cy="124" r="6" fill="${theme.particle}"/>
+        `
+      }
+    });
+    const PERSONA_LIST = Object.values(PERSONAS);
+    // Persona QA checklist:
+    // 1) Profile → pick a persona → refresh → selection persists.
+    // 2) Change theme → ring/background update instantly.
+    // 3) Randomize seed → sparkles/accents shift.
+    // 4) Go offline → persona picker still works with no errors.
     const THEME_ACCENTS = [
       { id: 'pink-pop', label: 'Pink Pop', color: '#ff6b9d' },
       { id: 'electric-blue', label: 'Electric Blue', color: '#38bdf8' },
@@ -794,228 +912,90 @@ function track(eventName, payload = {}){
       };
     }
 
-    function ensureAvatar(profile){
+    function getStoredPersona(){
+      return {
+        personaId: localStorage.getItem(PERSONA_STORAGE_KEYS.id),
+        personaTheme: localStorage.getItem(PERSONA_STORAGE_KEYS.theme),
+        personaSeed: localStorage.getItem(PERSONA_STORAGE_KEYS.seed)
+      };
+    }
+
+    function persistPersonaToStorage(persona){
+      if(!persona) return;
+      if(persona.personaId) localStorage.setItem(PERSONA_STORAGE_KEYS.id, persona.personaId);
+      if(persona.personaTheme) localStorage.setItem(PERSONA_STORAGE_KEYS.theme, persona.personaTheme);
+      if(persona.personaSeed) localStorage.setItem(PERSONA_STORAGE_KEYS.seed, persona.personaSeed);
+    }
+
+    function ensurePersona(profile){
       const fallbackSeed = profile?.username || profile?.uid || localDeviceId || Math.random().toString(36).slice(2, 8);
-      const avatar = profile?.avatar || {};
-      const palette = avatar.palette || AVATAR_PALETTES[0].id;
-      const seed = avatar.seed || fallbackSeed;
-      const icon = avatar.icon || '';
-      const photoURL = avatar.photoURL || '';
-      const legacyUpload = avatar.type === 'upload' && photoURL;
-      const mode = avatar.mode || (legacyUpload ? 'local' : 'generated');
-      const status = avatar.status || 'none';
-      const url = avatar.url || '';
-      const updatedAt = avatar.updatedAt || null;
-      const rejectedReason = avatar.rejectedReason || '';
-      const rejectedLabels = avatar.rejectedLabels || null;
-      return {
-        mode,
-        status,
-        url,
-        updatedAt,
-        rejectedReason,
-        rejectedLabels,
-        seed,
-        palette,
-        icon,
-        photoURL
-      };
+      const isSelf = !!(profile && currentUser && ((profile.uid && profile.uid === currentUser.uid) || (profile.username && profile.username === currentUser.username)));
+      const stored = isSelf || !profile ? getStoredPersona() : {};
+      const personaId = profile?.personaId || stored.personaId || 'turntablist';
+      const personaTheme = profile?.personaTheme || stored.personaTheme || 'neonPop';
+      const personaSeed = profile?.personaSeed || stored.personaSeed || fallbackSeed;
+      return { personaId, personaTheme, personaSeed };
     }
 
-    function sanitizeAvatarForSave(profile){
-      const avatar = ensureAvatar(profile);
-      return {
-        palette: avatar.palette,
-        seed: avatar.seed,
-        icon: avatar.icon,
-        mode: avatar.mode,
-        status: avatar.status,
-        url: avatar.url || null,
-        updatedAt: avatar.updatedAt || null,
-        rejectedReason: avatar.rejectedReason || null,
-        rejectedLabels: avatar.rejectedLabels || null
-      };
+    function getPersonaTheme(themeId){
+      return PERSONA_THEMES.find(item => item.id === themeId) || PERSONA_THEMES[0];
     }
 
-    function getLocalAvatarStorageKey(profile){
-      const uid = profile?.uid || firebaseAuth?.currentUser?.uid || profile?.username || currentUser?.username;
-      if(!uid) return null;
-      return `ffmLocalAvatar:${uid}`;
-    }
-
-    function getLocalAvatarData(profile){
-      const key = getLocalAvatarStorageKey(profile);
-      if(!key) return '';
-      return localStorage.getItem(key) || '';
-    }
-
-    function setLocalAvatarData(profile, dataUrl){
-      const key = getLocalAvatarStorageKey(profile);
-      if(!key) return false;
-      localStorage.setItem(key, dataUrl);
-      return true;
-    }
-
-    function clearLocalAvatarData(profile){
-      const key = getLocalAvatarStorageKey(profile);
-      if(!key) return;
-      localStorage.removeItem(key);
-    }
-
-    function hasLocalAvatar(profile){
-      const stored = getLocalAvatarData(profile);
-      const avatar = ensureAvatar(profile);
-      return !!(stored || avatar.photoURL);
-    }
-
-    function normalizeVerifiedAvatarConfig(data = {}){
-      return {
-        ...DEFAULT_VERIFIED_AVATAR_CONFIG,
-        ...data
-      };
-    }
-
-    function listenAppConfig(){
-      if(!firestore) return;
-      if(verifiedAvatarConfigUnsub){
-        verifiedAvatarConfigUnsub();
-        verifiedAvatarConfigUnsub = null;
-      }
-      verifiedAvatarConfigUnsub = firestore.collection('appConfig').doc('public').onSnapshot((doc)=>{
-        const data = doc.exists ? (doc.data() || {}) : {};
-        verifiedAvatarConfigMissing = !doc.exists;
-        verifiedAvatarConfig = normalizeVerifiedAvatarConfig({
-          ...data,
-          ...(verifiedAvatarConfigMissing ? { verifiedAvatarsEnabled: false, verifiedAvatarsPausedReason: 'Verified avatars not configured yet' } : {})
-        });
-        verifiedAvatarConfigLoaded = true;
-        appConfigLoaded = true;
-        window.appConfig = {
-          ...(window.appConfig || {}),
-          public: verifiedAvatarConfig
-        };
-        debugProfileLog('appConfig loaded', {
-          enabled: verifiedAvatarConfig?.verifiedAvatarsEnabled === true,
-          missing: verifiedAvatarConfigMissing
-        });
-        renderProfile();
-        setupEventListeners();
-      }, (err)=>{
-        console.warn('app config listener failed', err);
-      });
-    }
-
-    function isVerifiedAvatarFeatureEnabled(){
-      return verifiedAvatarConfig?.verifiedAvatarsEnabled === true;
-    }
-
-    function getVerifiedAvatarPausedCopy(){
-      if(verifiedAvatarConfigMissing){
-        return 'Verified avatars not configured yet.';
-      }
-      const reason = verifiedAvatarConfig?.verifiedAvatarsPausedReason || 'daily free quota reached';
-      return `Verified avatars paused (${reason}). Try again tomorrow.`;
-    }
-
-    function getBlockedAvatarList(){
-      try{
-        const stored = JSON.parse(localStorage.getItem(LOCAL_BLOCKED_AVATARS_KEY) || '[]');
-        return new Set(Array.isArray(stored) ? stored : []);
-      }catch(err){
-        console.warn('blocked avatar list parse failed', err);
-        return new Set();
-      }
-    }
-
-    function setBlockedAvatarList(list){
-      try{
-        localStorage.setItem(LOCAL_BLOCKED_AVATARS_KEY, JSON.stringify([...list]));
-        return true;
-      }catch(err){
-        console.warn('blocked avatar list save failed', err);
-        return false;
-      }
-    }
-
-    function isAvatarBlocked(profile){
-      const uid = profile?.uid || profile?.username || '';
-      if(!uid) return false;
-      const blocked = getBlockedAvatarList();
-      return blocked.has(uid);
-    }
-
-    function buildAvatarSvg(seed, paletteId, icon){
-      const palette = AVATAR_PALETTES.find(item=>item.id === paletteId) || AVATAR_PALETTES[0];
-      const random = createSeededRandom(seed);
-      const colors = [...palette.colors];
-      const bg = colors[Math.floor(random() * colors.length)];
-      const ring = colors[Math.floor(random() * colors.length)];
-      const accent = colors[Math.floor(random() * colors.length)];
-      const accentTwo = colors[Math.floor(random() * colors.length)];
-      const wobble = Math.floor(random() * 8);
-      const iconMark = icon || '';
+    function renderPersonaSVG({ personaId, themeId, seed, size = 96 }){
+      const persona = PERSONAS[personaId] || PERSONAS.turntablist;
+      const theme = getPersonaTheme(themeId);
+      const random = createSeededRandom(`${seed}-${personaId}-${themeId}`);
+      const unique = Math.abs(Math.floor(random() * 100000));
+      const bgId = `persona-bg-${personaId}-${unique}`;
+      const ringId = `persona-ring-${personaId}-${unique}`;
+      const accentId = `persona-accent-${personaId}-${unique}`;
+      const sparkles = Array.from({ length: 5 }).map(() => {
+        const cx = 48 + Math.floor(random() * 160);
+        const cy = 48 + Math.floor(random() * 160);
+        const r = 3 + Math.floor(random() * 5);
+        return `<circle class="persona-spark" cx="${cx}" cy="${cy}" r="${r}" fill="${theme.particle}" opacity="0.7"/>`;
+      }).join('');
       return `
-        <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+        <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 256 256" role="img" aria-label="${persona.name} persona">
           <defs>
-            <linearGradient id="grad" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stop-color="${bg}"/>
-              <stop offset="100%" stop-color="${accent}"/>
+            <linearGradient id="${bgId}" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="${theme.background[0]}"/>
+              <stop offset="100%" stop-color="${theme.background[1]}"/>
             </linearGradient>
+            <linearGradient id="${ringId}" x1="0" x2="1" y1="0" y2="1">
+              <stop offset="0%" stop-color="${theme.ring[0]}"/>
+              <stop offset="100%" stop-color="${theme.ring[1]}"/>
+            </linearGradient>
+            <radialGradient id="${accentId}" cx="0.5" cy="0.4" r="0.6">
+              <stop offset="0%" stop-color="${theme.accent}"/>
+              <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+            </radialGradient>
           </defs>
-          <rect width="256" height="256" rx="48" fill="url(#grad)"/>
-          <circle cx="128" cy="128" r="92" fill="${accentTwo}" opacity="0.22"/>
-          <circle cx="${96 + wobble}" cy="${104 + wobble}" r="68" fill="${bg}" opacity="0.35"/>
-          <circle cx="128" cy="128" r="96" fill="none" stroke="${ring}" stroke-width="10" opacity="0.7"/>
-          ${iconMark ? `<text x="50%" y="54%" text-anchor="middle" font-size="92" font-family="sans-serif" fill="white">${iconMark}</text>` : ''}
+          <rect width="256" height="256" rx="56" fill="url(#${bgId})"/>
+          <circle cx="128" cy="128" r="102" fill="url(#${accentId})" opacity="0.45"/>
+          ${sparkles}
+          <circle class="persona-ring" cx="128" cy="128" r="108" fill="none" stroke="url(#${ringId})" stroke-width="10" opacity="0.9"/>
+          ${persona.render({ theme })}
         </svg>
       `.trim();
     }
 
-    function getAvatarDataUrl(avatar){
-      if(['local','verified'].includes(avatar.type) && avatar.photoURL) return avatar.photoURL;
-      const svg = buildAvatarSvg(avatar.seed, avatar.palette, avatar.icon);
-      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-    }
-
-    function getDisplayAvatar(profile){
-      const avatar = ensureAvatar(profile);
-      const viewerUid = firebaseAuth?.currentUser?.uid;
-      const isOwner = !!(viewerUid && profile?.uid === viewerUid)
-        || (!viewerUid && currentUser?.username && profile?.username === currentUser.username);
-      if(!isOwner && isAvatarBlocked(profile)){
-        return { ...avatar, type: 'generated', photoURL: '' };
-      }
-      const localPreview = isOwner ? (getLocalAvatarData(profile) || avatar.photoURL) : '';
-      const verifiedApproved = avatar.status === 'approved' && avatar.url;
-      if(avatar.mode === 'verified'){
-        if(isOwner && !isVerifiedAvatarFeatureEnabled()){
-          if(localPreview){
-            return { ...avatar, type: 'local', photoURL: localPreview };
-          }
-          return { ...avatar, type: 'generated', photoURL: '' };
-        }
-        if(verifiedApproved){
-          return { ...avatar, type: 'verified', photoURL: avatar.url };
-        }
-        if(isOwner && localPreview){
-          return { ...avatar, type: 'local', photoURL: localPreview };
-        }
-        return { ...avatar, type: 'generated', photoURL: '' };
-      }
-      if(avatar.mode === 'local'){
-        if(isOwner && localPreview){
-          return { ...avatar, type: 'local', photoURL: localPreview };
-        }
-        return { ...avatar, type: 'generated', photoURL: '' };
-      }
-      return { ...avatar, type: 'generated', photoURL: '' };
-    }
-
-    function renderProfileAvatarMarkup(profile, size = 48, extraClass = ''){
-      const avatar = getDisplayAvatar(profile);
-      const src = getAvatarDataUrl(avatar);
+    function renderPersonaBadge(profile, size = 48, extraClass = ''){
+      const persona = ensurePersona(profile);
+      const personaSvg = renderPersonaSVG({
+        personaId: persona.personaId,
+        themeId: persona.personaTheme,
+        seed: persona.personaSeed,
+        size
+      });
+      const energy = (PERSONAS[persona.personaId] || PERSONAS.turntablist).energy || '⚡';
       const label = escapeHtml(profile?.djName || profile?.username || 'DJ');
-      return `<img src="${src}" alt="${label} avatar" class="rounded-full object-cover avatar-preview ${extraClass}" style="width:${size}px;height:${size}px;" />`;
+      return `
+        <div class="persona-badge ${extraClass}" style="width:${size}px;height:${size}px;" aria-label="${label} persona">
+          ${personaSvg}
+          <span class="persona-energy">${energy}</span>
+        </div>
+      `.trim();
     }
 
     // Backend save/load wrappers (Firestore or localStorage)
@@ -1031,7 +1011,7 @@ function track(eventName, payload = {}){
       const normalizedSetlist = normalizeSetlistIds(profile.setlistIds || profile.setlist || profile.setlists);
       const liveDefaults = normalizeLiveProfileFields(profile);
       const ratingDefaults = normalizeRatingFields(profile);
-      const avatar = ensureAvatar(profile);
+      const persona = ensurePersona(profile);
       const bio = (profile.bio || '').slice(0, PROFILE_BIO_MAX);
       const themeAccent = profile.themeAccent || THEME_ACCENTS[0].id;
       const isPublic = profile.isPublic !== false;
@@ -1056,7 +1036,9 @@ function track(eventName, payload = {}){
         isAdmin,
         bio,
         themeAccent,
-        avatar,
+        personaId: persona.personaId,
+        personaTheme: persona.personaTheme,
+        personaSeed: persona.personaSeed,
         isPublic,
         allowFriendRequests,
         rulesAccepted,
@@ -1079,6 +1061,7 @@ function track(eventName, payload = {}){
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
       const usernameLower = normalizeUsernameLower(profile.username || profileKey);
       const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
+      const persona = ensurePersona(profile);
       const payload = {
         ...profile,
         uid: profileKey,
@@ -1089,7 +1072,9 @@ function track(eventName, payload = {}){
         searchTokens: Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower),
         bio: (profile.bio || '').slice(0, PROFILE_BIO_MAX),
         themeAccent: profile.themeAccent || THEME_ACCENTS[0].id,
-        avatar: sanitizeAvatarForSave(profile),
+        personaId: persona.personaId,
+        personaTheme: persona.personaTheme,
+        personaSeed: persona.personaSeed,
         isPublic: profile.isPublic !== false,
         allowFriendRequests: profile.allowFriendRequests !== false,
         rulesAccepted: profile.rulesAccepted === true,
@@ -2310,7 +2295,8 @@ function track(eventName, payload = {}){
         const usernameLower = normalizeUsernameLower(currentUser.username);
         const djNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
         const displayNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
-        const avatar = sanitizeAvatarForSave(currentUser);
+        const persona = ensurePersona(currentUser);
+        persistPersonaToStorage(persona);
         const bio = (currentUser.bio || '').slice(0, PROFILE_BIO_MAX);
         const themeAccent = currentUser.themeAccent || THEME_ACCENTS[0].id;
         const isPublic = currentUser.isPublic !== false;
@@ -2328,7 +2314,9 @@ function track(eventName, payload = {}){
           searchTokens: buildSearchTokens(usernameLower),
           bio,
           themeAccent,
-          avatar,
+          personaId: persona.personaId,
+          personaTheme: persona.personaTheme,
+          personaSeed: persona.personaSeed,
           isPublic,
           allowFriendRequests,
           rulesAccepted,
@@ -2554,37 +2542,59 @@ function track(eventName, payload = {}){
       return draft;
     }
 
-    function updateDraftAvatar(patch){
+    function updateDraftPersona(patch){
       const draft = getEditableDraftProfile();
       if(!draft) return null;
-      const avatar = ensureAvatar(draft);
-      draft.avatar = { ...avatar, ...patch };
-      return draft.avatar;
+      const persona = ensurePersona(draft);
+      const next = { ...persona, ...patch };
+      draft.personaId = next.personaId;
+      draft.personaTheme = next.personaTheme;
+      draft.personaSeed = next.personaSeed;
+      return next;
     }
 
-    function updateAvatarPreview(avatar){
-      const resolved = avatar || getDisplayAvatar(draftProfile || currentUser || {});
-      const src = getAvatarDataUrl(resolved);
-      const preview = document.getElementById('profileAvatarPreview');
-      if(preview) preview.src = src;
-      const builderPreview = document.getElementById('avatarBuilderPreview');
-      if(builderPreview) builderPreview.src = src;
-      const seedLabel = document.getElementById('avatarSeedLabel');
-      if(seedLabel) seedLabel.textContent = resolved.seed;
-      const typeLabel = document.getElementById('profileAvatarTypeLabel');
-      if(typeLabel){
-        const label = resolved.type === 'verified'
-          ? 'Verified'
-          : resolved.type === 'local'
-            ? 'Local'
-            : 'Generated';
-        typeLabel.textContent = label;
+    function persistPersonaSelection(persona){
+      if(!persona || viewingProfile) return;
+      persistPersonaToStorage(persona);
+      const updated = { ...(currentUser || {}), ...persona };
+      currentUser = updated;
+      if(draftProfile) Object.assign(draftProfile, persona);
+      saveUserProfileToBackend(updated).catch(err => console.warn('persona save failed', err));
+    }
+
+    function updatePersonaPreview(persona){
+      const resolved = persona || ensurePersona(draftProfile || currentUser || {});
+      const energy = (PERSONAS[resolved.personaId] || PERSONAS.turntablist).energy || '⚡';
+      const preview = document.getElementById('profilePersonaPreview');
+      if(preview) preview.innerHTML = `
+        ${renderPersonaSVG({
+          personaId: resolved.personaId,
+          themeId: resolved.personaTheme,
+          seed: resolved.personaSeed,
+          size: 96
+        })}
+        <span class="persona-energy">${energy}</span>
+      `;
+      const builderPreview = document.getElementById('personaBuilderPreview');
+      if(builderPreview) builderPreview.innerHTML = renderPersonaSVG({
+        personaId: resolved.personaId,
+        themeId: resolved.personaTheme,
+        seed: resolved.personaSeed,
+        size: 80
+      });
+      const seedLabel = document.getElementById('personaSeedLabel');
+      if(seedLabel) seedLabel.textContent = resolved.personaSeed;
+      const themeLabel = document.getElementById('profilePersonaThemeLabel');
+      if(themeLabel){
+        const themeName = getPersonaTheme(resolved.personaTheme).label;
+        themeLabel.textContent = `Energy: ${themeName}`;
       }
     }
 
-    function updateAvatarSelection(selector, activeValue){
+    function updatePersonaSelection(selector, activeValue, dataAttr){
       document.querySelectorAll(selector).forEach(btn=>{
-        const isActive = btn.dataset[selector.includes('palette') ? 'avatarPalette' : selector.includes('icon') ? 'avatarIcon' : 'themeAccent'] === activeValue;
+        const key = dataAttr ? btn.dataset[dataAttr] : (btn.dataset.personaTheme || btn.dataset.personaId || btn.dataset.themeAccent);
+        const isActive = key === activeValue;
         btn.classList.toggle('active', isActive);
       });
     }
@@ -2682,7 +2692,7 @@ function track(eventName, payload = {}){
         }
         const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
         if(editTrigger){
-          debugProfileLog('avatar edit click detected');
+          debugProfileLog('persona edit click detected');
           openProfileEditor();
         }
       }, { action: 'profile-click' }));
@@ -2691,300 +2701,48 @@ function track(eventName, payload = {}){
         const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
         if(!trigger) return;
         e.preventDefault();
-        debugProfileLog('avatar edit keydown detected', { key: e.key });
+        debugProfileLog('persona edit keydown detected', { key: e.key });
         openProfileEditor();
       }, { action: 'profile-keydown' }));
       profileHandlersBound = true;
     }
 
-    window.setAvatarPalette = (paletteId)=>{
-      const avatar = updateDraftAvatar({ palette: paletteId });
-      if(!avatar) return;
-      updateAvatarPreview();
-      updateAvatarSelection('[data-avatar-palette]', paletteId);
+    window.setPersonaTheme = (themeId)=>{
+      const persona = updateDraftPersona({ personaTheme: themeId });
+      if(!persona) return;
+      updatePersonaPreview();
+      updatePersonaSelection('[data-persona-theme]', themeId, 'personaTheme');
+      persistPersonaSelection(persona);
+      console.debug('[persona] set', { personaId: persona.personaId, theme: persona.personaTheme, seed: persona.personaSeed });
+      renderProfile();
+      setupEventListeners();
     };
 
-    window.setAvatarIcon = (icon)=>{
-      const avatar = updateDraftAvatar({ icon });
-      if(!avatar) return;
-      updateAvatarPreview();
-      updateAvatarSelection('[data-avatar-icon]', icon);
+    window.setPersonaId = (personaId)=>{
+      const persona = updateDraftPersona({ personaId });
+      if(!persona) return;
+      updatePersonaPreview();
+      updatePersonaSelection('[data-persona-id]', personaId, 'personaId');
+      persistPersonaSelection(persona);
+      console.debug('[persona] set', { personaId: persona.personaId, theme: persona.personaTheme, seed: persona.personaSeed });
     };
 
-    window.randomizeAvatarSeed = ()=>{
+    window.randomizePersonaSeed = ()=>{
       const seed = Math.random().toString(36).slice(2, 10);
-      const avatar = updateDraftAvatar({ seed });
-      if(!avatar) return;
-      updateAvatarPreview();
-    };
-
-    window.switchToGeneratedAvatar = ()=>{
-      const avatar = updateDraftAvatar({ mode: 'generated', status: ensureAvatar(draftProfile || currentUser || {}).status || 'none' });
-      if(!avatar) return;
-      clearLocalAvatarData(draftProfile || currentUser || {});
-      updateAvatarPreview();
-    };
-
-    window.switchToLocalAvatar = ()=>{
-      const avatar = updateDraftAvatar({ mode: 'local' });
-      if(!avatar) return;
-      updateAvatarPreview();
-    };
-
-    window.toggleVerifiedAvatarMode = (enabled)=>{
-      const draft = draftProfile || currentUser || {};
-      if(enabled){
-        if(!isVerifiedAvatarFeatureEnabled()){
-          const fallbackMode = hasLocalAvatar(draft) ? 'local' : 'generated';
-          updateDraftAvatar({ mode: fallbackMode });
-          const status = document.getElementById('avatarVerifyStatus');
-          if(status) status.textContent = getVerifiedAvatarPausedCopy();
-        } else {
-        updateDraftAvatar({ mode: 'verified' });
-        }
-      } else {
-        const fallbackMode = hasLocalAvatar(draft) ? 'local' : 'generated';
-        updateDraftAvatar({ mode: fallbackMode });
-      }
-      updateAvatarPreview();
+      const persona = updateDraftPersona({ personaSeed: seed });
+      if(!persona) return;
+      updatePersonaPreview();
+      persistPersonaSelection(persona);
+      console.debug('[persona] set', { personaId: persona.personaId, theme: persona.personaTheme, seed: persona.personaSeed });
     };
 
     window.setThemeAccent = (accentId)=>{
       updateDraftProfile({ themeAccent: accentId });
       applyThemeAccentPreview(accentId);
-      updateAvatarSelection('[data-theme-accent]', accentId);
+      updatePersonaSelection('[data-theme-accent]', accentId, 'themeAccent');
       const label = THEME_ACCENTS.find(item=>item.id === accentId)?.label || 'Custom';
       const labelEl = document.getElementById('profileThemeLabel');
       if(labelEl) labelEl.textContent = `Theme: ${label}`;
-    };
-
-    window.triggerAvatarUpload = ()=>{
-      const input = document.getElementById('avatarUploadInput');
-      if(input && !input.disabled) input.click();
-    };
-
-    function loadImageFromFile(file){
-      return new Promise((resolve, reject)=>{
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        img.onload = ()=>{
-          URL.revokeObjectURL(url);
-          resolve(img);
-        };
-        img.onerror = (err)=>{
-          URL.revokeObjectURL(url);
-          reject(err);
-        };
-        img.src = url;
-      });
-    }
-
-    async function resizeAvatarFile(file, size = 512, maxBytes = 200 * 1024){
-      const img = await loadImageFromFile(file);
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const minSide = Math.min(img.width, img.height);
-      const sx = (img.width - minSide) / 2;
-      const sy = (img.height - minSide) / 2;
-      ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
-      const targetType = 'image/webp';
-      let quality = 0.9;
-      let blob = await new Promise(resolve => canvas.toBlob(resolve, targetType, quality));
-      if(!blob){
-        quality = 0.85;
-        blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
-      }
-      while(blob && blob.size > maxBytes && quality > 0.5){
-        quality -= 0.1;
-        blob = await new Promise(resolve => canvas.toBlob(resolve, blob.type || targetType, quality));
-      }
-      if(!blob) throw new Error('Image conversion failed');
-      return blob;
-    }
-
-    function blobToDataUrl(blob){
-      return new Promise((resolve, reject)=>{
-        const reader = new FileReader();
-        reader.onload = ()=> resolve(reader.result);
-        reader.onerror = (err)=> reject(err);
-        reader.readAsDataURL(blob);
-      });
-    }
-
-    async function reserveVerifiedAvatarSlot(){
-      if(!firebaseFunctions || !firebaseAuth?.currentUser){
-        return { allowed: false, reason: 'Verification unavailable.' };
-      }
-      try{
-        const callable = firebaseFunctions.httpsCallable('reserveVerifiedAvatarSlot');
-        const result = await callable({});
-        return result?.data || { allowed: false, reason: 'Verification unavailable.' };
-      }catch(err){
-        console.warn('verified avatar reservation failed', err);
-        const message = err?.details?.reason || err?.message || 'Verification unavailable.';
-        return { allowed: false, reason: message };
-      }
-    }
-
-    window.reportAvatar = async (targetUid)=>{
-      const status = document.getElementById('avatarReportStatus');
-      const target = targetUid || viewingProfile?.uid || viewingProfile?.username || '';
-      if(!target){
-        if(status) status.textContent = 'No profile selected.';
-        return;
-      }
-      const blocked = getBlockedAvatarList();
-      blocked.add(target);
-      setBlockedAvatarList(blocked);
-      renderProfile();
-      setupEventListeners();
-      if(!firestore || !firebaseAuth?.currentUser){
-        if(status) status.textContent = 'Avatar hidden locally.';
-        return;
-      }
-      try{
-        const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-        const payload = {
-          targetUid: target,
-          targetUsername: viewingProfile?.username || null,
-          reporterUid: firebaseAuth.currentUser.uid,
-          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
-          reason: 'Reported avatar',
-          status: 'new'
-        };
-        await firestore.collection(AVATAR_REPORT_COLLECTION).add(payload);
-        if(status) status.textContent = 'Avatar hidden locally. Report submitted.';
-      }catch(err){
-        console.warn('avatar report failed', err);
-        if(status) status.textContent = 'Avatar hidden locally. Report failed to send.';
-      }
-    };
-
-    window.handleAvatarUpload = async (file)=>{
-      if(!file) return;
-      const status = document.getElementById('avatarUploadStatus');
-      const rulesAccepted = (draftProfile || currentUser || {}).rulesAccepted === true;
-      const allowedTypes = ['image/jpeg','image/png','image/webp'];
-      if(!allowedTypes.includes(file.type)){
-        if(status) status.textContent = 'Use JPG, PNG, or WebP.';
-        return;
-      }
-      if(!rulesAccepted){
-        if(status) status.textContent = 'Accept the rules first.';
-        return;
-      }
-      try{
-        if(status) status.textContent = 'Resizing...';
-        const blob = await resizeAvatarFile(file, 512, 220 * 1024);
-        const dataUrl = await blobToDataUrl(blob);
-        const saved = setLocalAvatarData(draftProfile || currentUser || {}, dataUrl);
-        if(!saved) throw new Error('Local avatar save failed');
-        const existing = ensureAvatar(draftProfile || currentUser || {});
-        updateDraftAvatar({
-          mode: 'local',
-          status: existing.status || 'none',
-          updatedAt: new Date().toISOString(),
-          photoURL: ''
-        });
-        if(status) status.textContent = 'Saved locally ✓';
-        updateAvatarPreview({ ...ensureAvatar(draftProfile || currentUser || {}), type: 'local', photoURL: dataUrl });
-      }catch(err){
-        console.error('avatar upload failed', err);
-        if(status) status.textContent = 'Upload failed.';
-      }
-    };
-
-    async function startAvatarVerify(file){
-      if(!file) return;
-      const status = document.getElementById('avatarVerifyStatus');
-      const rulesAccepted = (draftProfile || currentUser || {}).rulesAccepted === true;
-      if(!firebaseAuth?.currentUser || !firebaseStorage || !firebaseFunctions){
-        if(status) status.textContent = 'Verification unavailable.';
-        debugProfileLog('verify blocked', { reason: 'missing firebase services' });
-        return;
-      }
-      if(!isVerifiedAvatarFeatureEnabled()){
-        if(status) status.textContent = getVerifiedAvatarPausedCopy();
-        debugProfileLog('verify blocked', { reason: 'feature disabled' });
-        return;
-      }
-      if(isOffline){
-        if(status) status.textContent = 'Go online to verify.';
-        debugProfileLog('verify blocked', { reason: 'offline' });
-        return;
-      }
-      if(!rulesAccepted){
-        if(status) status.textContent = 'Accept the rules first.';
-        debugProfileLog('verify blocked', { reason: 'rules not accepted' });
-        return;
-      }
-      const allowedTypes = ['image/jpeg','image/png','image/webp'];
-      if(!allowedTypes.includes(file.type)){
-        if(status) status.textContent = 'Use JPG, PNG, or WebP.';
-        debugProfileLog('verify blocked', { reason: 'unsupported file type', type: file.type });
-        return;
-      }
-      try{
-        if(status) status.textContent = 'Checking free quota...';
-        const reservation = await reserveVerifiedAvatarSlot();
-        if(!reservation?.allowed){
-          if(status) status.textContent = reservation?.reason || 'Verification unavailable.';
-          debugProfileLog('verify blocked', { reason: reservation?.reason || 'quota denied' });
-          return;
-        }
-        if(status) status.textContent = 'Resizing...';
-        const blob = await resizeAvatarFile(file, 256, 140 * 1024);
-        const uid = firebaseAuth.currentUser.uid;
-        const ref = firebaseStorage.ref().child(`avatarsPending/${uid}.webp`);
-        if(status) status.textContent = 'Uploading for review...';
-        await ref.put(blob, { contentType: blob.type });
-        const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-        const updatedAtLocal = new Date().toISOString();
-        const avatarPayload = {
-          ...sanitizeAvatarForSave(draftProfile || currentUser || {}),
-          status: 'pending',
-          updatedAt: updatedAtLocal
-        };
-        const rulesAcceptedAtValue = (draftProfile || currentUser || {}).rulesAcceptedAt || updatedAtLocal;
-        const avatarPayloadForWrite = { ...avatarPayload };
-        const pendingPayload = {
-          avatar: avatarPayloadForWrite,
-          rulesAccepted: true,
-          rulesAcceptedAt: rulesAcceptedAtValue
-        };
-        if(serverTimestamp){
-          pendingPayload.avatar.updatedAt = serverTimestamp();
-          pendingPayload.rulesAcceptedAt = serverTimestamp();
-        }
-        if(firestore && uid){
-          await getProfileCollection()?.doc(uid).set(pendingPayload, { merge: true });
-          await firestore.collection('users').doc(uid).set({
-            avatar: avatarPayloadForWrite,
-            rulesAccepted: true,
-            rulesAcceptedAt: pendingPayload.rulesAcceptedAt || rulesAcceptedAtValue
-          }, { merge: true });
-        }
-        updateDraftAvatar({ mode: 'verified', status: 'pending', updatedAt: updatedAtLocal });
-        if(status) status.textContent = 'Pending review...';
-        updateAvatarPreview();
-        debugProfileLog('verify upload started', { uid });
-      }catch(err){
-        console.error('avatar verification failed', err);
-        if(status) status.textContent = 'Verification failed.';
-        debugProfileLog('verify failed', { error: err?.message || err });
-      }
-    }
-
-    window.startAvatarVerify = startAvatarVerify;
-    window.handleVerifiedAvatarUpload = async (file)=>{
-      await startAvatarVerify(file);
-    };
-
-    window.triggerVerifiedAvatarUpload = ()=>{
-      const input = document.getElementById('avatarVerifyInput');
-      if(input && !input.disabled) input.click();
     };
 
     window.searchFriends = ()=>{
@@ -3566,7 +3324,9 @@ function track(eventName, payload = {}){
         ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 },
         bio: '',
         themeAccent: THEME_ACCENTS[0].id,
-        avatar: { type: 'generated', seed: username, palette: AVATAR_PALETTES[0].id, icon: '' },
+        personaId: 'turntablist',
+        personaTheme: 'neonPop',
+        personaSeed: username,
         isPublic: true,
         allowFriendRequests: true,
         usernameLower: normalizeUsernameLower(username),
@@ -3810,88 +3570,14 @@ function track(eventName, payload = {}){
       }
     }
 
-    function setupAvatarStatusListener(uid){
-      if(!firestore || !uid) return;
-      if(avatarStatusUnsub){
-        avatarStatusUnsub();
-        avatarStatusUnsub = null;
-      }
-      const collection = getProfileCollection();
-      if(!collection) return;
-      avatarStatusUnsub = collection.doc(uid).onSnapshot((doc)=>{
-        if(!doc.exists) return;
-        const remoteProfile = normalizeProfileShape(doc.data(), uid);
-        if(!currentUser) return;
-        const previousStatus = currentUser?.avatar?.status || 'none';
-        currentUser.avatar = { ...ensureAvatar(currentUser), ...remoteProfile.avatar };
-        currentUser.rulesAccepted = remoteProfile.rulesAccepted === true;
-        currentUser.rulesAcceptedAt = remoteProfile.rulesAcceptedAt || null;
-        if(draftProfile){
-          draftProfile.avatar = { ...ensureAvatar(draftProfile), ...remoteProfile.avatar };
-          draftProfile.rulesAccepted = currentUser.rulesAccepted;
-          draftProfile.rulesAcceptedAt = currentUser.rulesAcceptedAt;
-        }
-        if(previousStatus !== remoteProfile.avatar.status){
-          updateAvatarPreview();
-        }
-        if(!viewingProfile){
-          renderProfile();
-          setupEventListeners();
-        }
-      }, (err)=>{
-        console.warn('avatar status listener failed', err);
-      });
-    }
-
-    function listenUserProfile(uid){
-      if(!firestore || !uid) return;
-      if(userProfileUnsub){
-        userProfileUnsub();
-        userProfileUnsub = null;
-      }
-      userProfileUnsub = firestore.collection('users').doc(uid).onSnapshot((doc)=>{
-        if(!doc.exists) return;
-        const data = doc.data() || {};
-        if(!currentUser) return;
-        const previousStatus = currentUser?.avatar?.status || 'none';
-        if(data.avatar){
-          currentUser.avatar = { ...ensureAvatar(currentUser), ...data.avatar };
-        }
-        if(typeof data.rulesAccepted !== 'undefined'){
-          currentUser.rulesAccepted = data.rulesAccepted === true;
-          currentUser.rulesAcceptedAt = data.rulesAcceptedAt || null;
-        }
-        if(draftProfile){
-          draftProfile.avatar = { ...ensureAvatar(draftProfile), ...data.avatar };
-          draftProfile.rulesAccepted = currentUser.rulesAccepted;
-          draftProfile.rulesAcceptedAt = currentUser.rulesAcceptedAt;
-        }
-        if(previousStatus !== currentUser?.avatar?.status){
-          updateAvatarPreview();
-        }
-        if(!viewingProfile){
-          renderProfile();
-          setupEventListeners();
-        }
-      }, (err)=>{
-        console.warn('user profile listener failed', err);
-      });
-    }
-
     function setupFirebaseAuthListener() {
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
         if (user) {
           await resolveAuthSuccess(user);
-          setupAvatarStatusListener(user.uid);
-          listenUserProfile(user.uid);
         } else {
           authSettledUser = null;
           currentUser = null;
-          if(avatarStatusUnsub){
-            avatarStatusUnsub();
-            avatarStatusUnsub = null;
-          }
           if(userProfileUnsub){
             userProfileUnsub();
             userProfileUnsub = null;
@@ -3986,7 +3672,9 @@ window.handleLogin = async (event) => {
           ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 },
           bio: '',
           themeAccent: THEME_ACCENTS[0].id,
-          avatar: { type: 'generated', seed: username, palette: AVATAR_PALETTES[0].id, icon: '' },
+          personaId: 'turntablist',
+          personaTheme: 'neonPop',
+          personaSeed: username,
           isPublic: true,
           allowFriendRequests: true,
           usernameLower: normalizeUsernameLower(username),
@@ -4365,9 +4053,7 @@ window.handleLogin = async (event) => {
       const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
       const usernameVal = editableProfile?.username || '';
       const djVal = editableProfile?.djName || usernameVal;
-      const avatarRecord = ensureAvatar(editableProfile);
-      const avatar = getDisplayAvatar(editableProfile);
-      const avatarSrc = getAvatarDataUrl(avatar);
+      const persona = ensurePersona(editableProfile);
       const bio = (editableProfile?.bio || '').slice(0, PROFILE_BIO_MAX);
       const themeAccentId = editableProfile?.themeAccent || THEME_ACCENTS[0].id;
       const accentColor = resolveThemeAccent(themeAccentId);
@@ -4377,59 +4063,7 @@ window.handleLogin = async (event) => {
       const allowFriendRequests = editableProfile?.allowFriendRequests !== false;
       const profileAccentStyle = `--profile-accent:${accentColor}; --profile-accent-glow:${accentGlow};`;
       const friendsEnabled = isOnlineProfileMode() && !viewOnly;
-      const rulesAccepted = editableProfile?.rulesAccepted === true;
-      const verifiedFeatureEnabled = isVerifiedAvatarFeatureEnabled();
-      const verifiedPausedCopy = getVerifiedAvatarPausedCopy();
-      const verifiedStatus = avatarRecord.status || 'none';
-      const verifiedRejectedReason = avatarRecord.rejectedReason || '';
-      const verifiedModeActive = avatarRecord.mode === 'verified' && verifiedFeatureEnabled;
-      const verifiedApproved = verifiedStatus === 'approved' && !!avatarRecord.url;
-      const verifiedPending = verifiedStatus === 'pending';
-      const verifiedRejected = verifiedStatus === 'rejected';
-      const verifiedError = verifiedStatus === 'error';
-      const localUploadEnabled = !viewOnly;
-      const localUploadActive = localUploadEnabled && profileEditable && rulesAccepted;
-      const verifiedUploadEnabled = verifiedFeatureEnabled && !!firebaseStorage && !!firebaseAuth?.currentUser && !isOffline && !viewOnly && !!firebaseFunctions && rulesAccepted;
-      const verifiedUploadActive = verifiedUploadEnabled && profileEditable;
-      const verifiedToggleDisabled = !verifiedFeatureEnabled || !profileEditable || !rulesAccepted || (!verifiedModeActive && (!firebaseAuth?.currentUser || isOffline || !firebaseStorage));
-      const localUploadDisabledReason = viewOnly
-        ? 'View-only mode.'
-        : !profileEditable
-          ? 'Enable Edit mode to upload.'
-          : !rulesAccepted
-            ? 'Accept the rules first.'
-          : '';
-      const verifiedUploadDisabledReason = viewOnly
-        ? 'View-only mode.'
-        : !profileEditable
-          ? 'Enable Edit mode to verify.'
-          : !verifiedFeatureEnabled
-            ? verifiedPausedCopy
-            : !firebaseAuth?.currentUser
-              ? 'Sign in to verify.'
-              : isOffline
-                ? 'Go online to verify.'
-                : !firebaseStorage
-                  ? 'Storage not configured.'
-                  : !firebaseFunctions
-                    ? 'Verification functions unavailable.'
-                    : !rulesAccepted
-                      ? 'Accept the rules first.'
-                      : '';
-      const verifiedDisabledReasonLine = verifiedUploadActive ? '' : (verifiedUploadDisabledReason || '');
-      if(verifiedDisabledReasonLine){
-        debugProfileLog('verify disabled reason', { reason: verifiedDisabledReasonLine });
-      }
-      const verifiedPauseIntro = verifiedAvatarConfigMissing
-        ? 'Verified avatars not configured yet.'
-        : 'Verified avatars are paused to keep the app free. You can still use Generated or Local-only photos.';
-      const verifiedPauseDetail = verifiedAvatarConfigMissing ? '' : verifiedPausedCopy;
-      const verifiedPauseBanner = !verifiedFeatureEnabled
-        ? `<div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/40 rounded px-3 py-2 space-y-1">
-            <div>${escapeHtml(verifiedPauseIntro)}</div>
-            ${verifiedPauseDetail ? `<div>${escapeHtml(verifiedPauseDetail)}</div>` : ''}
-          </div>`
-        : '';
+      const personaTheme = getPersonaTheme(persona.personaTheme);
       const editDisabledAttr = profileEditable ? '' : 'disabled';
       const editDisabledClass = profileEditable ? '' : 'opacity-60 cursor-not-allowed';
       const editBadgeLabel = profileEditable ? 'On' : 'Off';
@@ -4505,20 +4139,6 @@ window.handleLogin = async (event) => {
         : ratingStatusTone === 'success'
           ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100'
           : 'bg-white/10 border-white/20 text-gray-200';
-      const reportTargetId = profileOwner?.uid || profileOwner?.username || '';
-      const reportAvatarAvailable = viewOnly && !!reportTargetId && reportTargetId !== firebaseAuth?.currentUser?.uid;
-      const reportAvatarDisabled = !firebaseAuth?.currentUser || !firestore;
-      const reportAvatarDisabledReason = !firebaseAuth?.currentUser
-        ? 'Sign in to report.'
-        : !firestore
-          ? 'Reporting unavailable.'
-          : '';
-      const reportAvatarBlock = reportAvatarAvailable ? `
-          <div class="flex items-center gap-3 flex-wrap">
-            <button type="button" onclick="reportAvatar('${reportTargetId}')" ${reportAvatarDisabled ? 'disabled' : ''} title="${reportAvatarDisabledReason}" class="px-3 py-2 rounded-lg border border-red-400/50 bg-red-500/10 text-xs font-semibold text-red-100 ${reportAvatarDisabled ? 'opacity-60 cursor-not-allowed' : 'hover:bg-red-500/20'}">Report Avatar</button>
-            <span id="avatarReportStatus" class="text-xs text-gray-400"></span>
-          </div>
-      ` : '';
       const ratingSummaryBlock = `
           <div class="flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -4564,12 +4184,11 @@ window.handleLogin = async (event) => {
       const liveNowCards = liveNowUsers.map(profile=>{
         const username = profile?.username || profile?.uid || '';
         const djName = profile?.djName || username || 'DJ';
-        const initials = djName.split(' ').map(part=>part[0]).join('').slice(0,2).toUpperCase();
         const platform = getStreamPlatformInfo(profile.streamUrl);
         const rating = getProfileRatingDisplay(profile);
         return `<div onclick="viewLiveProfile('${username}')" class="min-w-[240px] cursor-pointer bg-black/40 border border-white/10 rounded-xl p-4 hover:border-emerald-400/60 transition">
           <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center font-bold text-white">${initials || 'DJ'}</div>
+            ${renderPersonaBadge(profile, 48)}
             <div class="flex-1">
               <div class="font-bold text-white">${djName}</div>
               <div class="text-xs text-gray-400">@${username}</div>
@@ -4607,24 +4226,22 @@ window.handleLogin = async (event) => {
             ${ratingInputBlock}
           </div>
       `;
-      const avatarTypeLabel = avatar.type === 'verified'
-        ? 'Verified'
-        : avatar.type === 'local'
-          ? 'Local'
-          : 'Generated';
       const bioDisplay = bio
         ? `<p class="text-sm text-gray-200">${escapeHtml(bio)}</p>`
         : `<p class="text-sm text-gray-400">Add a short bio to show your vibe.</p>`;
-      const paletteButtons = AVATAR_PALETTES.map(preset=>`
-        <button type="button" onclick="setAvatarPalette('${preset.id}')" data-avatar-palette="${preset.id}" ${profileEditable ? '' : 'disabled'} class="avatar-option px-3 py-2 rounded-lg text-xs font-semibold ${avatar.palette === preset.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
-          ${preset.label}
+      const personaThemeButtons = PERSONA_THEMES.map(item=>`
+        <button type="button" onclick="setPersonaTheme('${item.id}')" data-persona-theme="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${persona.personaTheme === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+          ${item.label}
         </button>
       `).join('');
-      const iconButtons = AVATAR_ICONS.map(icon=>`
-        <button type="button" onclick="setAvatarIcon('${icon}')" data-avatar-icon="${icon}" ${profileEditable ? '' : 'disabled'} class="avatar-option w-10 h-10 rounded-lg text-lg ${avatar.icon === icon ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">${icon}</button>
+      const personaButtons = PERSONA_LIST.map(item=>`
+        <button type="button" onclick="setPersonaId('${item.id}')" data-persona-id="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option persona-card w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-semibold ${persona.personaId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+          ${renderPersonaSVG({ personaId: item.id, themeId: persona.personaTheme, seed: persona.personaSeed, size: 48 })}
+          <span>${item.name}</span>
+        </button>
       `).join('');
       const themeButtons = THEME_ACCENTS.map(item=>`
-        <button type="button" onclick="setThemeAccent('${item.id}')" data-theme-accent="${item.id}" ${profileEditable ? '' : 'disabled'} class="avatar-option px-3 py-2 rounded-full text-xs font-semibold ${themeAccentId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+        <button type="button" onclick="setThemeAccent('${item.id}')" data-theme-accent="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${themeAccentId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
           ${item.label}
         </button>
       `).join('');
@@ -4632,11 +4249,11 @@ window.handleLogin = async (event) => {
           <div class="flex flex-col md:flex-row gap-4 items-start md:items-center bg-black/40 border rounded-xl p-4 profile-accent-border profile-accent-glow">
             <div class="flex items-center gap-4">
               <div class="profile-avatar-action flex flex-col items-center gap-2" role="button" tabindex="0" data-action="open-profile-editor" aria-label="Edit Profile">
-                <div class="relative">
-                  <img id="profileAvatarPreview" src="${avatarSrc}" alt="${escapeHtml(djVal || usernameVal || 'DJ')} avatar" class="w-24 h-24 rounded-full object-cover avatar-preview border-2 profile-accent-border" />
+                <div id="profilePersonaPreview" class="persona-badge w-24 h-24">
+                  ${renderPersonaSVG({ personaId: persona.personaId, themeId: persona.personaTheme, seed: persona.personaSeed, size: 96 })}
+                  <span class="persona-energy">${(PERSONAS[persona.personaId] || PERSONAS.turntablist).energy || '⚡'}</span>
                 </div>
                 <span class="profile-accent-pill px-4 py-1.5 rounded-full text-xs font-semibold shadow-sm">Edit Profile</span>
-                <span id="profileAvatarTypeLabel" class="profile-avatar-overlay px-2 py-1 rounded-full text-[10px] font-semibold bg-black/70 border border-white/10">${avatarTypeLabel}</span>
               </div>
             </div>
             <div class="flex-1 space-y-2">
@@ -4645,9 +4262,9 @@ window.handleLogin = async (event) => {
                 <div class="text-sm text-gray-300">@${escapeHtml(usernameVal || '')}</div>
               </div>
               ${bioDisplay}
-              ${reportAvatarBlock}
               <div class="flex flex-wrap gap-2">
                 <span id="profileThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Theme: ${themeLabel}</span>
+                <span id="profilePersonaThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Energy: ${personaTheme.label}</span>
                 <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">Myspace vibes</span>
               </div>
             </div>
@@ -4658,60 +4275,26 @@ window.handleLogin = async (event) => {
             <summary class="cursor-pointer text-lg font-bold text-white">Customize</summary>
             <div class="space-y-4">
               <div class="space-y-3">
-                <div class="text-sm font-semibold text-white">Generated Avatar Builder</div>
+                <div class="text-sm font-semibold text-white">Choose Your Energy</div>
                 <div class="flex flex-wrap gap-3 items-center">
                   <div class="flex items-center gap-3">
-                    <img id="avatarBuilderPreview" src="${avatarSrc}" alt="Avatar preview" class="w-20 h-20 rounded-full object-cover avatar-preview border profile-accent-border" />
-                    <div class="text-xs text-gray-400">Seed: <span id="avatarSeedLabel" class="text-white font-semibold">${escapeHtml(avatar.seed)}</span></div>
+                    <div id="personaBuilderPreview" class="persona-badge w-20 h-20">
+                      ${renderPersonaSVG({ personaId: persona.personaId, themeId: persona.personaTheme, seed: persona.personaSeed, size: 80 })}
+                    </div>
+                    <div class="text-xs text-gray-400">Seed: <span id="personaSeedLabel" class="text-white font-semibold">${escapeHtml(persona.personaSeed)}</span></div>
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <button type="button" onclick="randomizeAvatarSeed()" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${editDisabledClass}">Randomize Seed</button>
-                    ${avatarRecord.mode !== 'generated' ? `<button type="button" onclick="switchToGeneratedAvatar()" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${editDisabledClass}">Use Generated</button>` : ''}
+                    <button type="button" onclick="randomizePersonaSeed()" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${editDisabledClass}">Randomize Seed</button>
                   </div>
                 </div>
-                <div class="flex flex-wrap gap-2">${paletteButtons}</div>
-                <div class="flex flex-wrap gap-2 items-center">
-                  <span class="text-xs text-gray-400">Icon:</span>
-                  <button type="button" onclick="setAvatarIcon('')" data-avatar-icon="" ${profileEditable ? '' : 'disabled'} class="avatar-option w-10 h-10 rounded-lg text-xs ${avatar.icon ? '' : 'active'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">None</button>
-                  ${iconButtons}
+                <div class="space-y-2">
+                  <div class="text-xs text-gray-400">Theme</div>
+                  <div class="flex flex-wrap gap-2">${personaThemeButtons}</div>
                 </div>
-              </div>
-              <div class="space-y-2">
-                <div class="text-sm font-semibold text-white">Local Avatar (private)</div>
-                <div class="flex flex-wrap gap-2 items-center">
-                  <input id="avatarUploadInput" type="file" accept="image/png,image/jpeg,image/webp" ${localUploadActive ? '' : 'disabled'} class="hidden" />
-                  <button type="button" onclick="triggerAvatarUpload()" ${localUploadActive ? '' : 'disabled'} title="${localUploadDisabledReason}" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${localUploadActive ? '' : 'opacity-60 cursor-not-allowed'}">Upload Local Photo</button>
-                  <div id="avatarUploadStatus" class="text-xs text-gray-400"></div>
+                <div class="space-y-2">
+                  <div class="text-xs text-gray-400">Icons</div>
+                  <div class="flex flex-wrap gap-3">${personaButtons}</div>
                 </div>
-                <div class="text-xs text-gray-400">Local-only photos stay on your device and aren’t visible to others.</div>
-              </div>
-              <div class="space-y-2">
-                <div class="text-sm font-semibold text-white">Verified Avatar (public)</div>
-                <div class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-                  <div>
-                    <div class="text-sm font-semibold text-white">Make Avatar Public (Verified)</div>
-                    <div class="text-xs text-gray-400">Verified avatars are online-only and may pause to keep the app free.</div>
-                  </div>
-                  <input id="avatarVerifiedToggle" type="checkbox" class="profile-toggle" ${verifiedModeActive ? 'checked' : ''} ${verifiedToggleDisabled ? 'disabled' : ''} />
-                </div>
-                ${verifiedPauseBanner}
-                ${!rulesAccepted ? `
-                  <label class="flex items-center gap-2 text-xs text-gray-300">
-                    <input id="avatarRulesToggle" type="checkbox" class="profile-toggle" ${rulesAccepted ? 'checked' : ''} ${editDisabledAttr} />
-                    <span>I agree to the Profile Picture Rules.</span>
-                  </label>
-                ` : ''}
-                <div class="flex flex-wrap gap-2 items-center">
-                  <input id="avatarVerifyInput" type="file" accept="image/png,image/jpeg,image/webp" ${verifiedUploadActive ? '' : 'disabled'} class="hidden" />
-                  <button type="button" onclick="triggerVerifiedAvatarUpload()" ${verifiedUploadActive ? '' : 'disabled'} title="${verifiedUploadDisabledReason}" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${verifiedUploadActive ? '' : 'opacity-60 cursor-not-allowed'}">Verify &amp; Publish</button>
-                  <div id="avatarVerifyStatus" class="text-xs text-gray-400"></div>
-                </div>
-                ${verifiedDisabledReasonLine ? `<div class="text-xs text-amber-200">${escapeHtml(verifiedDisabledReasonLine)}</div>` : ''}
-                <div class="text-xs text-gray-400">Verified requires Online mode. Only approved avatars are visible to others.</div>
-                ${verifiedPending ? `<div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/40 rounded px-3 py-2">Pending review…</div>` : ''}
-                ${verifiedApproved ? `<div class="text-xs text-emerald-200 bg-emerald-500/10 border border-emerald-400/40 rounded px-3 py-2">Approved ✓</div>` : ''}
-                ${verifiedRejected ? `<div class="text-xs text-red-200 bg-red-500/10 border border-red-400/40 rounded px-3 py-2">Rejected: ${escapeHtml(verifiedRejectedReason || 'Inappropriate image')}</div>` : ''}
-                ${verifiedError ? `<div class="text-xs text-red-200 bg-red-500/10 border border-red-400/40 rounded px-3 py-2">Error: ${escapeHtml(verifiedRejectedReason || 'Moderation unavailable')}</div>` : ''}
               </div>
               <div class="space-y-2">
                 <div class="text-sm font-semibold text-white">Bio</div>
@@ -4768,7 +4351,7 @@ window.handleLogin = async (event) => {
         }
         return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
           <div class="flex items-center gap-3">
-            ${renderProfileAvatarMarkup(profile, 40)}
+            ${renderPersonaBadge(profile, 40)}
             <div>
               <div class="font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
               <div class="text-xs text-gray-400">@${escapeHtml(profile.username || uid || '')}</div>
@@ -4784,7 +4367,7 @@ window.handleLogin = async (event) => {
         const profile = req.fromProfile || { username: req.fromUid, djName: req.fromUid };
         return `<div class="flex items-center justify-between gap-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
           <div class="flex items-center gap-2">
-            ${renderProfileAvatarMarkup(profile, 32)}
+            ${renderPersonaBadge(profile, 32)}
             <div>
               <div class="text-sm font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
               <div class="text-xs text-gray-400">@${escapeHtml(profile.username || req.fromUid || '')}</div>
@@ -4800,7 +4383,7 @@ window.handleLogin = async (event) => {
         const profile = req.toProfile || { username: req.toUid, djName: req.toUid };
         return `<div class="flex items-center justify-between gap-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
           <div class="flex items-center gap-2">
-            ${renderProfileAvatarMarkup(profile, 32)}
+            ${renderPersonaBadge(profile, 32)}
             <div>
               <div class="text-sm font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
               <div class="text-xs text-gray-400">@${escapeHtml(profile.username || req.toUid || '')}</div>
@@ -4818,7 +4401,7 @@ window.handleLogin = async (event) => {
         const watchBtn = profile.streamUrl && profile.isLive ? `<button onclick="viewLiveProfile('${profile.username || profile.uid || ''}')" class="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs font-semibold">Watch</button>` : '';
         return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
           <div class="flex items-center gap-3">
-            ${renderProfileAvatarMarkup(profile, 40)}
+            ${renderPersonaBadge(profile, 40)}
             <div>
               <div class="font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
               <div class="text-xs text-gray-400">@${escapeHtml(profile.username || item.friendUid || '')}</div>
@@ -5682,28 +5265,6 @@ function render(){
         }
         if(target.id === 'profileFriendRequestsToggle' && !viewingProfile){
           updateDraftProfile({ allowFriendRequests: target.checked });
-        }
-        if(target.id === 'avatarUploadInput'){
-          const file = target.files?.[0] || null;
-          if(file) window.handleAvatarUpload(file);
-          target.value = '';
-        }
-        if(target.id === 'avatarVerifyInput'){
-          const file = target.files?.[0] || null;
-          if(file) window.handleVerifiedAvatarUpload(file);
-          target.value = '';
-        }
-        if(target.id === 'avatarVerifiedToggle' && !viewingProfile){
-          window.toggleVerifiedAvatarMode(target.checked);
-          renderProfile(); setupEventListeners();
-        }
-        if(target.id === 'avatarRulesToggle' && !viewingProfile){
-          if(target.checked){
-            updateDraftProfile({ rulesAccepted: true, rulesAcceptedAt: new Date().toISOString() });
-          } else {
-            updateDraftProfile({ rulesAccepted: false, rulesAcceptedAt: null });
-          }
-          renderProfile(); setupEventListeners();
         }
       }, { action: 'app-change' }));
       app.addEventListener('keydown', safeOn('keydown', (e)=>{

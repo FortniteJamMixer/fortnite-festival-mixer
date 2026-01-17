@@ -64,18 +64,17 @@ const HELP_CONTENT = {
         title: 'Profile basics',
         bullets: [
           'Open Profile to edit Username and DJ Name.',
-          'Profile shows your avatar, bio, and Owned tracks.',
+          'Profile shows your persona icon, bio, and Owned tracks.',
           'Click Save Profile to keep changes.'
         ]
       },
       {
-        id: 'profile_picture_rules',
-        title: 'Profile Picture Rules',
+        id: 'persona_icons',
+        title: 'Persona Icons',
         bullets: [
-          'Verified avatars are online-only and may pause to keep the app free.',
-          'Local-only photos stay on your device and aren’t visible to others.',
-          'Rejected images are not stored.',
-          'Verified uploads require Online mode.'
+          'Personas are stylized DJ icons that work offline.',
+          'Pick a persona, theme, and seed for subtle variations.',
+          'Changes save locally and sync online when enabled.'
         ]
       },
       {
@@ -85,7 +84,7 @@ const HELP_CONTENT = {
           'Online mode syncs your Profile to Firestore.',
           'Offline mode uses cached tracks and local storage.',
           'Friends / Bandmates and search are disabled offline.',
-          'Verified avatars require Online mode.'
+          'Persona icons work offline.'
         ]
       }
     ],
@@ -118,7 +117,7 @@ const HELP_CONTENT = {
         id: 'profile_customization',
         title: 'Profile Customization (Myspace vibe)',
         bullets: [
-          'Customize gives your profile a Myspace vibe with colors, bio, and avatar.',
+          'Customize gives your profile a Myspace vibe with colors, bio, and persona.',
           'Changes save offline to local storage, and online to Firestore too.'
         ],
         steps: [
@@ -126,18 +125,17 @@ const HELP_CONTENT = {
           'Expand Customize.',
           'Set Bio (160 characters max).',
           'Pick a Theme Accent to change highlights.',
-          'Use the Generated Avatar Builder: pick a palette, pick an icon (optional), and Randomize Seed for a new look.',
+          'Choose your Persona: pick an icon, theme, and Randomize Seed for subtle variations.',
           'Click Save Profile.'
         ]
       },
       {
-        id: 'avatar',
-        title: 'Avatar (Generated + Local + Verified)',
+        id: 'persona',
+        title: 'Persona Icons',
         bullets: [
-          'Generated Avatar Builder lets you choose a palette, icon, and seed.',
-          'Local-only photos stay on your device and aren’t visible to others.',
-          'Verified avatars are online-only and may pause to keep the app free.',
-          'If Storage is not configured or you are Offline, verified upload is disabled.'
+          'Personas are stylized DJ icons with neon gradients and glow.',
+          'Pick a theme for the energy ring and background.',
+          'Randomize the seed to tweak sparkles and highlights.'
         ]
       },
       {
@@ -249,8 +247,8 @@ const DEFAULT_WHATS_NEW = {
       text: 'Help modal got a cleanup for faster guidance.'
     },
     {
-      id: 'verified_avatars',
-      text: 'Verified avatars now support moderation and public display.'
+      id: 'persona_icons',
+      text: 'Persona icons replace profile pics with themed DJ vibes.'
     }
   ]
 };

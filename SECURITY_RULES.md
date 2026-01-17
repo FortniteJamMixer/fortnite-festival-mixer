@@ -33,22 +33,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /avatarReports/{reportId} {
-      allow create: if request.auth != null;
-      allow read, update, delete: if isAdmin();
-    }
-
     // Profiles + ratings (client-owned docs).
     match /profiles/{userId} {
       allow read: if resource.data.isPublic == true || (request.auth != null && request.auth.uid == userId);
       // Only allow users to update their own profile.
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId
-        // Clients can set avatar.mode and avatar.status="pending", but cannot approve/reject.
-        && !(request.resource.data.avatar.status in ["approved", "rejected"])
-        && !(request.resource.data.avatar.url is string)
-        && !(request.resource.data.avatar.rejectedReason is string)
-        && !(request.resource.data.avatar.rejectedLabels is map);
+      allow update: if request.auth != null && request.auth.uid == userId;
 
       match /ratings/{raterId} {
         allow read: if get(/databases/$(database)/documents/profiles/$(userId)).data.isPublic == true
@@ -102,23 +92,6 @@ service cloud.firestore {
         ".read": true,
         ".write": "auth != null && auth.uid === $uid"
       }
-    }
-  }
-}
-```
-
-## Storage (avatars)
-```
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /avatarsPending/{uid}.webp {
-      allow read: if false;
-      allow write: if request.auth != null && request.auth.uid == uid;
-    }
-    match /avatars/{uid}.webp {
-      allow read: if request.auth != null;
-      allow write: if false;
     }
   }
 }
