@@ -423,6 +423,74 @@ function debugProfileLog(message, data = {}){
   }
 }
 
+function getEventElement(event){
+  if(!event) return null;
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : null;
+  if(path && path.length){
+    for(const node of path){
+      if(node instanceof Element) return node;
+    }
+  }
+  const target = event.target;
+  if(target instanceof Element) return target;
+  if(target && target.nodeType === Node.TEXT_NODE) return target.parentElement;
+  if(target && target.parentElement) return target.parentElement;
+  return null;
+}
+
+function closestFromEvent(event, selector, options = {}){
+  const start = getEventElement(event);
+  if(!start || !selector) return null;
+  const match = start.closest(selector);
+  if(!match) return null;
+  const within = options.within;
+  if(within){
+    const boundary = typeof within === 'string' ? document.querySelector(within) : within;
+    if(boundary instanceof Element && !boundary.contains(match)) return null;
+  }
+  return match;
+}
+
+function showDelegationToast(message){
+  if(!DEBUG_UI && !DEBUG_PROFILE) return;
+  const existing = document.getElementById('delegationDevToast');
+  if(existing){
+    existing.textContent = message;
+    return;
+  }
+  const toast = document.createElement('div');
+  toast.id = 'delegationDevToast';
+  toast.textContent = message;
+  toast.style.position = 'fixed';
+  toast.style.bottom = '16px';
+  toast.style.right = '16px';
+  toast.style.zIndex = '9999';
+  toast.style.background = 'rgba(0,0,0,0.75)';
+  toast.style.color = '#fff';
+  toast.style.padding = '8px 12px';
+  toast.style.borderRadius = '8px';
+  toast.style.fontSize = '12px';
+  toast.style.pointerEvents = 'none';
+  document.body.appendChild(toast);
+  setTimeout(()=>{ toast.remove(); }, 3000);
+}
+
+function safeOn(type, handler, meta = {}){
+  return function(event){
+    try{
+      handler(event);
+    }catch(err){
+      const detail = {
+        type,
+        action: meta.action || meta.selector || 'unknown',
+        stack: err?.stack || String(err)
+      };
+      console.error('[delegation] handler error', detail);
+      showDelegationToast(`[delegation] ${type} error`);
+    }
+  };
+}
+
 const firebaseConfig = window.firebaseConfig || {};
 const firebaseConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId);
 const firebaseEnabled = firebaseConfig.firebaseEnabled === true && firebaseConfigValid && !!window.firebase?.auth;
@@ -457,6 +525,14 @@ function applyBrandingCopy(){
   if(priorityDesc) priorityDesc.textContent = `${BRAND.APP_NAME} always calculates a blended compatibility score (Key → BPM → Genre). Priority modes only decide how ties are broken, not the overall score.`;
   const camelotHeading = document.querySelector('[data-brand="camelot-heading"]');
   if(camelotHeading) camelotHeading.textContent = `How ${BRAND.APP_NAME} Uses Camelot`;
+}
+
+let delegationSelfTested = false;
+function runDelegationSelfTest(){
+  if(delegationSelfTested || (!DEBUG_UI && !DEBUG_PROFILE)) return;
+  delegationSelfTested = true;
+  const helpersReady = typeof getEventElement === 'function' && typeof closestFromEvent === 'function' && typeof safeOn === 'function';
+  console.log('[delegation] hardened listeners active', { helpersReady, documentClick: dataActionDelegatesBound === true });
 }
 
 applyBrandingCopy();
@@ -1519,7 +1595,9 @@ function track(eventName, payload = {}){
         select.appendChild(opt);
       });
       select.addEventListener('change', (e)=>{
-        const nextSize = Number(e.target.value);
+        const target = getEventElement(e);
+        if(!target) return;
+        const nextSize = Number(target.value);
         if(callbacks?.onPageSizeChange) callbacks.onPageSizeChange(nextSize);
       });
       label.appendChild(labelText);
@@ -1573,8 +1651,9 @@ function track(eventName, payload = {}){
       if(!adminMenuOpen) return;
       const menu = document.getElementById('adminToolsMenu');
       const btn = document.getElementById('adminToolsBtn');
-      const clickInMenu = menu?.contains(e.target);
-      const clickOnBtn = btn?.contains(e.target);
+      const target = getEventElement(e);
+      const clickInMenu = target ? menu?.contains(target) : false;
+      const clickOnBtn = target ? btn?.contains(target) : false;
       if(menu && !clickInMenu && !clickOnBtn){
         toggleAdminTools(false);
       }
@@ -1589,8 +1668,8 @@ function track(eventName, payload = {}){
 
     function ensureAdminMenuListeners(){
       if(adminMenuListenersBound) return;
-      document.addEventListener('click', handleAdminMenuOutsideClick);
-      document.addEventListener('keydown', handleAdminMenuKeydown);
+      document.addEventListener('click', safeOn('click', handleAdminMenuOutsideClick, { action: 'admin-menu-outside' }));
+      document.addEventListener('keydown', safeOn('keydown', handleAdminMenuKeydown, { action: 'admin-menu-keydown' }));
       adminMenuListenersBound = true;
     }
 
@@ -2540,8 +2619,9 @@ function track(eventName, payload = {}){
     function bindUiDebugging(){
       if(!DEBUG_UI || debugUiBound) return;
       debugUiBound = true;
-      document.addEventListener('click', (e)=>{
-        console.log('[debug][ui] CLICK', e.target);
+      document.addEventListener('click', safeOn('click', (e)=>{
+        const target = getEventElement(e) || e.target;
+        console.log('[debug][ui] CLICK', target);
         const probe = document.elementFromPoint(e.clientX, e.clientY);
         if(probe){
           const style = getComputedStyle(probe);
@@ -2564,7 +2644,7 @@ function track(eventName, payload = {}){
             node = node.parentElement;
           }
         }
-      }, true);
+      }, { action: 'ui-debug-click' }), true);
     }
 
     function openProfileEditor(){
@@ -2591,8 +2671,8 @@ function track(eventName, payload = {}){
       if(!app) return;
       if(DEBUG_UI) console.log('[debug][profile] bindProfileHandlers');
       window.__profileEventsBound = true;
-      app.addEventListener('click', (e)=>{
-        const toggle = e.target.closest('[data-profile-action="toggle-edit"]');
+      app.addEventListener('click', safeOn('click', (e)=>{
+        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: app });
         if(toggle){
           if(viewingProfile) return;
           profileEditMode = !profileEditMode;
@@ -2600,21 +2680,20 @@ function track(eventName, payload = {}){
           setupEventListeners();
           return;
         }
-        const editTrigger = e.target.closest('[data-action="open-profile-editor"]');
+        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
         if(editTrigger){
           debugProfileLog('avatar edit click detected');
           openProfileEditor();
         }
-      });
-      app.addEventListener('keydown', (e)=>{
-        const trigger = e.target.closest?.('[data-action="open-profile-editor"]');
+      }, { action: 'profile-click' }));
+      app.addEventListener('keydown', safeOn('keydown', (e)=>{
+        if(e.key !== 'Enter' && e.key !== ' ') return;
+        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
         if(!trigger) return;
-        if(e.key === 'Enter' || e.key === ' '){
-          e.preventDefault();
-          debugProfileLog('avatar edit keydown detected', { key: e.key });
-          openProfileEditor();
-        }
-      });
+        e.preventDefault();
+        debugProfileLog('avatar edit keydown detected', { key: e.key });
+        openProfileEditor();
+      }, { action: 'profile-keydown' }));
       profileHandlersBound = true;
     }
 
@@ -5431,7 +5510,9 @@ function render(){
       if(!currentUser?.isAdmin) { alert('🔒 Admin only.'); return; }
       const existing = document.getElementById('genreContextMenu'); if(existing) existing.remove();
       const menu=document.createElement('div'); menu.id='genreContextMenu'; menu.className='context-menu';
-      const rect = event.target.getBoundingClientRect();
+      const anchor = getEventElement(event) || event.currentTarget;
+      if(!anchor?.getBoundingClientRect) return;
+      const rect = anchor.getBoundingClientRect();
       let left=rect.left, top=rect.bottom+5;
       if(left+220>window.innerWidth) left=rect.right-220;
       if(top+300>window.innerHeight) top=rect.top-305;
@@ -5444,7 +5525,16 @@ function render(){
         menu.appendChild(btn);
       });
       document.body.appendChild(menu);
-      setTimeout(()=>{ const closeMenu=(e)=>{ if(!menu.contains(e.target)){ menu.remove(); document.removeEventListener('click', closeMenu); } }; document.addEventListener('click', closeMenu); },100);
+      setTimeout(()=>{
+        const closeMenu = (e)=>{
+          const target = getEventElement(e);
+          if(!target || !menu.contains(target)){
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+          }
+        };
+        document.addEventListener('click', closeMenu);
+      },100);
     }
 
     function bindGenreEditors(scope=document){
@@ -5528,21 +5618,24 @@ function render(){
       if(appDelegatesBound) return;
       const app = document.getElementById('app');
       if(!app) return;
-      app.addEventListener('click', (e)=>{
-        if(e.target.closest('#mixableFilterBtn')){ toggleMixableFilter(); }
-        if(e.target.closest('#ownedFilterBtn')){ toggleOwnedFilter(); }
-        if(e.target.closest('#clearSearchBtn') || e.target.closest('#panelClearSearchBtn')){ clearSearch(); }
-        if(e.target.closest('#markAllBtn') && !viewingProfile){ markAllOwned(); }
-        if(e.target.closest('#clearAllBtn') && !viewingProfile){ clearAllOwned(); }
-        const genreBtn = e.target.closest('[data-genre-tag]');
+      app.addEventListener('click', safeOn('click', (e)=>{
+        if(closestFromEvent(e, '#mixableFilterBtn', { within: app })){ toggleMixableFilter(); return; }
+        if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
+        if(closestFromEvent(e, '#clearSearchBtn', { within: app }) || closestFromEvent(e, '#panelClearSearchBtn', { within: app })){ clearSearch(); return; }
+        if(closestFromEvent(e, '#markAllBtn', { within: app }) && !viewingProfile){ markAllOwned(); return; }
+        if(closestFromEvent(e, '#clearAllBtn', { within: app }) && !viewingProfile){ clearAllOwned(); return; }
+        const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: app });
         if(genreBtn && isAdmin()){
           const newGenre = prompt('Set genre override', genreBtn.textContent.replace(' ✓','').trim());
-          if(newGenre){ setGenreOverride(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), newGenre); }
+          const genreTag = genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag');
+          if(newGenre && genreTag){ setGenreOverride(genreTag, newGenre); }
         }
-      });
-      app.addEventListener('input', (e)=>{
-        if(e.target.id === 'searchInput'){
-          searchTerm = e.target.value;
+      }, { action: 'app-click' }));
+      app.addEventListener('input', safeOn('input', (e)=>{
+        const target = getEventElement(e);
+        if(!target) return;
+        if(target.id === 'searchInput'){
+          searchTerm = target.value;
           const clearSearchBtn = document.getElementById('clearSearchBtn');
           if(clearSearchBtn) clearSearchBtn.style.display = searchTerm ? 'block' : 'none';
           const panelClear = document.getElementById('panelClearSearchBtn');
@@ -5550,71 +5643,75 @@ function render(){
           resetMainPagination();
           renderSongList();
         }
-        if(e.target.id === 'auditSearchInput'){ auditSearch = e.target.value; renderAuditView(); }
-        if(e.target.id === 'ownedSearchInput'){
-          profileOwnedSearch = e.target.value;
+        if(target.id === 'auditSearchInput'){ auditSearch = target.value; renderAuditView(); }
+        if(target.id === 'ownedSearchInput'){
+          profileOwnedSearch = target.value;
           resetPage(profileOwnedPager);
           renderProfile();
         }
-        if(e.target.id === 'profileUsername' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = e.target.value; }
-        if(e.target.id === 'profileDjName' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = e.target.value; }
-        if(e.target.id === 'profileStreamUrl' && !viewingProfile){
+        if(target.id === 'profileUsername' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = target.value; }
+        if(target.id === 'profileDjName' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = target.value; }
+        if(target.id === 'profileStreamUrl' && !viewingProfile){
           draftProfile = draftProfile || cloneProfile(currentUser) || {};
-          draftProfile.streamUrl = e.target.value;
+          draftProfile.streamUrl = target.value;
           updateStreamControlsFromInput();
         }
-        if(e.target.id === 'profileBioInput' && !viewingProfile){
-          const draft = updateDraftProfile({ bio: e.target.value.slice(0, PROFILE_BIO_MAX) });
+        if(target.id === 'profileBioInput' && !viewingProfile){
+          const draft = updateDraftProfile({ bio: target.value.slice(0, PROFILE_BIO_MAX) });
           if(draft) updateBioCounter(draft.bio || '');
         }
-        if(e.target.id === 'socialFriendSearchInput'){
-          socialFriendSearchTerm = e.target.value;
+        if(target.id === 'socialFriendSearchInput'){
+          socialFriendSearchTerm = target.value;
           if(socialFriendSearchDebounce) clearTimeout(socialFriendSearchDebounce);
           socialFriendSearchDebounce = setTimeout(()=>{ searchProfilesForFriends(); }, 300);
         }
-        if(e.target.id === 'ratingCommentInput'){
-          ratingDraft.comment = e.target.value;
+        if(target.id === 'ratingCommentInput'){
+          ratingDraft.comment = target.value;
           const countEl = document.getElementById('ratingCommentCount');
           if(countEl) countEl.textContent = `${ratingDraft.comment.length}/${RATING_MAX_COMMENT}`;
         }
-        if(e.target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(e.target.value); }
-      });
-      app.addEventListener('change', (e)=>{
-        if(e.target.id === 'keyMatchModeSelect'){ setKeyMatchMode(e.target.value); }
-        if(e.target.id === 'includeOppositeModeToggle'){ toggleIncludeOppositeMode(e.target.checked); }
-        if(e.target.id === 'profilePublicToggle' && !viewingProfile){
-          updateDraftProfile({ isPublic: e.target.checked });
+        if(target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(target.value); }
+      }, { action: 'app-input' }));
+      app.addEventListener('change', safeOn('change', (e)=>{
+        const target = getEventElement(e);
+        if(!target) return;
+        if(target.id === 'keyMatchModeSelect'){ setKeyMatchMode(target.value); }
+        if(target.id === 'includeOppositeModeToggle'){ toggleIncludeOppositeMode(target.checked); }
+        if(target.id === 'profilePublicToggle' && !viewingProfile){
+          updateDraftProfile({ isPublic: target.checked });
         }
-        if(e.target.id === 'profileFriendRequestsToggle' && !viewingProfile){
-          updateDraftProfile({ allowFriendRequests: e.target.checked });
+        if(target.id === 'profileFriendRequestsToggle' && !viewingProfile){
+          updateDraftProfile({ allowFriendRequests: target.checked });
         }
-        if(e.target.id === 'avatarUploadInput'){
-          const file = e.target.files?.[0] || null;
+        if(target.id === 'avatarUploadInput'){
+          const file = target.files?.[0] || null;
           if(file) window.handleAvatarUpload(file);
-          e.target.value = '';
+          target.value = '';
         }
-        if(e.target.id === 'avatarVerifyInput'){
-          const file = e.target.files?.[0] || null;
+        if(target.id === 'avatarVerifyInput'){
+          const file = target.files?.[0] || null;
           if(file) window.handleVerifiedAvatarUpload(file);
-          e.target.value = '';
+          target.value = '';
         }
-        if(e.target.id === 'avatarVerifiedToggle' && !viewingProfile){
-          window.toggleVerifiedAvatarMode(e.target.checked);
+        if(target.id === 'avatarVerifiedToggle' && !viewingProfile){
+          window.toggleVerifiedAvatarMode(target.checked);
           renderProfile(); setupEventListeners();
         }
-        if(e.target.id === 'avatarRulesToggle' && !viewingProfile){
-          if(e.target.checked){
+        if(target.id === 'avatarRulesToggle' && !viewingProfile){
+          if(target.checked){
             updateDraftProfile({ rulesAccepted: true, rulesAcceptedAt: new Date().toISOString() });
           } else {
             updateDraftProfile({ rulesAccepted: false, rulesAcceptedAt: null });
           }
           renderProfile(); setupEventListeners();
         }
-      });
-      app.addEventListener('keydown', (e)=>{
-        if(e.target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
-        if(e.target.id === 'socialFriendSearchInput' && e.key === 'Enter'){ e.preventDefault(); searchProfilesForFriends(); }
-      });
+      }, { action: 'app-change' }));
+      app.addEventListener('keydown', safeOn('keydown', (e)=>{
+        const target = getEventElement(e);
+        if(!target) return;
+        if(target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
+        if(target.id === 'socialFriendSearchInput' && e.key === 'Enter'){ e.preventDefault(); searchProfilesForFriends(); }
+      }, { action: 'app-keydown' }));
       appDelegatesBound = true;
     }
 
@@ -5623,6 +5720,7 @@ function render(){
       bindAppDelegates();
       bindProfileHandlers();
       updateProfileErrorBanner();
+      runDelegationSelfTest();
       const searchInput = document.getElementById('searchInput');
       if(searchInput){
         const clearSearchBtn = document.getElementById('clearSearchBtn');
@@ -5691,30 +5789,47 @@ function render(){
       }, { passive: false });
     }
 
-    document.addEventListener('click', (e) => {
-      const el = e.target.closest('[data-action]');
+    let dataActionDelegatesBound = false;
+    function handleDataAction(el, event){
+      if(!el) return;
+      const action = el.dataset?.action;
+      if(!action) return;
+      if(action === 'addSet'){
+        const id = el.dataset?.id;
+        if(!id) return;
+        event?.preventDefault();
+        addToSetlist(id);
+        return;
+      }
+      if(action === 'removeSet'){
+        const id = el.dataset?.id;
+        if(!id) return;
+        event?.preventDefault();
+        removeFromSetlist(id);
+        return;
+      }
+      if(action === 'switchView'){
+        const viewName = el.dataset?.view;
+        if(!viewName) return;
+        event?.preventDefault();
+        switchView(viewName);
+      }
+    }
+
+    document.addEventListener('click', safeOn('click', (e) => {
+      const el = closestFromEvent(e, '[data-action]');
       if (!el) return;
+      handleDataAction(el, e);
+    }, { action: 'data-action-click' }));
 
-      const action = el.dataset.action;
-
-      if (action === 'addSet') {
-        e.preventDefault();
-        addToSetlist(el.dataset.id);
-        return;
-      }
-
-      if (action === 'removeSet') {
-        e.preventDefault();
-        removeFromSetlist(el.dataset.id);
-        return;
-      }
-
-      if (action === 'switchView') {
-        e.preventDefault();
-        switchView(el.dataset.view);
-        return;
-      }
-    });
+    document.addEventListener('keydown', safeOn('keydown', (e) => {
+      if(e.key !== 'Enter' && e.key !== ' ') return;
+      const el = closestFromEvent(e, '[data-action]');
+      if (!el) return;
+      e.preventDefault();
+      handleDataAction(el, e);
+    }, { action: 'data-action-keydown' }));
+    dataActionDelegatesBound = true;
 
     window.setPriorityStrength = (val) => {
       const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
@@ -6568,10 +6683,11 @@ function render(){
       `;
       document.body.appendChild(modal);
       renderAdminHelpEditor();
-      modal.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
+      modal.addEventListener('click', safeOn('click', (e) => {
+        const btn = closestFromEvent(e, '[data-action]', { within: modal });
         if(!btn) return;
-        const action = btn.dataset.action;
+        const action = btn.dataset?.action;
+        if(!action) return;
         if(action === 'close-editor'){ closeAdminEditorModal('adminHelpEditorModal'); return; }
         if(action === 'save-help'){ saveHelpEditor(); return; }
         if(action === 'reset-help'){
@@ -6579,8 +6695,9 @@ function render(){
           renderAdminHelpEditor();
           return;
         }
-        const target = btn.dataset.target;
-        const index = Number(btn.dataset.index);
+        const target = btn.dataset?.target;
+        const index = Number(btn.dataset?.index);
+        if(!target) return;
         if(action === 'add-item'){
           if(target === 'quickStart') helpEditorState.basic.quickStart.push('New step');
           if(target === 'basicSections') helpEditorState.basic.sections.push({ id: 'new_section', title: 'New Section', bullets: ['New bullet'], steps: [] });
@@ -6590,6 +6707,7 @@ function render(){
           return;
         }
         if(action === 'remove-item'){
+          if(Number.isNaN(index)) return;
           if(target === 'quickStart') helpEditorState.basic.quickStart.splice(index, 1);
           if(target === 'basicSections') helpEditorState.basic.sections.splice(index, 1);
           if(target === 'faq') helpEditorState.basic.faq.splice(index, 1);
@@ -6598,6 +6716,7 @@ function render(){
           return;
         }
         if(action === 'move-up' || action === 'move-down'){
+          if(Number.isNaN(index)) return;
           const delta = action === 'move-up' ? -1 : 1;
           if(target === 'quickStart') moveItem(helpEditorState.basic.quickStart, index, index + delta);
           if(target === 'basicSections') moveItem(helpEditorState.basic.sections, index, index + delta);
@@ -6605,28 +6724,65 @@ function render(){
           if(target === 'advancedSections') moveItem(helpEditorState.advanced.sections, index, index + delta);
           renderAdminHelpEditor();
         }
-      });
-      modal.addEventListener('input', (e) => {
-        const field = e.target?.dataset?.field;
+      }, { action: 'admin-help-click' }));
+      modal.addEventListener('input', safeOn('input', (e) => {
+        const target = getEventElement(e);
+        const field = target?.dataset?.field;
         if(!field) return;
-        const index = Number(e.target.dataset.index);
-        const value = e.target.value;
+        const index = Number(target.dataset?.index);
+        const value = target.value;
         if(field === 'help-version'){ helpEditorState.version = Number(value) || 1; }
-        if(field === 'quickStart'){ helpEditorState.basic.quickStart[index] = value; }
-        if(field === 'basic-section-id'){ helpEditorState.basic.sections[index].id = value; }
-        if(field === 'basic-section-title'){ helpEditorState.basic.sections[index].title = value; }
-        if(field === 'basic-section-bullets'){ helpEditorState.basic.sections[index].bullets = splitLines(value); }
-        if(field === 'basic-section-steps'){ helpEditorState.basic.sections[index].steps = splitLines(value); }
-        if(field === 'faq-id'){ helpEditorState.basic.faq[index].id = value; }
-        if(field === 'faq-q'){ helpEditorState.basic.faq[index].q = value; }
-        if(field === 'faq-a'){ helpEditorState.basic.faq[index].a = splitLines(value); }
-        if(field === 'advanced-section-id'){ helpEditorState.advanced.sections[index].id = value; }
-        if(field === 'advanced-section-title'){ helpEditorState.advanced.sections[index].title = value; }
-        if(field === 'advanced-section-bullets'){ helpEditorState.advanced.sections[index].bullets = splitLines(value); }
-        if(field === 'advanced-section-steps'){ helpEditorState.advanced.sections[index].steps = splitLines(value); }
+        if(field === 'quickStart'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.quickStart[index] = value;
+        }
+        if(field === 'basic-section-id'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.sections[index].id = value;
+        }
+        if(field === 'basic-section-title'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.sections[index].title = value;
+        }
+        if(field === 'basic-section-bullets'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.sections[index].bullets = splitLines(value);
+        }
+        if(field === 'basic-section-steps'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.sections[index].steps = splitLines(value);
+        }
+        if(field === 'faq-id'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.faq[index].id = value;
+        }
+        if(field === 'faq-q'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.faq[index].q = value;
+        }
+        if(field === 'faq-a'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.basic.faq[index].a = splitLines(value);
+        }
+        if(field === 'advanced-section-id'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.advanced.sections[index].id = value;
+        }
+        if(field === 'advanced-section-title'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.advanced.sections[index].title = value;
+        }
+        if(field === 'advanced-section-bullets'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.advanced.sections[index].bullets = splitLines(value);
+        }
+        if(field === 'advanced-section-steps'){
+          if(Number.isNaN(index)) return;
+          helpEditorState.advanced.sections[index].steps = splitLines(value);
+        }
         const preview = modal.querySelector('[data-editor-preview]');
         if(preview) renderHelpPreview(preview, helpEditorState);
-      });
+      }, { action: 'admin-help-input' }));
     }
 
     function renderWhatsNewPreview(container, items){
@@ -6733,10 +6889,11 @@ function render(){
       `;
       document.body.appendChild(modal);
       renderWhatsNewEditor();
-      modal.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
+      modal.addEventListener('click', safeOn('click', (e) => {
+        const btn = closestFromEvent(e, '[data-action]', { within: modal });
         if(!btn) return;
-        const action = btn.dataset.action;
+        const action = btn.dataset?.action;
+        if(!action) return;
         if(action === 'close-editor'){ closeAdminEditorModal('adminWhatsNewEditorModal'); return; }
         if(action === 'save-whatsnew'){ saveWhatsNewEditor(); return; }
         if(action === 'reset-whatsnew'){
@@ -6744,35 +6901,48 @@ function render(){
           renderWhatsNewEditor();
           return;
         }
-        const target = btn.dataset.target;
-        const index = Number(btn.dataset.index);
+        const target = btn.dataset?.target;
+        const index = Number(btn.dataset?.index);
+        if(!target) return;
         if(action === 'add-item' && target === 'whatsNew'){
           whatsNewEditorState.items.push({ id: 'new_item', text: 'New update', requires: [] });
           renderWhatsNewEditor();
           return;
         }
         if(action === 'remove-item' && target === 'whatsNew'){
+          if(Number.isNaN(index)) return;
           whatsNewEditorState.items.splice(index, 1);
           renderWhatsNewEditor();
           return;
         }
         if((action === 'move-up' || action === 'move-down') && target === 'whatsNew'){
+          if(Number.isNaN(index)) return;
           const delta = action === 'move-up' ? -1 : 1;
           moveItem(whatsNewEditorState.items, index, index + delta);
           renderWhatsNewEditor();
         }
-      });
-      modal.addEventListener('input', (e) => {
-        const field = e.target?.dataset?.field;
+      }, { action: 'admin-whatsnew-click' }));
+      modal.addEventListener('input', safeOn('input', (e) => {
+        const target = getEventElement(e);
+        const field = target?.dataset?.field;
         if(!field) return;
-        const index = Number(e.target.dataset.index);
-        const value = e.target.value;
+        const index = Number(target.dataset?.index);
+        const value = target.value;
         if(field === 'whatsnew-version'){ whatsNewEditorState.version = Number(value) || 1; }
-        if(field === 'whatsnew-id'){ whatsNewEditorState.items[index].id = value; }
-        if(field === 'whatsnew-text'){ whatsNewEditorState.items[index].text = value; }
-        if(field === 'whatsnew-requires'){ whatsNewEditorState.items[index].requires = parseCommaList(value); }
+        if(field === 'whatsnew-id'){
+          if(Number.isNaN(index)) return;
+          whatsNewEditorState.items[index].id = value;
+        }
+        if(field === 'whatsnew-text'){
+          if(Number.isNaN(index)) return;
+          whatsNewEditorState.items[index].text = value;
+        }
+        if(field === 'whatsnew-requires'){
+          if(Number.isNaN(index)) return;
+          whatsNewEditorState.items[index].requires = parseCommaList(value);
+        }
         renderWhatsNewPreview(modal.querySelector('[data-editor-preview]'), whatsNewEditorState.items);
-      });
+      }, { action: 'admin-whatsnew-input' }));
     }
 
     async function maybeLoadSharedProfile(){
@@ -6795,7 +6965,10 @@ function render(){
 
     const helpModal = document.getElementById('helpModal');
     if(helpModal){
-      helpModal.addEventListener('click',(e)=>{ if(e.target === helpModal) closeHelp(); });
+      helpModal.addEventListener('click',(e)=>{
+        const target = getEventElement(e);
+        if(target === helpModal) closeHelp();
+      });
       bindHelpTabs();
       bindHelpFaqTracking();
       renderHelpContent();
@@ -6803,7 +6976,7 @@ function render(){
     bindTourEvents();
     window.addEventListener('resize', ()=>{ if(tourState.isOpen) updateTourUI(); });
     window.addEventListener('scroll', ()=>{ if(tourState.isOpen) updateTourUI(); }, true);
-    document.addEventListener('keydown',(e)=>{
+    document.addEventListener('keydown', safeOn('keydown', (e)=>{
       if(tourState.isOpen){
         if(e.key === 'Escape'){
           skipTour();
@@ -6813,7 +6986,7 @@ function render(){
         return;
       }
       if(e.key === 'Escape'){ closeHelp(); }
-    });
+    }, { action: 'global-keydown' }));
 
     // ----------------------- Init / Auth check ------------------------
     loadOverridesFromStorage();
@@ -6866,8 +7039,30 @@ function render(){
     if(!localStorage.getItem('hasSeenLanding')) showLandingPage(); else checkAuth();
 
     // ------------------ Drag/drop support ---------------------------
-    document.addEventListener('dragstart', (e)=>{ const card = e.target.closest('.song-card'); if(card) e.dataTransfer.setData('text/plain', card.getAttribute('data-song-id')); });
-    document.addEventListener('click', (e)=>{ const preview = e.target.closest('.previewBtn'); if(preview){ e.preventDefault(); onPreviewClick(preview.dataset.id); } const addSet = e.target.closest('.addSetBtn'); if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); } });
+    document.addEventListener('dragstart', safeOn('dragstart', (e)=>{
+      const card = closestFromEvent(e, '.song-card');
+      if(card){
+        const songId = card.getAttribute('data-song-id');
+        if(songId) e.dataTransfer.setData('text/plain', songId);
+      }
+    }, { action: 'drag-song-card' }));
+    document.addEventListener('click', safeOn('click', (e)=>{
+      const preview = closestFromEvent(e, '.previewBtn');
+      if(preview){
+        const id = preview.dataset?.id;
+        if(!id) return;
+        e.preventDefault();
+        onPreviewClick(id);
+        return;
+      }
+      const addSet = closestFromEvent(e, '.addSetBtn');
+      if(addSet){
+        const id = addSet.dataset?.id;
+        if(!id) return;
+        e.preventDefault();
+        addToSetlist(id);
+      }
+    }, { action: 'setlist-preview-add' }));
 
     // ---------------- Expose some helpers for debugging ----------------
     window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile; window.startTour = startTour; window.refreshLiveNowUsers = refreshLiveNowUsers;
