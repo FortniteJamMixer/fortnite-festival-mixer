@@ -96,6 +96,8 @@
       background: rgba(0,0,0,0.85);
       backdrop-filter: blur(6px);
     }
+    #helpModal[aria-hidden="true"] { display: none; pointer-events: none; }
+    #helpModal[aria-hidden="false"] { pointer-events: auto; }
     .helpBox {
       width: 92%;
       max-width: 760px;
@@ -230,6 +232,8 @@
       z-index: 25000;
       pointer-events: none;
     }
+    #tourOverlay[aria-hidden="true"] { display: none; pointer-events: none; }
+    #tourOverlay[aria-hidden="false"] { pointer-events: auto; }
     #tourOverlay[data-open="true"] { display: block; pointer-events: auto; }
     .tour-backdrop {
       position: fixed;
@@ -3249,10 +3253,11 @@ function track(eventName, payload = {}){
                   <div id="authError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
                 </form>
               ` : `
-                <form onsubmit="handleLogin(event)" class="space-y-4">
-                  <div><label class="block text-sm text-gray-300 mb-2">Username</label><input id="username" type="text" required minlength="3" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
-                  <div><label class="block text-sm text-gray-300 mb-2">DJ Name (optional)</label><input id="djName" type="text" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
-                  <button type="submit" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter the Mix</button>
+                <form id="localAuthForm" class="space-y-4" autocomplete="off">
+                  <div><label class="block text-sm text-gray-300 mb-2">Username</label><input id="username" type="text" required minlength="2" maxlength="24" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <div><label class="block text-sm text-gray-300 mb-2">DJ Name (optional)</label><input id="djName" type="text" maxlength="32" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <button type="submit" id="enterMixBtn" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter the Mix</button>
+                  <div id="localAuthError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
                 </form>
               `}
               <div class="mt-6 pt-6 border-t border-gray-700">
@@ -3262,6 +3267,11 @@ function track(eventName, payload = {}){
           </div>
         </div>
       `;
+      const localForm = document.getElementById('localAuthForm');
+      if(localForm && !localForm.dataset.bound){
+        localForm.dataset.bound = 'true';
+        localForm.addEventListener('submit', onEnterMixSubmit);
+      }
     }
 
       // -------------------- Firebase Auth UI helpers ---------------------
@@ -3299,6 +3309,177 @@ function track(eventName, payload = {}){
         localStorage.setItem('localDeviceUserId', localId);
       }
       return localId;
+    }
+
+    function slugifyLocalUsername(value){
+      return (value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9 _-]+/g,'')
+        .replace(/\s+/g,'-')
+        .replace(/-+/g,'-')
+        .replace(/^[-_]+|[-_]+$/g,'');
+    }
+
+    function getActiveProfile(){
+      if(currentUser) return currentUser;
+      const activeUid = localStorage.getItem('activeProfileUid');
+      const localProfileRaw = localStorage.getItem('localProfile');
+      if(localProfileRaw){
+        try{
+          const parsed = JSON.parse(localProfileRaw);
+          const normalized = normalizeProfileShape(parsed, parsed?.uid || activeUid);
+          if(normalized && (!activeUid || normalized.uid === activeUid)) return normalized;
+        }catch(err){ console.warn('[auth] localProfile parse failed', err); }
+      }
+      const savedId = activeUid || localStorage.getItem('currentUser');
+      if(!savedId) return null;
+      try{
+        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+        if(profiles[savedId]) return normalizeProfileShape(profiles[savedId], savedId);
+      }catch(err){ console.warn('[auth] stored profiles parse failed', err); }
+      return null;
+    }
+
+    async function enterAppWithProfile(profile, { loadEpic = false, loadOverrides = false } = {}){
+      if(!profile) return;
+      currentUser = applyAdminFlag(profile);
+      await persistAdminFlagIfNeeded(profile, currentUser);
+      applyPreferencesFromProfile(currentUser);
+      loadNamespacedState();
+      loadOverridesFromStorage();
+      if(loadOverrides){
+        await loadUserOverridesFromBackend();
+      }
+      ownedTracks = currentUser.ownedTracks || [];
+      setlistIds = normalizeSetlistIds(currentUser.setlistIds || currentUser.setlist || currentUser.setlists || []);
+      bandMembers = currentUser.bandMembers || [];
+      genreOverrides = currentUser.genreOverrides || {};
+      refreshDraftProfileFromCurrentUser();
+      if(loadEpic){
+        await fetchEpicLinkStatus();
+      }
+      if(currentUser?.uid || currentUser?.username){
+        const profileKey = currentUser.uid || currentUser.username;
+        localStorage.setItem('currentUser', profileKey);
+      }
+      if(currentUser?.mode === 'local' || currentUser?.uid?.startsWith('local:')){
+        localStorage.setItem('localProfile', JSON.stringify(currentUser));
+        localStorage.setItem('activeProfileUid', currentUser.uid);
+        localStorage.setItem('isAuthed', 'true');
+      }
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      if(currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...currentUser };
+      if(currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...currentUser };
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      view = 'browser';
+      await persistCurrentUserProfile();
+      await maybeLoadSharedProfile();
+      loadSongs();
+      await loadRemoteConfig();
+    }
+
+    function setLocalAuthError(message){
+      const errorBox = document.getElementById('localAuthError');
+      if(errorBox){
+        errorBox.textContent = message;
+        errorBox.style.display = message ? 'block' : 'none';
+      }
+    }
+
+    async function onEnterMixSubmit(event){
+      event.preventDefault();
+      console.debug('[auth] Enter Mix clicked');
+      const submitBtn = document.getElementById('enterMixBtn');
+      const originalLabel = submitBtn?.textContent || '🎵 Enter the Mix';
+      if(submitBtn){
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-70');
+        submitBtn.textContent = 'Entering...';
+      }
+      const buttonTimeout = setTimeout(() => {
+        if(submitBtn){
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('opacity-70');
+          submitBtn.textContent = originalLabel;
+        }
+      }, 300);
+      setLocalAuthError('');
+      try{
+        const usernameInput = document.getElementById('username');
+        const djNameInput = document.getElementById('djName');
+        const username = (usernameInput?.value || '').trim();
+        const djNameRaw = (djNameInput?.value || '').trim();
+        if(username.length < 2){
+          setLocalAuthError('Username must be at least 2 characters.');
+          return;
+        }
+        if(username.length > 24){
+          setLocalAuthError('Username must be 24 characters or fewer.');
+          return;
+        }
+        if(!/^[A-Za-z0-9 _-]+$/.test(username)){
+          setLocalAuthError('Username can only use letters, numbers, spaces, underscores, or hyphens.');
+          return;
+        }
+        if(djNameRaw.length > 32){
+          setLocalAuthError('DJ Name must be 32 characters or fewer.');
+          return;
+        }
+        const slug = slugifyLocalUsername(username);
+        if(!slug){
+          setLocalAuthError('Choose a username with letters or numbers.');
+          return;
+        }
+        const existingProfile = await loadUserProfile(username);
+        const baseProfile = existingProfile || {
+          ownedTracks: [],
+          setlistIds: [],
+          setlists: [],
+          setlist: [],
+          bandMembers: [],
+          genreOverrides: {},
+          streamUrl: '',
+          isLive: false,
+          liveStartedAt: null,
+          avgRating: 0,
+          ratingCount: 0,
+          ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 },
+          bio: '',
+          themeAccent: THEME_ACCENTS[0].id,
+          personaId: 'turntablist',
+          personaTheme: 'neonPop',
+          personaSeed: username,
+          isPublic: true,
+          allowFriendRequests: true,
+          usernameLower: normalizeUsernameLower(username),
+          djNameLower: normalizeUsernameLower(djNameRaw || username),
+          searchTokens: buildSearchTokens(username),
+          isAdmin: false,
+          tour: {}
+        };
+        const now = Date.now();
+        const profile = {
+          ...baseProfile,
+          uid: baseProfile.uid || `local:${slug}`,
+          username,
+          djName: djNameRaw || username,
+          createdAt: baseProfile.createdAt || now,
+          updatedAt: now,
+          mode: 'local'
+        };
+        await enterAppWithProfile(profile);
+      }catch(err){
+        console.error('[auth] enter failed', err);
+        setLocalAuthError('Couldn’t enter the mix. Check console for details.');
+      }finally{
+        clearTimeout(buttonTimeout);
+        if(submitBtn){
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('opacity-70');
+          submitBtn.textContent = originalLabel;
+        }
+      }
     }
 
     window.continueOffline = async () => {
@@ -3547,23 +3728,7 @@ function track(eventName, payload = {}){
           tour: profile.tour || {},
           isAdmin: profile.isAdmin === true
         };
-        currentUser = applyAdminFlag(mergedProfile);
-        await persistAdminFlagIfNeeded(profile, currentUser);
-        applyPreferencesFromProfile(currentUser);
-        loadNamespacedState();
-        loadOverridesFromStorage();
-        await loadUserOverridesFromBackend();
-        ownedTracks = currentUser.ownedTracks || [];
-        setlistIds = normalizeSetlistIds(currentUser.setlistIds || currentUser.setlist || currentUser.setlists || []);
-        bandMembers = currentUser.bandMembers || [];
-        genreOverrides = currentUser.genreOverrides || {};
-        refreshDraftProfileFromCurrentUser();
-        await fetchEpicLinkStatus();
-        localStorage.setItem('currentUser', firebaseUser.uid);
-        await persistCurrentUserProfile();
-        await maybeLoadSharedProfile();
-        loadSongs();
-        await loadRemoteConfig();
+        await enterAppWithProfile(mergedProfile, { loadEpic: true, loadOverrides: true });
         logEvent('auth_success', { uid: firebaseUser.uid });
       } finally {
         authProcessing = false;
@@ -3642,57 +3807,6 @@ function track(eventName, payload = {}){
     }
     window.handleFirebaseAuth = handleFirebaseAuth;
 
-window.handleLogin = async (event) => {
-      event.preventDefault();
-      const username = document.getElementById('username').value.trim();
-      const djName = (document.getElementById('djName').value || username).trim() || username;
-      if(username.length<3){ alert('Username must be at least 3 characters'); return; }
-      const profile = await loadUserProfile(username);
-      if(profile){
-        const appliedProfile = applyAdminFlag(profile);
-        await persistAdminFlagIfNeeded(profile, appliedProfile);
-        currentUser = appliedProfile;
-        applyPreferencesFromProfile(currentUser);
-      }
-      else {
-        const baseProfile = {
-          username,
-          djName,
-          ownedTracks: [],
-          setlistIds: [],
-          setlists: [],
-          setlist: [],
-          bandMembers: [],
-          genreOverrides: {},
-          streamUrl: '',
-          isLive: false,
-          liveStartedAt: null,
-          avgRating: 0,
-          ratingCount: 0,
-          ratingBreakdown: { 1:0, 2:0, 3:0, 4:0, 5:0 },
-          bio: '',
-          themeAccent: THEME_ACCENTS[0].id,
-          personaId: 'turntablist',
-          personaTheme: 'neonPop',
-          personaSeed: username,
-          isPublic: true,
-          allowFriendRequests: true,
-          usernameLower: normalizeUsernameLower(username),
-          djNameLower: normalizeUsernameLower(djName),
-          searchTokens: buildSearchTokens(username),
-          isAdmin: false,
-          tour: {}
-        };
-        currentUser = applyAdminFlag(baseProfile);
-        await persistAdminFlagIfNeeded(baseProfile, currentUser);
-      }
-      refreshDraftProfileFromCurrentUser();
-      loadNamespacedState();
-      loadOverridesFromStorage();
-      localStorage.setItem('currentUser', username);
-      await persistCurrentUserProfile();
-      loadSongs();
-    };
 
     async function logoutUser(){
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
@@ -4885,6 +4999,7 @@ function render(){
     alert('Admin only');
     view = 'browser';
   }
+  currentUser = getActiveProfile() || currentUser;
   if(!isAdmin() && adminMenuOpen){
     adminMenuOpen = false;
   }
@@ -6568,30 +6683,11 @@ function render(){
           await resolveAuthSuccess(fbUser);
           return;
         }
-        const savedUsername = localStorage.getItem('currentUser');
-        const localId = localStorage.getItem('localDeviceUserId');
-        if(savedUsername && savedUsername === localId){
-          const profile = await loadUserProfile(savedUsername);
-          if(profile){
-            const appliedProfile = applyAdminFlag(profile);
-            await persistAdminFlagIfNeeded(profile, appliedProfile);
-            currentUser = appliedProfile;
-            applyPreferencesFromProfile(currentUser);
-            refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); await loadRemoteConfig(); return; }
-        }
-        await loadRemoteConfig();
-        showLoginScreen();
-        return;
       }
-      const savedUsername = localStorage.getItem('currentUser');
-      if(savedUsername){
-        const profile = await loadUserProfile(savedUsername);
-        if(profile){
-          const appliedProfile = applyAdminFlag(profile);
-          await persistAdminFlagIfNeeded(profile, appliedProfile);
-          currentUser = appliedProfile;
-          applyPreferencesFromProfile(currentUser);
-          refreshDraftProfileFromCurrentUser(); loadNamespacedState(); loadOverridesFromStorage(); await maybeLoadSharedProfile(); loadSongs(); await loadRemoteConfig(); return; }
+      const activeProfile = getActiveProfile();
+      if(activeProfile){
+        await enterAppWithProfile(activeProfile, { loadOverrides: !!firebaseAuth?.currentUser });
+        return;
       }
       await loadRemoteConfig();
       showLoginScreen();
