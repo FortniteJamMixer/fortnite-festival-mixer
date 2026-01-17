@@ -1024,6 +1024,7 @@ function track(eventName, payload = {}){
       const rulesAcceptedAt = profile.rulesAcceptedAt || null;
       const usernameLower = profile.usernameLower || normalizeUsernameLower(username);
       const djNameLower = profile.djNameLower || normalizeUsernameLower(djName);
+      const searchNameLower = profile.searchNameLower || usernameLower;
       const searchTokens = Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower);
       return {
         ...profile,
@@ -1049,6 +1050,7 @@ function track(eventName, payload = {}){
         rulesAcceptedAt,
         usernameLower,
         djNameLower,
+        searchNameLower,
         searchTokens
       };
     }
@@ -1065,6 +1067,7 @@ function track(eventName, payload = {}){
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
       const usernameLower = normalizeUsernameLower(profile.username || profileKey);
       const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
+      const searchNameLower = profile.searchNameLower || usernameLower;
       const persona = ensurePersona(profile);
       const payload = {
         ...profile,
@@ -1073,6 +1076,7 @@ function track(eventName, payload = {}){
         djName: profile.djName || profile.username || profileKey,
         usernameLower,
         djNameLower,
+        searchNameLower,
         searchTokens: Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower),
         bio: (profile.bio || '').slice(0, PROFILE_BIO_MAX),
         themeAccent: profile.themeAccent || THEME_ACCENTS[0].id,
@@ -1334,6 +1338,9 @@ function track(eventName, payload = {}){
     let socialFriendSearchResults = [];
     let socialFriendSearchLoading = false;
     let socialFriendSearchError = '';
+    let socialFriendSearchNotice = '';
+    let socialFriendSearchNoticeTone = 'info';
+    let socialFriendSearchQuery = '';
     let friendRequestsIncoming = [];
     let friendRequestsOutgoing = [];
     let friendsList = [];
@@ -2299,6 +2306,7 @@ function track(eventName, payload = {}){
         const usernameLower = normalizeUsernameLower(currentUser.username);
         const djNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
         const displayNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
+        const searchNameLower = usernameLower;
         const persona = ensurePersona(currentUser);
         persistPersonaToStorage(persona);
         const bio = (currentUser.bio || '').slice(0, PROFILE_BIO_MAX);
@@ -2315,6 +2323,7 @@ function track(eventName, payload = {}){
           usernameLower,
           djNameLower,
           displayNameLower,
+          searchNameLower,
           searchTokens: buildSearchTokens(usernameLower),
           bio,
           themeAccent,
@@ -2422,8 +2431,72 @@ function track(eventName, payload = {}){
       }catch(err){ console.warn('profile lookup failed', err); return []; }
     }
 
+    function getFriendsOnlineStatus(){
+      const firebaseReady = firebaseEnabled && !!firestore;
+      const signedIn = !!firebaseAuth?.currentUser;
+      const offline = !navigator.onLine || isOffline;
+      const online = firebaseReady && signedIn && !offline;
+      return { firebaseReady, signedIn, offline, online };
+    }
+
+    function getFriendsGateMessage(status){
+      if(!status) return '';
+      if(status.offline) return 'Friends require Online mode.';
+      if(!status.firebaseReady) return 'Friends require Firebase online mode.';
+      if(!status.signedIn) return 'Sign in to search friends.';
+      return '';
+    }
+
     function isOnlineProfileMode(){
-      return !!firebaseAuth?.currentUser && !!firestore && !isOffline;
+      return getFriendsOnlineStatus().online;
+    }
+
+    function setFriendSearchNotice(message, tone = 'info'){
+      socialFriendSearchNotice = message;
+      socialFriendSearchNoticeTone = tone;
+    }
+
+    function getFriendSearchQuery(){
+      const input = document.getElementById('socialFriendSearchInput');
+      const raw = input?.value || '';
+      const trimmed = raw.trim();
+      socialFriendSearchTerm = raw;
+      socialFriendSearchQuery = trimmed;
+      return trimmed;
+    }
+
+    function logFriendSearchClick(){
+      const q = getFriendSearchQuery();
+      console.debug('[friends] search click', { q });
+    }
+
+    function handleFriendSearch(event, { explicit = true } = {}){
+      if(event?.preventDefault) event.preventDefault();
+      if(viewingProfile) return;
+      const query = getFriendSearchQuery();
+      socialFriendSearchError = '';
+      if(!query){
+        if(explicit){
+          socialFriendSearchResults = [];
+          socialFriendSearchLoading = false;
+          setFriendSearchNotice('Type a DJ name.', 'warn');
+          renderProfile();
+          setupEventListeners();
+        }
+        return;
+      }
+      const status = getFriendsOnlineStatus();
+      const gateMessage = getFriendsGateMessage(status);
+      if(gateMessage){
+        socialFriendSearchResults = [];
+        socialFriendSearchLoading = false;
+        setFriendSearchNotice(gateMessage, 'warn');
+        renderProfile();
+        setupEventListeners();
+        return;
+      }
+      setFriendSearchNotice('');
+      searchProfilesForFriends();
     }
 
     async function fetchProfilesByUids(uids){
@@ -2493,15 +2566,21 @@ function track(eventName, payload = {}){
     }
 
     async function searchProfilesForFriends(){
-      if(!isOnlineProfileMode() || viewingProfile) return;
-      const queryRaw = (socialFriendSearchTerm || '').trim();
+      if(viewingProfile) return;
+      const queryRaw = (socialFriendSearchQuery || socialFriendSearchTerm || '').trim();
+      socialFriendSearchQuery = queryRaw;
       socialFriendSearchError = '';
       socialFriendSearchResults = [];
       if(!queryRaw){
-        renderProfile(); setupEventListeners(); return;
+        socialFriendSearchLoading = false;
+        renderProfile();
+        setupEventListeners();
+        return;
       }
       socialFriendSearchLoading = true;
-      renderProfile(); setupEventListeners();
+      setFriendSearchNotice('');
+      renderProfile();
+      setupEventListeners();
       try{
         const queryLower = normalizeUsernameLower(queryRaw);
         const collection = getProfileCollection();
@@ -2518,18 +2597,21 @@ function track(eventName, payload = {}){
         };
         await Promise.all([
           prefixQuery('displayNameLower'),
-          prefixQuery('usernameLower')
+          prefixQuery('usernameLower'),
+          prefixQuery('djNameLower'),
+          prefixQuery('searchNameLower')
         ]);
         const currentUid = firebaseAuth.currentUser.uid;
         socialFriendSearchResults = Object.values(resultsMap)
           .filter(profile=> profile?.uid !== currentUid)
           .slice(0, 20);
       }catch(err){
-        console.warn('friend search failed', err);
+        console.error('[friends] search failed', err);
         socialFriendSearchError = 'Search failed. Try again later.';
       } finally {
         socialFriendSearchLoading = false;
-        renderProfile(); setupEventListeners();
+        renderProfile();
+        setupEventListeners();
       }
     }
 
@@ -2750,9 +2832,7 @@ function track(eventName, payload = {}){
     };
 
     window.searchFriends = ()=>{
-      const input = document.getElementById('socialFriendSearchInput');
-      if(input) socialFriendSearchTerm = input.value || '';
-      searchProfilesForFriends();
+      handleFriendSearch(null, { explicit: true });
     };
 
     window.setFriendPanelTab = (tab)=>{
@@ -3454,6 +3534,7 @@ function track(eventName, payload = {}){
           allowFriendRequests: true,
           usernameLower: normalizeUsernameLower(username),
           djNameLower: normalizeUsernameLower(djNameRaw || username),
+          searchNameLower: normalizeUsernameLower(username),
           searchTokens: buildSearchTokens(username),
           isAdmin: false,
           tour: {}
@@ -3512,6 +3593,7 @@ function track(eventName, payload = {}){
         allowFriendRequests: true,
         usernameLower: normalizeUsernameLower(username),
         djNameLower: normalizeUsernameLower(username),
+        searchNameLower: normalizeUsernameLower(username),
         searchTokens: buildSearchTokens(username),
         isAdmin: false
       };
@@ -4176,7 +4258,9 @@ function track(eventName, payload = {}){
       const isPublicProfile = editableProfile?.isPublic !== false;
       const allowFriendRequests = editableProfile?.allowFriendRequests !== false;
       const profileAccentStyle = `--profile-accent:${accentColor}; --profile-accent-glow:${accentGlow};`;
-      const friendsEnabled = isOnlineProfileMode() && !viewOnly;
+      const friendsAccess = getFriendsOnlineStatus();
+      const friendsEnabled = friendsAccess.online && !viewOnly;
+      const friendsGateMessage = !viewOnly ? getFriendsGateMessage(friendsAccess) : '';
       const personaTheme = getPersonaTheme(persona.personaTheme);
       const editDisabledAttr = profileEditable ? '' : 'disabled';
       const editDisabledClass = profileEditable ? '' : 'opacity-60 cursor-not-allowed';
@@ -4450,7 +4534,7 @@ function track(eventName, payload = {}){
           actionMarkup = `<span class="px-3 py-1 rounded-full text-xs bg-white/10 border border-white/20 text-gray-200">Friends</span>`;
         } else if(status === 'outgoing_pending'){
           actionMarkup = `<div class="flex gap-2 items-center">
-            <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Requested</span>
+            <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Request sent</span>
             ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
           </div>`;
         } else if(status === 'incoming_pending'){
@@ -4461,7 +4545,7 @@ function track(eventName, payload = {}){
         } else if(profile.allowFriendRequests === false){
           actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
         } else {
-          actionMarkup = `<button onclick="sendFriendRequest('${uid}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Add Friend</button>`;
+          actionMarkup = `<button onclick="sendFriendRequest('${uid}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Add</button>`;
         }
         return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
           <div class="flex items-center gap-3">
@@ -4529,6 +4613,13 @@ function track(eventName, payload = {}){
           </div>
         </div>`;
       }).join('');
+      const friendNoticeClass = socialFriendSearchNoticeTone === 'warn'
+        ? 'bg-amber-500/20 border border-amber-400/40 text-amber-100'
+        : socialFriendSearchNoticeTone === 'error'
+          ? 'bg-red-500/20 border border-red-400/40 text-red-100'
+          : 'bg-white/10 border border-white/20 text-gray-200';
+      const friendsGateClass = friendsGateMessage ? 'bg-white/5 border border-white/10 text-gray-200' : '';
+      const friendSearchButtonLabel = socialFriendSearchLoading ? 'Searching…' : 'Search';
       const friendsPanel = !viewOnly ? `
           <div class="panel space-y-4">
             <div class="flex items-center justify-between flex-wrap gap-2">
@@ -4538,14 +4629,14 @@ function track(eventName, payload = {}){
               </div>
               <span class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Social-lite</span>
             </div>
-            ${friendsEnabled ? '' : `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Friends require Online mode.</div>`}
-            <div class="flex flex-col sm:flex-row gap-2">
-              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
-              <button onclick="searchFriends()" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">Search</button>
-            </div>
-            ${socialFriendSearchLoading ? `<div class="text-sm text-gray-300">Searching…</div>` : ''}
-            ${socialFriendSearchError ? `<div class="text-sm text-red-200">${socialFriendSearchError}</div>` : ''}
-            ${friendSearchResultsHtml ? `<div class="space-y-2">${friendSearchResultsHtml}</div>` : (socialFriendSearchTerm && !socialFriendSearchLoading ? `<div class="text-sm text-gray-400">No matches found.</div>` : '')}
+            ${friendsGateMessage ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendsGateClass}">${friendsGateMessage}</div>` : ''}
+            <form id="socialFriendSearchForm" class="flex flex-col sm:flex-row gap-2" onsubmit="handleFriendSearch(event)">
+              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+              <button id="socialFriendSearchButton" type="submit" onclick="logFriendSearchClick()" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
+            </form>
+            ${socialFriendSearchNotice ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendNoticeClass}">${socialFriendSearchNotice}</div>` : ''}
+            ${socialFriendSearchError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-400/40 rounded-lg px-3 py-2">${socialFriendSearchError}</div>` : ''}
+            ${friendSearchResultsHtml ? `<div class="space-y-2 max-h-64 overflow-y-auto pr-1">${friendSearchResultsHtml}</div>` : (socialFriendSearchQuery && !socialFriendSearchLoading ? `<div class="text-sm text-gray-400">No DJs found for ‘${escapeHtml(socialFriendSearchQuery)}’.</div>` : '')}
             <div class="flex items-center gap-2 text-xs">
               <button onclick="setFriendPanelTab('friends')" class="px-3 py-1 rounded-full border ${friendPanelTab==='friends'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Friends (${friendsList.length})</button>
               <button onclick="setFriendPanelTab('requests')" class="px-3 py-1 rounded-full border ${friendPanelTab==='requests'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Requests (${friendRequestsIncoming.length + friendRequestsOutgoing.length})</button>
@@ -4678,7 +4769,7 @@ function track(eventName, payload = {}){
                   <input id="friendSearchInput" value="${friendSearchTerm || ''}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search DJ name…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
                   <button onclick="viewFriendProfile()" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 bg-purple-500/40 hover:bg-purple-500/50 border border-purple-400/50 rounded-lg font-semibold ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">View</button>
                 </div>
-                <div class="text-xs text-gray-400">${friendsEnabled ? 'Shows their owned songs (read-only)' : 'Friends require Online mode.'}</div>
+                <div class="text-xs text-gray-400">${friendsEnabled ? 'Shows their owned songs (read-only)' : (friendsGateMessage || 'Friends require Online mode.')}</div>
                 ${friendError}
                 ${friendList}
               </div>
@@ -4897,6 +4988,7 @@ function track(eventName, payload = {}){
               djName: newDjName,
               usernameLower: normalizeUsernameLower(newUsername),
               djNameLower: normalizeUsernameLower(newDjName),
+              searchNameLower: normalizeUsernameLower(newUsername),
               searchTokens: buildSearchTokens(newUsername)
             }
             : merged;
@@ -5360,8 +5452,18 @@ function render(){
         }
         if(target.id === 'socialFriendSearchInput'){
           socialFriendSearchTerm = target.value;
+          socialFriendSearchQuery = target.value.trim();
+          socialFriendSearchError = '';
+          if(socialFriendSearchNotice) setFriendSearchNotice('');
           if(socialFriendSearchDebounce) clearTimeout(socialFriendSearchDebounce);
-          socialFriendSearchDebounce = setTimeout(()=>{ searchProfilesForFriends(); }, 300);
+          if(!socialFriendSearchQuery){
+            socialFriendSearchResults = [];
+            socialFriendSearchLoading = false;
+            renderProfile();
+            setupEventListeners();
+            return;
+          }
+          socialFriendSearchDebounce = setTimeout(()=>{ handleFriendSearch(null, { explicit: false }); }, 300);
         }
         if(target.id === 'ratingCommentInput'){
           ratingDraft.comment = target.value;
@@ -5386,7 +5488,6 @@ function render(){
         const target = getEventElement(e);
         if(!target) return;
         if(target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
-        if(target.id === 'socialFriendSearchInput' && e.key === 'Enter'){ e.preventDefault(); searchProfilesForFriends(); }
       }, { action: 'app-keydown' }));
       appDelegatesBound = true;
     }
