@@ -16,36 +16,18 @@ const HELP_CONTENT = {
     quickStart: [
       'Browse → search tracks and mark what you own.',
       'Use + Set to build a Setlist.',
-      'Open Profile → set DJ Name and style your profile.',
+      'Open Profile → set DJ Name and Customize your look.',
       'Add a Stream URL + tap Go Live when you’re streaming.',
       'Open Friends / Bandmates (Online mode) to add friends.'
     ],
     sections: [
       {
-        id: 'mixer_basics',
-        title: 'Mixer Basics',
+        id: 'what_this_app_does',
+        title: 'What this app does',
         bullets: [
-          'Browse tracks, use filters, and tap a card for details.',
-          'Check match hints for key, BPM, and genre cues.',
-          'Save picks to Owned or Setlist to plan your mix.'
-        ]
-      },
-      {
-        id: 'camelot_bpm',
-        title: 'Camelot & BPM',
-        bullets: [
-          'Camelot labels highlight harmonic neighbors quickly.',
-          '±BPM chips show tempo gaps; smaller shifts blend smoother.',
-          'Key + tempo together drive clean transitions.'
-        ]
-      },
-      {
-        id: 'mixable',
-        title: 'Mixable',
-        bullets: [
-          'Mixable Only keeps safe key + tempo combos.',
-          '🎧 icons flag tracks that pair well with your selection.',
-          'Use it for fast, low-risk blends.'
+          'Helps you browse Fortnite Festival tracks and plan mixes.',
+          'Lets you mark Owned tracks and build a Setlist.',
+          'Gives you a DJ Profile with Live Status and friends.'
         ]
       },
       {
@@ -87,14 +69,6 @@ const HELP_CONTENT = {
         ]
       },
       {
-        id: 'profile_style',
-        title: 'Profile Style (Neon DJ vibe)',
-        bullets: [
-          'Style your profile with accent color, bio, and persona.',
-          'Saved locally (offline). If Online mode is enabled, also saved to Firestore.'
-        ]
-      },
-      {
         id: 'persona_icons',
         title: 'Persona Icons',
         bullets: [
@@ -109,7 +83,7 @@ const HELP_CONTENT = {
         bullets: [
           'Online mode syncs your Profile to Firestore.',
           'Offline mode uses cached tracks and local storage.',
-          'Friends/Search require Online mode. Offline mode shows them disabled.',
+          'Friends / Bandmates and search are disabled offline.',
           'Persona icons work offline.'
         ]
       }
@@ -140,46 +114,28 @@ const HELP_CONTENT = {
   advanced: {
     sections: [
       {
-        id: 'sandbox',
-        title: 'Sandbox (4-track lab)',
+        id: 'profile_customization',
+        title: 'Profile Customization (Myspace vibe)',
         bullets: [
-          'Drag tracks into Sandbox to test blends side by side.',
-          'See BPM range, key set, and genre-blend at a glance.',
-          'Remove tracks or clear the board to reset.'
+          'Customize gives your profile a Myspace vibe with colors, bio, and persona.',
+          'Changes save offline to local storage, and online to Firestore too.'
+        ],
+        steps: [
+          'Go to Profile.',
+          'Expand Customize.',
+          'Set Bio (160 characters max).',
+          'Pick a Theme Accent to change highlights.',
+          'Choose your Persona: pick an icon, theme, and Randomize Seed for subtle variations.',
+          'Click Save Profile.'
         ]
       },
       {
-        id: 'mashup_tools',
-        title: 'Mashup Tools',
+        id: 'persona',
+        title: 'Persona Icons',
         bullets: [
-          'Match hints surface key, BPM, and genre compatibility.',
-          'Priority Strength nudges how matches are sorted.',
-          'Use Preview to compare two tracks quickly.'
-        ]
-      },
-      {
-        id: 'admin_overrides',
-        title: 'Admin Genre Override',
-        bullets: [
-          'Admins can override incorrect genre labels.',
-          'Overrides persist locally and sync online when enabled.'
-        ]
-      },
-      {
-        id: 'export_import',
-        title: 'Export / Import',
-        bullets: [
-          'Export/Import is currently unavailable.',
-          'Profiles persist automatically via local storage and Firestore (Online mode).'
-        ]
-      },
-      {
-        id: 'advanced_tips',
-        title: 'Advanced Tips',
-        bullets: [
-          'Use Mixable Only to keep transitions safe.',
-          'Filter Owned tracks when building a quick set.',
-          'Check Camelot hints before big tempo jumps.'
+          'Personas are stylized DJ icons with neon gradients and glow.',
+          'Pick a theme for the energy ring and background.',
+          'Randomize the seed to tweak sparkles and highlights.'
         ]
       },
       {
@@ -189,8 +145,8 @@ const HELP_CONTENT = {
           'Find the Friends / Bandmates panel inside Profile.',
           'Search by DJ Name or username (prefix matches work).',
           'Add Friend sends a request; check Requests to Accept or Decline.',
-          'Friends list shows LIVE pills and Watch when streaming.',
-          'Friends/Search require Online mode. Offline mode shows them disabled.'
+          'Friends list lets you view profiles, see LIVE pills, and watch if live.',
+          'Friends and search require Online mode; Offline shows a disabled message.'
         ]
       },
       {

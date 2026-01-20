@@ -216,19 +216,6 @@
     @keyframes personaSpark { 0%,100% { transform: translateY(0); opacity: 0.8; } 50% { transform: translateY(-3px); opacity: 1; } }
     .profile-toggle { accent-color: var(--profile-accent, #ff6b9d); }
 
-    [aria-hidden="true"] { pointer-events: none !important; }
-
-    #helpModal[aria-hidden="true"],
-    #quickStartModal[aria-hidden="true"],
-    #tourOverlay[aria-hidden="true"],
-    #overlayOverlay[aria-hidden="true"],
-    .quickstart-modal[aria-hidden="true"] {
-    .quickstart-modal[aria-hidden="true"],
-    #helpModal[aria-hidden="true"],
-    #tourOverlay[aria-hidden="true"] {
-      display: none !important;
-    }
-
     /* Help modal */
     #helpModal {
       display: none;
@@ -263,17 +250,9 @@
       gap:12px;
       flex-wrap:wrap;
     }
-    .helpHeaderControls {
-      display:flex;
-      align-items:center;
-      gap:10px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-      margin-left:auto;
-    }
     .helpTitle { font-size:20px; font-weight:800; color:#fff; display:flex; gap:10px; align-items:center; }
     .helpTabs { display:flex; gap:8px; align-items:center; }
-    .helpTabBtn { padding:8px 12px; border-radius:10px; border:1px solid rgba(0,217,255,0.18); background:rgba(255,255,255,0.06); color:#dff7ff; font-weight:800; cursor:pointer; min-height:38px; }
+    .helpTabBtn { padding:8px 10px; border-radius:10px; border:1px solid rgba(0,217,255,0.18); background:rgba(255,255,255,0.06); color:#dff7ff; font-weight:800; cursor:pointer; }
     .helpTabBtn.active { background: linear-gradient(90deg,#ff6b9d,#8b5cf6); border-color: rgba(255,255,255,0.14); box-shadow:0 0 18px rgba(139,92,246,0.18); color:#fff; }
     .helpContent {
       padding: 14px 18px;
@@ -294,7 +273,7 @@
     .helpFaq summary { cursor: pointer; font-weight: 700; color: #e6f7ff; list-style: none; }
     .helpFaq summary::-webkit-details-marker { display: none; }
     .helpFaq p { margin-top: 6px; color: rgba(230,247,255,0.8); font-size: 13px; }
-    .helpDivider { margin: 16px 0; border-color: rgba(0,217,255,0.08); }
+    .helpDivider { margin: 14px 0; border-color: rgba(0,217,255,0.08); }
     .anchorGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
     .anchorLink { display: block; padding: 10px 12px; border-radius: 10px; background: rgba(0,217,255,0.06); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; text-decoration: none; font-weight: 700; }
     .anchorLink:hover { border-color: rgba(255,107,157,0.35); box-shadow: 0 0 12px rgba(255,107,157,0.18); }
@@ -307,7 +286,6 @@
     .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
     .helpFooter { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .helpFooterMeta { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     .helpFooterActions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .helpAltBtn {
       background: rgba(255,255,255,0.08);
@@ -318,7 +296,6 @@
       cursor:pointer;
       border: 1px solid rgba(0,217,255,0.2);
       transition: all .2s ease;
-      min-height: 38px;
     }
     .helpAltBtn:hover { background: rgba(255,255,255,0.16); color: #fff; border-color: rgba(255,255,255,0.3); }
 
@@ -340,8 +317,6 @@
       cursor:pointer;
       border: none;
       box-shadow: 0 6px 24px rgba(139,92,246,0.12);
-      min-height: 38px;
-      white-space: nowrap;
     }
     .helpIconBtn {
       width: 40px;
@@ -362,14 +337,6 @@
     }
     .helpIconBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
     .helpIconBtn:focus-visible { outline: 2px solid rgba(0,217,255,0.8); outline-offset: 2px; }
-    .helpTourHighlight { border-radius: 12px; box-shadow: 0 0 0 2px rgba(56,189,248,0.7), 0 0 18px rgba(56,189,248,0.35); transition: box-shadow .2s ease; }
-
-    @media (max-width: 640px) {
-      .helpHeader { align-items:flex-start; }
-      .helpHeaderControls { width: 100%; justify-content: space-between; }
-      .helpTabs { flex-wrap: wrap; }
-      .helpTabBtn, .helpCloseBtn { flex: 1 1 auto; }
-    }
 
     /* Admin editor modal */
     .admin-editor-modal { position: fixed; inset: 0; z-index: 7000; display: flex; align-items: center; justify-content: center; background: rgba(3,7,18,0.75); backdrop-filter: blur(8px); }
@@ -476,16 +443,16 @@
             <div style="font-size:12px;color:#bdeeff">Everything the landing page explains — available anytime</div>
           </div>
         </div>
-        <div class="helpHeaderControls">
-          <div class="helpTabs" role="tablist" aria-label="Help tabs">
-            <button id="helpTabBasic" class="helpTabBtn active" data-tab="basic" role="tab" aria-selected="true" aria-controls="helpBasic">Basic</button>
-            <button id="helpTabAdvanced" class="helpTabBtn" data-tab="advanced" role="tab" aria-selected="false" aria-controls="helpAdvanced" tabindex="-1">Advanced</button>
-          </div>
+        <div class="helpTabs" role="tablist" aria-label="Help tabs">
+          <button id="helpTabBasic" class="helpTabBtn active" data-tab="basic" role="tab" aria-selected="true" aria-controls="helpBasic">Basic</button>
+          <button id="helpTabAdvanced" class="helpTabBtn" data-tab="advanced" role="tab" aria-selected="false" aria-controls="helpAdvanced" tabindex="-1">Advanced</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
           <button class="helpCloseBtn" onclick="closeHelp()" aria-label="Close help">✕ Close</button>
         </div>
       </div>
 
-      <div class="helpContent" id="helpContent" tabindex="0">
+      <div class="helpContent" id="helpContent">
         <div id="helpBasic" data-help-pane="basic">
           <div class="helpSection" id="welcome">
             <h3 data-brand="help-title">Fortnite Jam Mixer Help</h3>
@@ -517,12 +484,10 @@
       </div>
 
       <div class="helpFooter">
-        <div class="helpFooterMeta">
-          <span class="small-muted" id="helpVersion"></span>
-          <span class="small-muted" id="helpTourProgress" style="display:none"></span>
-        </div>
+        <span class="small-muted" id="helpVersion"></span>
         <div class="helpFooterActions">
-          <button class="helpAltBtn" onclick="runHelpTour()">Run Quick Tour</button>
+          <button class="helpAltBtn" onclick="startTour('help',{ force: true })">Run Quick Tour</button>
+          <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
         </div>
       </div>
     </div>
@@ -571,7 +536,7 @@
     /**************************************************************************
      * Final merged app
      * - All fixes applied (setlist rendering, show-all toggle, mixable toggle, band member)
-     * - Optional Firebase (see appState.firebase & firebaseConfig)
+     * - Optional Firebase (see firebaseEnabled & firebaseConfig)
      * - Help modal integrated (manual open via header button)
      **************************************************************************/
 
@@ -581,40 +546,14 @@ const BRAND = Object.freeze({
   EXPORT_PREFIX: 'fortnite-jam-mixer',
   BROWSER_TITLE: 'Fortnite Jam Mixer – Cross-Browser Edition'
 });
-const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
-function bootMark(step, extra = {}) {
-  if (DEBUG) console.log('[boot]', step, extra);
-}
-bootMark('script_start');
 const DEBUG_UI = false;
-const DEBUG_PROFILE = DEBUG_UI || DEBUG;
-// NOTE: do not declare a top-level variable named "app" to avoid merge collisions.
-if ((DEBUG_UI || DEBUG_PROFILE) && typeof window !== 'undefined' && 'app' in window) {
-  console.warn('[boot] Avoid top-level "app" variable; found window.app.', { app: window.app });
-}
-// Pre-merge check (run in shell): evaluate PRE_MERGE_CHECK_COMMAND.
-const PRE_MERGE_CHECK_COMMAND = 'grep -R "' + '<'.repeat(7) + '\\|' + '='.repeat(7) + '\\|' + '>'.repeat(7) + '" -n index.html && exit 1 || exit 0';
-const DEBUG_CLICKS = true;
-if (DEBUG_CLICKS && !window.__clickTracerBound) {
-  window.__clickTracerBound = true;
-  document.addEventListener('click', (e) => {
-    const el = e.target?.closest('button, a, input, [role="button"], [data-action], .clickable') || e.target;
-    console.log('[click]', {
-      tag: el?.tagName,
-      id: el?.id,
-      cls: el?.className,
-      action: el?.dataset?.action,
-      text: (el?.textContent || '').trim().slice(0, 60)
-    });
-  }, { capture: true });
-}
+const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).get('debug') === '1');
 let profileScriptError = null;
-const __renderErrors = { profile: 0, songList: 0 };
 document.title = BRAND.BROWSER_TITLE;
 
     // -------------------- FIREBASE (auto-detect) ----------------------------
 // We auto-enable Firebase if /api/firebase-config injected window.firebaseConfig (Vercel env vars).
-// This prevents the "no signup option" problem when config was present but disabled.
+// This prevents the "no signup option" problem when firebaseEnabled was left false.
 const DEBUG_LOG_MAX = 50;
 function logEvent(type, payload = {}) {
   const entry = {
@@ -696,170 +635,25 @@ function showDelegationToast(message){
   setTimeout(()=>{ toast.remove(); }, 3000);
 }
 
-function safeOn(eventName, handler, meta = {}) {
-  if (typeof handler !== 'function') {
-    console.error('[safeOn] handler is not a function', { eventName, meta, handler });
-    return function noop(){};
-  }
-  return function safeWrapped(ev) {
-    try {
-      return handler(ev);
-    } catch (err) {
-      console.error(`[safeOn:${eventName}] handler crashed`, { err, meta });
-      // Do NOT throw; never break all future interactions
+function safeOn(type, handler, meta = {}){
+  return function(event){
+    try{
+      handler(event);
+    }catch(err){
+      const detail = {
+        type,
+        action: meta.action || meta.selector || 'unknown',
+        stack: err?.stack || String(err)
+      };
+      console.error('[delegation] handler error', detail);
+      showDelegationToast(`[delegation] ${type} error`);
     }
   };
 }
 
-function showModal(id, display = 'flex'){
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.style.display = display;
-  el.setAttribute('aria-hidden','false');
-}
-function hideModal(id){
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.style.display = 'none';
-  el.setAttribute('aria-hidden','true');
-}
-function resetOverlaysAndLoading(reason){
-  const overlayIds = ['helpModal', 'quickStartModal', 'tourOverlay', 'overlayOverlay'];
-  overlayIds.forEach((id) => {
-    const el = document.getElementById(id);
-    if(!el) return;
-    el.style.display = 'none';
-    el.setAttribute('aria-hidden', 'true');
-    if(id === 'tourOverlay') el.dataset.open = 'false';
-  });
-  ['adminHelpEditorModal', 'adminWhatsNewEditorModal', 'overrideModal'].forEach((id) => {
-    const el = document.getElementById(id);
-    if(el) el.remove();
-  });
-  const loadingOverlay = document.getElementById('loadingOverlay');
-  if(loadingOverlay) loadingOverlay.style.display = 'none';
-  const appRoot = document.getElementById('app');
-  if(appRoot){
-    appRoot.style.pointerEvents = 'auto';
-    appRoot.style.filter = 'none';
-    appRoot.style.opacity = '1';
-    appRoot.removeAttribute('aria-hidden');
-  }
-  document.body.classList.remove('modal-open', 'blur', 'blurred', 'dim', 'dimmed');
-  document.documentElement.classList.remove('modal-open', 'blur', 'blurred', 'dim', 'dimmed');
-  document.body.style.overflow = '';
-  document.documentElement.style.overflow = '';
-  bootMark('overlays_reset_done', { reason });
-}
-
-const appState = {
-  firebase: {
-    status: 'disabled',
-    errorMsg: '',
-    lastError: '',
-    config: null
-  },
-  net: {
-    isOnline: navigator.onLine
-  },
-  auth: {
-    user: null,
-    status: 'signed_out',
-    errorMsg: ''
-  }
-};
-const isDevHost = () => {
-  const host = (location?.hostname || '').toLowerCase();
-  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
-};
-const setFirebaseStatus = (status, errorMsg = '') => {
-  appState.firebase.status = status;
-  appState.firebase.errorMsg = errorMsg || '';
-};
-const recordFirestoreError = (context, err) => {
-  const message = `${context}: ${err?.message || err || 'Unknown error'}`;
-  appState.firebase.lastError = message;
-  console.warn('[firestore]', message);
-};
-const firestoreApi = {
-  clearError(){
-    appState.firebase.lastError = '';
-  },
-  async getDoc(docRef, context){
-    try{
-      return await docRef.get();
-    }catch(err){
-      recordFirestoreError(context, err);
-      throw err;
-    }
-  },
-  async setDoc(docRef, payload, options, context){
-    try{
-      await docRef.set(payload, options);
-    }catch(err){
-      recordFirestoreError(context, err);
-      throw err;
-    }
-  },
-  async updateDoc(docRef, payload, context){
-    try{
-      await docRef.update(payload);
-    }catch(err){
-      recordFirestoreError(context, err);
-      throw err;
-    }
-  },
-  async runQuery(query, context){
-    try{
-      return await query.get();
-    }catch(err){
-      recordFirestoreError(context, err);
-      throw err;
-    }
-  }
-};
-const isFirebaseReady = () => appState.firebase.status === 'ready';
-const isOnlineMode = () => isFirebaseReady() && appState.auth.status === 'signed_in' && appState.net.isOnline && !isOffline;
-const getFirebaseConfigFromWindow = () => (window.firebaseConfig && typeof window.firebaseConfig === 'object')
-  ? window.firebaseConfig
-  : null;
-const isFirebaseConfigValid = (config) => !!(config?.apiKey && config?.authDomain && config?.projectId);
-async function fetchFirebaseConfig(){
-  try{
-    const resp = await fetch('/api/firebase-config?format=json', { cache: 'no-store' });
-    if(!resp.ok) throw new Error(`Config fetch failed: ${resp.status}`);
-    const data = await resp.json();
-    if(data && typeof data === 'object'){
-      window.firebaseConfig = data;
-      return data;
-    }
-  }catch(err){
-    recordFirestoreError('config.fetch', err);
-    resetOverlaysAndLoading('firebase_config_fetch_fail');
-  }
-  return null;
-}
-async function loadFirebaseConfig(){
-  const windowConfig = getFirebaseConfigFromWindow();
-  if(windowConfig && windowConfig.firebaseEnabled === false){
-    setFirebaseStatus('disabled');
-    bootMark('firebase_config_missing', { reason: 'disabled' });
-    return null;
-  }
-  if(windowConfig && isFirebaseConfigValid(windowConfig)){
-    appState.firebase.config = windowConfig;
-    bootMark('firebase_config_loaded', { source: 'window' });
-    return windowConfig;
-  }
-  const fetched = await fetchFirebaseConfig();
-  if(fetched && isFirebaseConfigValid(fetched)){
-    appState.firebase.config = fetched;
-    bootMark('firebase_config_loaded', { source: 'api' });
-    return fetched;
-  }
-  bootMark('firebase_config_missing');
-  return null;
-}
+const firebaseConfig = window.firebaseConfig || {};
+const firebaseConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId);
+const firebaseEnabled = firebaseConfig.firebaseEnabled === true && firebaseConfigValid && !!window.firebase?.auth;
 
     const ADMIN_USERS = ['BattleNeBody'];
     function applyAdminFlag(profile){
@@ -908,7 +702,7 @@ window.addEventListener('error', (event) => {
     message: event?.message || 'Unknown error',
     stack: event?.error?.stack || null,
     view,
-    firebaseReady: isFirebaseReady(),
+    firebaseEnabled,
     online: navigator.onLine
   });
   notifyProfileScriptError(event?.message || 'Profile scripts failed. Open console.', event?.error || event);
@@ -918,7 +712,7 @@ window.addEventListener('unhandledrejection', (event) => {
     message: event?.reason?.message || event?.reason || 'Unknown rejection',
     stack: event?.reason?.stack || null,
     view,
-    firebaseReady: isFirebaseReady(),
+    firebaseEnabled,
     online: navigator.onLine
   });
   notifyProfileScriptError(event?.reason?.message || 'Profile scripts failed. Open console.', event?.reason || event);
@@ -936,74 +730,30 @@ let authSettledUser = null;
 let authProcessing = false;
 let authInFlight = false;
 let appConfigLoaded = false;
-let firebaseInitPromise = null;
-let authListenerBound = false;
-let initialRenderComplete = false;
-async function initFirebaseOnce({ force = false } = {}){
-  if(firebaseInitPromise && !force) return firebaseInitPromise;
-  firebaseInitPromise = (async ()=>{
-    if(firebaseApp && firebaseAuth && firestore && !force){
-      return { firebaseApp, firebaseAuth, firestore };
-    }
-    if(!window.firebase?.initializeApp){
-      setFirebaseStatus('error', 'Firebase SDK missing.');
-      bootMark('firebase_init_fail', { message: 'sdk_missing' });
-      logEvent('firebase_init_fail', { reason: 'sdk_missing' });
-      resetOverlaysAndLoading('firebase_sdk_missing');
-      return null;
-    }
-    setFirebaseStatus('initializing');
-    const config = await loadFirebaseConfig();
-    if(!config){
-      if(appState.firebase.status !== 'disabled'){
-        setFirebaseStatus('config_missing');
-      }
-      logEvent('firebase_disabled', { reason: 'config_missing' });
-      resetOverlaysAndLoading('firebase_config_missing');
-      return null;
-    }
-    try{
-      if(firebase?.apps?.length){
-        firebaseApp = firebase.app();
-      } else {
-        firebaseApp = firebase.initializeApp(config);
-      }
-      firebaseAuth = firebase.auth();
-      firestore = firebase.firestore();
-      firestoreApi.clearError();
-      setFirebaseStatus('ready');
-      firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
-        console.warn('Firebase persistence failed', err);
-        logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
-      });
-      if(typeof firestore.enablePersistence === 'function'){
-        firestore.enablePersistence({ synchronizeTabs: true }).catch((err)=>{
-          console.warn('Firestore persistence unavailable', err);
-          logEvent('firestore_persistence_fail', { message: err?.message, code: err?.code });
-        });
-      }
-      console.log('Firebase initialized');
-      setupFirebaseAuthListener();
-      bootMark('firebase_init_ok', { projectId: config.projectId });
-      logEvent('firebase_init', { projectId: config.projectId });
-      return { firebaseApp, firebaseAuth, firestore };
-    }catch(err){
-      console.warn('Firebase init failed', err);
-      setFirebaseStatus('error', err?.message || String(err));
-      bootMark('firebase_init_fail', { message: err?.message });
-      logEvent('firebase_init_fail', { message: err?.message, code: err?.code });
-      firebaseApp = null;
-      firebaseAuth = null;
-      firestore = null;
-      resetOverlaysAndLoading('firebase_init_fail');
-      return null;
-    }
-  })();
-  return firebaseInitPromise;
+if (firebaseEnabled) {
+  try {
+    firebaseApp = firebase.initializeApp(firebaseConfig);
+    firebaseAuth = firebase.auth();
+    firestore = firebase.firestore();
+    firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
+      console.warn('Firebase persistence failed', err);
+      logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
+    });
+    console.log('Firebase initialized');
+    logEvent('firebase_init', { projectId: firebaseConfig.projectId });
+  } catch (e) {
+    console.warn('Firebase init failed', e);
+    logEvent('firebase_init_fail', { message: e?.message, code: e?.code });
+    firebaseApp = null;
+    firebaseAuth = null;
+    firestore = null;
+  }
+} else {
+  logEvent('firebase_disabled', { reason: 'missing config or sdk', firebaseConfigValid });
 }
 
 function getAppVersion(){
-  return window.appVersion || window.APP_VERSION || appState.firebase.config?.appVersion || window.firebaseConfig?.appVersion || window.firebaseConfig?.version || null;
+  return window.appVersion || window.APP_VERSION || firebaseConfig?.appVersion || firebaseConfig?.version || null;
 }
 function warnIfWhatsNewStale(){
   const host = typeof location !== 'undefined' ? location.hostname : '';
@@ -1027,7 +777,7 @@ let helpContentState = window.DEFAULT_HELP_CONTENT || null;
 let whatsNewState = window.DEFAULT_WHATS_NEW || null;
 let configLoadPromise = null;
 function getFirebaseAnalytics(){
-  if(!isFirebaseReady()) return null;
+  if(!firebaseEnabled) return null;
   if(typeof firebase?.analytics !== 'function') return null;
   try {
     return firebase.analytics();
@@ -1071,12 +821,10 @@ function track(eventName, payload = {}){
     function normalizeLiveProfileFields(profile){
       const streamUrl = normalizeStreamUrlInput(profile?.streamUrl || '');
       const streamUrlValid = isValidStreamUrl(streamUrl);
-      const desiredLive = profile?.isLive === true;
-      const finalIsLive = desiredLive ? streamUrlValid : false;
-      const liveStartedAt = finalIsLive ? (profile?.liveStartedAt || profile?.liveSince || null) : null;
+      const liveStartedAt = streamUrlValid ? (profile?.liveStartedAt || profile?.liveSince || null) : null;
       return {
         streamUrl,
-        isLive: finalIsLive,
+        isLive: streamUrlValid ? profile?.isLive === true : false,
         liveStartedAt
       };
     }
@@ -1275,10 +1023,6 @@ function track(eventName, payload = {}){
       return (value || '').trim().toLowerCase();
     }
 
-    function normalizeUsernameKey(value){
-      return normalizeUsernameLower(value).replace(/[^a-z0-9_]/g, '');
-    }
-
     function buildSearchTokens(value){
       const normalized = normalizeUsernameLower(value);
       const maxTokens = Math.min(20, normalized.length);
@@ -1287,48 +1031,6 @@ function track(eventName, payload = {}){
         tokens.push(normalized.slice(0, i));
       }
       return tokens;
-    }
-
-    async function ensureUsernameMapping(username, uid){
-      if(!firestore || !uid || !username) return { ok: true, reason: 'offline' };
-      const usernameNorm = normalizeUsernameKey(username);
-      if(!usernameNorm) return { ok: false, reason: 'invalid' };
-      const docRef = firestore.collection('usernames').doc(usernameNorm);
-      const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-      try{
-        const snap = await firestoreApi.getDoc(docRef, 'usernames.get');
-        if(snap.exists && snap.data()?.uid !== uid){
-          return { ok: false, reason: 'taken' };
-        }
-        if(!snap.exists){
-          await firestoreApi.setDoc(docRef, {
-            uid,
-            username,
-            usernameNorm,
-            createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
-          }, { merge: false }, 'usernames.create');
-        }
-        return { ok: true, usernameNorm };
-      }catch(err){
-        return { ok: false, reason: 'error', error: err };
-      }
-    }
-
-    async function resolveAvailableUsername(uid, desired){
-      const trimmed = (desired || '').trim();
-      if(!uid) return trimmed;
-      if(!firestore){
-        return trimmed || `user_${uid.slice(0, 6)}`;
-      }
-      let candidate = trimmed || `user_${uid.slice(0, 6)}`;
-      let result = await ensureUsernameMapping(candidate, uid);
-      if(result.ok) return candidate;
-      if(result.reason === 'taken'){
-        candidate = `user_${uid.slice(0, 6)}`;
-        result = await ensureUsernameMapping(candidate, uid);
-        if(result.ok) return candidate;
-      }
-      return trimmed || `user_${uid.slice(0, 6)}`;
     }
 
     function hexToRgba(hex, alpha = 0.45){
@@ -1470,7 +1172,6 @@ function track(eventName, payload = {}){
       const rulesAccepted = profile.rulesAccepted === true;
       const rulesAcceptedAt = profile.rulesAcceptedAt || null;
       const usernameLower = profile.usernameLower || normalizeUsernameLower(username);
-      const usernameNorm = profile.usernameNorm || normalizeUsernameKey(username);
       const djNameLower = profile.djNameLower || normalizeUsernameLower(djName);
       const searchNameLower = profile.searchNameLower || usernameLower;
       const searchTokens = Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower);
@@ -1497,7 +1198,6 @@ function track(eventName, payload = {}){
         rulesAccepted,
         rulesAcceptedAt,
         usernameLower,
-        usernameNorm,
         djNameLower,
         searchNameLower,
         searchTokens
@@ -1508,37 +1208,6 @@ function track(eventName, payload = {}){
       (ids||[]).forEach(id=>{ map[id] = true; });
       return map;
     }
-    function persistProfileCanonical(profile){
-      if(!profile) return null;
-      const normalized = normalizeProfileShape(profile, profile.uid || profile.username || '');
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      if(normalized.username) profiles[normalized.username] = normalized;
-      if(normalized.uid) profiles[normalized.uid] = normalized;
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      return normalized;
-    }
-    function migrateAndMergeProfiles(a, b){
-      const merged = {
-        ...b,
-        ...a,
-        ownedTracks: a.ownedTracks?.length ? a.ownedTracks : b.ownedTracks,
-        setlist: a.setlist?.length ? a.setlist : b.setlist,
-        bandMembers: a.bandMembers?.length ? a.bandMembers : b.bandMembers,
-        genreOverrides: { ...b.genreOverrides, ...a.genreOverrides },
-        preferences: { ...b.preferences, ...a.preferences },
-        updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0)
-      };
-      return persistProfileCanonical(merged);
-    }
-    function loadUserProfileSmart({ username, uid }){
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      const byUid = uid && profiles[uid];
-      const byUsername = username && profiles[username];
-      if(byUid && byUsername){
-        return migrateAndMergeProfiles(byUid, byUsername);
-      }
-      return normalizeProfileShape(byUid || byUsername || null, uid || username);
-    }
     async function saveUserProfileToBackend(profile) {
       if (!profile) return;
       const firebaseUser = firebaseAuth?.currentUser;
@@ -1546,7 +1215,6 @@ function track(eventName, payload = {}){
       const ownedIds = profile.ownedTracks || [];
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
       const usernameLower = normalizeUsernameLower(profile.username || profileKey);
-      const usernameNorm = normalizeUsernameKey(profile.username || profileKey);
       const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
       const searchNameLower = profile.searchNameLower || usernameLower;
       const persona = ensurePersona(profile);
@@ -1556,7 +1224,6 @@ function track(eventName, payload = {}){
         username: profile.username || profileKey,
         djName: profile.djName || profile.username || profileKey,
         usernameLower,
-        usernameNorm,
         djNameLower,
         searchNameLower,
         searchTokens: Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower),
@@ -1579,14 +1246,17 @@ function track(eventName, payload = {}){
         try {
           const collection = getProfileCollection();
           if(collection){
-            await firestoreApi.setDoc(collection.doc(profileKey), payload, { merge: true }, 'profiles.save');
+            await collection.doc(profileKey).set(payload, { merge: true });
           }
         } catch (e) {
           console.warn('Firestore save failed', e);
           backendOk = false;
         }
       }
-      persistProfileCanonical(payload);
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      if (payload.username) profiles[payload.username] = payload;
+      if (profileKey) profiles[profileKey] = payload;
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
       return backendOk;
     }
     async function loadUserProfileFromBackend(identifier) {
@@ -1598,18 +1268,18 @@ function track(eventName, payload = {}){
           const primaryCollection = getProfileCollection();
           const legacyCollection = getLegacyProfileCollection();
           if(primaryCollection){
-            const doc = await firestoreApi.getDoc(primaryCollection.doc(lookupKey), 'profiles.load');
+            const doc = await primaryCollection.doc(lookupKey).get();
             if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
           }
           if(legacyCollection){
-            const legacyDoc = await firestoreApi.getDoc(legacyCollection.doc(lookupKey), 'profiles.load.legacy');
+            const legacyDoc = await legacyCollection.doc(lookupKey).get();
             if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), lookupKey);
           }
           if (firebaseUser?.email) {
             const emailKey = firebaseUser.email.split('@')[0];
             if (emailKey && emailKey !== lookupKey) {
               if(legacyCollection){
-                const legacyDoc = await firestoreApi.getDoc(legacyCollection.doc(emailKey), 'profiles.load.legacy.email');
+                const legacyDoc = await legacyCollection.doc(emailKey).get();
                 if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), emailKey);
               }
             }
@@ -1814,10 +1484,6 @@ function track(eventName, payload = {}){
     let friendSearchTerm = '';
     let socialFriendSearchTerm = '';
     let socialFriendSearchDebounce = null;
-    const FRIEND_SEARCH_MIN = 3;
-    const FRIEND_SEARCH_LIMIT = 10;
-    const FRIEND_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
-    const friendSearchCache = new Map();
     let socialFriendSearchResults = [];
     let socialFriendSearchLoading = false;
     let socialFriendSearchError = '';
@@ -1852,9 +1518,6 @@ function track(eventName, payload = {}){
     let helpOpenTarget = 'none';
     let helpOpenSource = 'other';
     let helpTabTracked = false;
-    let helpTourStep = 0;
-    let helpTourTimer = null;
-    let helpTourActive = false;
     let profileEditMode = true;
     let profileHandlersBound = false;
     let debugUiBound = false;
@@ -2153,38 +1816,6 @@ function track(eventName, payload = {}){
       if(!profile) return null;
       try { return structuredClone(profile); } catch(_) { return JSON.parse(JSON.stringify(profile)); }
     }
-    function getProfileRecoveryStatus(profile){
-      if(!profile) return { needsRecovery: false };
-      const ownedList = profile?.ownedTracks;
-      const missingOwnedTracks = !Array.isArray(ownedList) || ownedList.length === 0;
-      const missingDjName = !profile?.djName;
-      const missingPreferences = !profile?.preferences;
-      return {
-        needsRecovery: missingOwnedTracks || missingDjName || missingPreferences,
-        missingOwnedTracks,
-        missingDjName,
-        missingPreferences
-      };
-    }
-    async function recoverProfileMismatch(){
-      const savedUsername = localStorage.getItem('currentUser') || currentUser?.username;
-      const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid;
-      const recovered = await loadUserProfileSmart({ username: savedUsername, uid });
-      console.warn('[profile] recovery requested', { recovered, savedUsername, uid });
-      if(recovered){
-        currentUser = applyAdminFlag(recovered);
-        ownedTracks = currentUser.ownedTracks || [];
-        bandMembers = currentUser.bandMembers || [];
-        genreOverrides = currentUser.genreOverrides || {};
-        applyPreferencesFromProfile(currentUser);
-        refreshDraftProfileFromCurrentUser();
-        persistProfileCanonical(currentUser);
-        renderProfile();
-        setupEventListeners();
-      } else {
-        showLoginScreen();
-      }
-    }
     function refreshDraftProfileFromCurrentUser(){
       if(viewingProfile) return;
       draftProfile = currentUser ? cloneProfile(currentUser) : null;
@@ -2302,8 +1933,7 @@ function track(eventName, payload = {}){
 
     // ---------------------- Offline helpers -----------------------
     function handleNetworkStatusChange(){
-      appState.net.isOnline = navigator.onLine;
-      isOffline = !appState.net.isOnline;
+      isOffline = !navigator.onLine;
       const badges = document.querySelectorAll('[data-network-badge]');
       badges.forEach(el=>{
         el.textContent = isOffline ? 'Offline' : 'Online';
@@ -2311,7 +1941,6 @@ function track(eventName, payload = {}){
           ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100'
           : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100';
       });
-      refreshOnlineStatusBanner();
     }
 
     function isMobileViewport(){
@@ -2369,80 +1998,6 @@ function track(eventName, payload = {}){
         req.onsuccess = ()=>resolve(req.result || []);
         req.onerror = ()=>resolve([]);
       });
-    }
-
-    const CORS_SAFE_ORIGINS = new Set([window.location.origin]);
-    const PROXY_ENDPOINT = '/api/proxy?url=';
-
-    function isCorsSafeUrl(url){
-      const target = new URL(url, window.location.origin);
-      return CORS_SAFE_ORIGINS.has(target.origin);
-    }
-
-    function readCachedPayload(cacheKey, maxAgeMs){
-      if(!cacheKey) return null;
-      try{
-        const raw = localStorage.getItem(`cache:${cacheKey}`);
-        if(!raw) return null;
-        const parsed = JSON.parse(raw);
-        if(!parsed || typeof parsed !== 'object') return null;
-        const ts = Number(parsed.timestamp || 0);
-        const isStale = !!(maxAgeMs && ts && (Date.now() - ts > maxAgeMs));
-        return { data: parsed.data, stale: isStale };
-      }catch(err){
-        return null;
-      }
-    }
-
-    function writeCachedPayload(cacheKey, data){
-      if(!cacheKey) return;
-      try{
-        localStorage.setItem(`cache:${cacheKey}`, JSON.stringify({ timestamp: Date.now(), data }));
-      }catch(err){
-        console.warn('cache write failed', err);
-      }
-    }
-
-    async function fetchJsonWithFallback(url, { cacheKey = '', maxAgeMs = 0 } = {}){
-      const requestUrl = isCorsSafeUrl(url) ? url : `${PROXY_ENDPOINT}${encodeURIComponent(url)}`;
-      try{
-        const resp = await fetch(requestUrl, { cache: 'no-store' });
-        if(!resp.ok) throw new Error(`Request failed with status ${resp.status}`);
-        const data = await resp.json();
-        writeCachedPayload(cacheKey, data);
-        return { data, fromCache: false, source: isCorsSafeUrl(url) ? 'direct' : 'proxy' };
-      }catch(err){
-        const cached = readCachedPayload(cacheKey, maxAgeMs);
-        if(cached?.data){
-          return { data: cached.data, fromCache: true, source: 'cache', stale: cached.stale, error: err };
-        }
-        return { data: null, fromCache: false, source: 'error', error: err };
-      }
-    }
-
-    function buildSongsFromSparkData(data){
-      const entries = Object.entries(data || {}).filter(([key])=>!key.startsWith('_'));
-      const nextSongs = [];
-      trackLoadState = { status: 'loading', loaded: 0, total: entries.length, message: 'Loading tracks…' };
-      updateTrackLoadProgressUI();
-      for(let idx=0; idx<entries.length; idx+=1){
-        const [id,item] = entries[idx];
-        const track = item?.track || {};
-        if(!track?.tt) continue;
-        const detectedGenre = detectGenre(track.an||'', track.tt);
-        const finalGenre = genreOverrides[id] || detectedGenre;
-        const rawBpm = Number(track.mt) || 0;
-        const camelotData = deriveCamelotForTrack({ ...track, id });
-        const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
-        const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
-        const keyInfo = parseKey(track.mk || camelotData.keyLabel || track.key || '', track.mm || camelotData.mode || track.mode || '');
-        const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: keyInfo.label || camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden, keyInfo };
-        enriched.flags = computeTrackFlags(enriched);
-        if(enriched.bpm>0) nextSongs.push(enriched);
-        trackLoadState.loaded = idx + 1;
-        if(idx % 120 === 0) updateTrackLoadProgressUI();
-      }
-      return nextSongs;
     }
 
     // ---------------------- Utils & Scoring -----------------------
@@ -2748,13 +2303,13 @@ function track(eventName, payload = {}){
       const { overlay } = getTourElements();
       if(!overlay) return;
       overlay.dataset.open = 'true';
-      showModal('tourOverlay', 'block');
+      overlay.setAttribute('aria-hidden','false');
     }
     function closeTourOverlay(){
       const { overlay } = getTourElements();
       if(!overlay) return;
       overlay.dataset.open = 'false';
-      hideModal('tourOverlay');
+      overlay.setAttribute('aria-hidden','true');
     }
     function focusTour(){
       const { tooltip } = getTourElements();
@@ -2950,13 +2505,9 @@ function track(eventName, payload = {}){
       isPersistingProfile = true;
       try{
         syncPreferencesIntoProfile();
-        if(isFirebaseReady() && firebaseAuth?.currentUser){
-          await ensureUsernameMapping(currentUser.username, firebaseAuth.currentUser.uid);
-        }
         const normalizedStreamUrl = normalizeStreamUrlInput(currentUser.streamUrl || '');
         const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
         const usernameLower = normalizeUsernameLower(currentUser.username);
-        const usernameNorm = normalizeUsernameKey(currentUser.username);
         const djNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
         const displayNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
         const searchNameLower = usernameLower;
@@ -2968,16 +2519,12 @@ function track(eventName, payload = {}){
         const allowFriendRequests = currentUser.allowFriendRequests !== false;
         const rulesAccepted = currentUser.rulesAccepted === true;
         const rulesAcceptedAt = currentUser.rulesAcceptedAt || null;
-        const desiredLive = currentUser.isLive === true;
-        const finalIsLive = desiredLive ? streamUrlValid : false;
-        const finalLiveStartedAt = finalIsLive ? (currentUser.liveStartedAt || currentUser.liveSince || null) : null;
         const mergedProfile = {
           ...currentUser,
           uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
           username: currentUser.username,
           djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
           usernameLower,
-          usernameNorm,
           djNameLower,
           displayNameLower,
           searchNameLower,
@@ -2997,8 +2544,8 @@ function track(eventName, payload = {}){
           bandMembers,
           genreOverrides,
           streamUrl: normalizedStreamUrl,
-          isLive: finalIsLive,
-          liveStartedAt: finalLiveStartedAt,
+          isLive: streamUrlValid ? currentUser.isLive === true : false,
+          liveStartedAt: streamUrlValid ? (currentUser.liveStartedAt || currentUser.liveSince || null) : null,
           oauth: currentUser.oauth || {},
           tour: currentUser.tour || {},
           preferences: {
@@ -3015,11 +2562,14 @@ function track(eventName, payload = {}){
         persistNamespacedState();
         persistKeyMatchSettings();
         localStorage.setItem('currentUser', currentUser.username);
-        persistProfileCanonical(mergedProfile);
+        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+        if (currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...mergedProfile };
+        if (currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...mergedProfile };
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
         console.debug('[profile] local save ok');
         const backendOk = await saveUserProfileToBackend(mergedProfile);
         console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
-        const verifyProfile = await loadUserProfileSmart({ username: currentUser.username, uid: currentUser.uid });
+        const verifyProfile = await loadUserProfile(currentUser.username);
         const ownedMatch = JSON.stringify(normalizeOwnedList(verifyProfile?.ownedTracks)) === JSON.stringify(normalizeOwnedList(mergedProfile.ownedTracks));
         const prefMatch = JSON.stringify(verifyProfile?.preferences || {}) === JSON.stringify(mergedProfile.preferences || {});
         const genreMatch = JSON.stringify(verifyProfile?.genreOverrides || {}) === JSON.stringify(mergedProfile.genreOverrides || {});
@@ -3038,45 +2588,31 @@ function track(eventName, payload = {}){
         isPersistingProfile = false;
       }
     }
-    async function bootProfile(firebaseUser){
-      const savedUsername = localStorage.getItem('currentUser') || localStorage.getItem('activeProfileUid');
-      const profile = await loadUserProfileSmart({
-        username: savedUsername,
-        uid: firebaseUser?.uid
-      });
-      if(profile){
-        currentUser = applyAdminFlag(profile);
-        ownedTracks = currentUser.ownedTracks || [];
-        bandMembers = currentUser.bandMembers || [];
-        genreOverrides = currentUser.genreOverrides || {};
-        applyPreferencesFromProfile(currentUser);
-        loadNamespacedState();
-        loadOverridesFromStorage();
-        if(firebaseUser){
-          await loadUserOverridesFromBackend();
-        }
-        refreshDraftProfileFromCurrentUser();
-        persistProfileCanonical(currentUser);
-        if(currentUser?.uid || currentUser?.username){
-          localStorage.setItem('currentUser', currentUser.uid || currentUser.username);
-        }
-        view = 'browser';
-        loadSongs();
-        await maybeLoadSharedProfile();
-        await loadRemoteConfig();
-        return;
+    async function loadUserProfile(username){
+      if(!username && !firebaseAuth?.currentUser) return null;
+      const firebaseUser = firebaseAuth?.currentUser;
+      if(firestore && (firebaseUser || username)){
+        try{
+          const collection = getProfileCollection();
+          const legacyCollection = getLegacyProfileCollection();
+          if(collection){
+            const doc = await collection.doc(firebaseUser?.uid || username).get();
+            if(doc.exists) return normalizeProfileShape(doc.data(), firebaseUser?.uid || username);
+          }
+          if(legacyCollection){
+            const legacyDoc = await legacyCollection.doc(firebaseUser?.uid || username).get();
+            if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), firebaseUser?.uid || username);
+          }
+        }catch(e){ console.warn('Firestore load failed',e); }
       }
-      if(firebaseUser){
-        await resolveAuthSuccess(firebaseUser);
-        return;
-      }
-      await loadRemoteConfig();
-      showLoginScreen();
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      if(firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
+      return normalizeProfileShape(profiles[username], username) || null;
     }
 
     async function loadProfileForViewing(username){
       if(!username) return null;
-      const profile = await loadUserProfileFromBackend(username) || await loadUserProfileSmart({ username, uid: firebaseAuth?.currentUser?.uid });
+      const profile = await loadUserProfileFromBackend(username) || await loadUserProfile(username);
       if(profile?.isPublic === false){
         const ownerId = firebaseAuth?.currentUser?.uid || currentUser?.uid || currentUser?.username;
         if(ownerId !== profile.uid && ownerId !== profile.username){
@@ -3094,23 +2630,23 @@ function track(eventName, payload = {}){
         if(!collection) return [];
         let query = collection.where(field,'==',value);
         if(publicOnly) query = query.where('isPublic','==',true);
-        const snap = await firestoreApi.runQuery(query, 'profiles.fieldQuery');
+        const snap = await query.get();
         return snap.docs.map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id));
       }catch(err){ console.warn('profile lookup failed', err); return []; }
     }
 
     function getFriendsOnlineStatus(){
-      const firebaseReady = isFirebaseReady() && !!firestore;
+      const firebaseReady = firebaseEnabled && !!firestore;
       const signedIn = !!firebaseAuth?.currentUser;
-      const offline = !appState.net.isOnline || isOffline;
+      const offline = !navigator.onLine || isOffline;
       const online = firebaseReady && signedIn && !offline;
       return { firebaseReady, signedIn, offline, online };
     }
 
     function getFriendsGateMessage(status){
       if(!status) return '';
-      if(status.offline) return 'Offline mode — friends are unavailable.';
-      if(!status.firebaseReady) return 'Online mode unavailable.';
+      if(status.offline) return 'Friends require Online mode.';
+      if(!status.firebaseReady) return 'Friends require Firebase online mode.';
       if(!status.signedIn) return 'Sign in to search friends.';
       return '';
     }
@@ -3143,12 +2679,11 @@ function track(eventName, payload = {}){
       if(viewingProfile) return;
       const query = getFriendSearchQuery();
       socialFriendSearchError = '';
-      const normalizedQuery = normalizeUsernameKey(query);
-      if(!normalizedQuery || normalizedQuery.length < FRIEND_SEARCH_MIN){
+      if(!query){
         if(explicit){
           socialFriendSearchResults = [];
           socialFriendSearchLoading = false;
-          setFriendSearchNotice(`Type at least ${FRIEND_SEARCH_MIN} characters.`, 'warn');
+          setFriendSearchNotice('Type a DJ name.', 'warn');
           renderProfile();
           setupEventListeners();
         }
@@ -3171,10 +2706,10 @@ function track(eventName, payload = {}){
     async function fetchProfilesByUids(uids){
       const collection = getProfileCollection();
       if(!collection) return {};
-      const unique = Array.from(new Set(uids)).filter(Boolean).slice(0, 50);
+      const unique = Array.from(new Set(uids)).filter(Boolean);
       const results = await Promise.all(unique.map(async (uid)=>{
         try{
-          const doc = await firestoreApi.getDoc(collection.doc(uid), 'profiles.batchFetch');
+          const doc = await collection.doc(uid).get();
           if(doc.exists) return [uid, normalizeProfileShape({ ...doc.data(), uid }, uid)];
         }catch(err){ console.warn('profile fetch failed', err); }
         return [uid, null];
@@ -3193,12 +2728,12 @@ function track(eventName, payload = {}){
       friendsError = '';
       try{
         const uid = firebaseAuth.currentUser.uid;
-        const edgesRef = firestore.collection('friends').doc(uid).collection('edges');
-        const incomingSnap = await firestoreApi.runQuery(edgesRef.where('status','==','pending_in'), 'friends.pendingIn');
-        const outgoingSnap = await firestoreApi.runQuery(edgesRef.where('status','==','pending_out'), 'friends.pendingOut');
-        const friendsSnap = await firestoreApi.runQuery(edgesRef.where('status','==','accepted'), 'friends.accepted');
-        const incoming = incomingSnap.docs.map(doc=>({ id: doc.id, fromUid: doc.id, ...doc.data() }));
-        const outgoing = outgoingSnap.docs.map(doc=>({ id: doc.id, toUid: doc.id, ...doc.data() }));
+        const requestsRef = firestore.collection('friendRequests');
+        const incomingSnap = await requestsRef.where('toUid','==',uid).where('status','==','pending').get();
+        const outgoingSnap = await requestsRef.where('fromUid','==',uid).where('status','==','pending').get();
+        const friendsSnap = await firestore.collection('friends').doc(uid).collection('list').get();
+        const incoming = incomingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
+        const outgoing = outgoingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
         const friendDocs = friendsSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
         const profileMap = await fetchProfilesByUids([
           ...incoming.map(req=>req.fromUid),
@@ -3240,16 +2775,7 @@ function track(eventName, payload = {}){
       socialFriendSearchQuery = queryRaw;
       socialFriendSearchError = '';
       socialFriendSearchResults = [];
-      const queryNorm = normalizeUsernameKey(queryRaw);
-      if(!queryNorm || queryNorm.length < FRIEND_SEARCH_MIN){
-        socialFriendSearchLoading = false;
-        renderProfile();
-        setupEventListeners();
-        return;
-      }
-      const cached = friendSearchCache.get(queryNorm);
-      if(cached && (Date.now() - cached.ts) < FRIEND_SEARCH_CACHE_TTL_MS){
-        socialFriendSearchResults = cached.results;
+      if(!queryRaw){
         socialFriendSearchLoading = false;
         renderProfile();
         setupEventListeners();
@@ -3260,22 +2786,29 @@ function track(eventName, payload = {}){
       renderProfile();
       setupEventListeners();
       try{
+        const queryLower = normalizeUsernameLower(queryRaw);
         const collection = getProfileCollection();
         if(!collection) throw new Error('Profile collection unavailable');
-        const snap = await firestoreApi.runQuery(
-          collection
-            .where('usernameNorm', '>=', queryNorm)
-            .where('usernameNorm', '<=', queryNorm + '\uf8ff')
+        const resultsMap = {};
+        const prefixQuery = async (field)=>{
+          const snap = await collection
+            .where(field, '>=', queryLower)
+            .where(field, '<=', queryLower + '\uf8ff')
             .where('isPublic', '==', true)
-            .limit(FRIEND_SEARCH_LIMIT),
-          'friends.search'
-        );
+            .limit(20)
+            .get();
+          snap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
+        };
+        await Promise.all([
+          prefixQuery('displayNameLower'),
+          prefixQuery('usernameLower'),
+          prefixQuery('djNameLower'),
+          prefixQuery('searchNameLower')
+        ]);
         const currentUid = firebaseAuth.currentUser.uid;
-        socialFriendSearchResults = snap.docs
-          .map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id))
+        socialFriendSearchResults = Object.values(resultsMap)
           .filter(profile=> profile?.uid !== currentUid)
-          .slice(0, FRIEND_SEARCH_LIMIT);
-        friendSearchCache.set(queryNorm, { results: socialFriendSearchResults, ts: Date.now() });
+          .slice(0, 20);
       }catch(err){
         console.error('[friends] search failed', err);
         socialFriendSearchError = 'Search failed. Try again later.';
@@ -3434,12 +2967,12 @@ function track(eventName, payload = {}){
 
     function bindProfileHandlers(){
       if(profileHandlersBound || window.__profileEventsBound) return;
-      const appRoot = document.getElementById('app');
-      if(!appRoot) return;
+      const app = document.getElementById('app');
+      if(!app) return;
       if(DEBUG_UI) console.log('[debug][profile] bindProfileHandlers');
       window.__profileEventsBound = true;
-      appRoot.addEventListener('click', safeOn('click', (e)=>{
-        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: appRoot });
+      app.addEventListener('click', safeOn('click', (e)=>{
+        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: app });
         if(toggle){
           if(viewingProfile) return;
           profileEditMode = !profileEditMode;
@@ -3447,15 +2980,15 @@ function track(eventName, payload = {}){
           setupEventListeners();
           return;
         }
-        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: appRoot });
+        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
         if(editTrigger){
           debugProfileLog('persona edit click detected');
           openProfileEditor();
         }
       }, { action: 'profile-click' }));
-      appRoot.addEventListener('keydown', safeOn('keydown', (e)=>{
+      app.addEventListener('keydown', safeOn('keydown', (e)=>{
         if(e.key !== 'Enter' && e.key !== ' ') return;
-        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: appRoot });
+        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
         if(!trigger) return;
         e.preventDefault();
         debugProfileLog('persona edit keydown detected', { key: e.key });
@@ -3517,32 +3050,21 @@ function track(eventName, payload = {}){
       const fromUid = firebaseAuth.currentUser.uid;
       if(fromUid === toUid) return;
       try{
+        const requestId = `${fromUid}_${toUid}`;
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-        const myEdgeRef = firestore.collection('friends').doc(fromUid).collection('edges').doc(toUid);
-        const theirEdgeRef = firestore.collection('friends').doc(toUid).collection('edges').doc(fromUid);
-        const existing = await firestoreApi.getDoc(myEdgeRef, 'friends.edgeLookup');
-        if(existing.exists){
-          const status = existing.data()?.status;
-          if(status === 'pending_in'){
-            await acceptFriendRequest(toUid);
-            return;
-          }
-          if(status === 'accepted' || status === 'pending_out') return;
+        const reciprocalId = `${toUid}_${fromUid}`;
+        const reciprocalRef = firestore.collection('friendRequests').doc(reciprocalId);
+        const reciprocalSnap = await reciprocalRef.get();
+        if(reciprocalSnap.exists && reciprocalSnap.data()?.status === 'pending'){
+          await acceptFriendRequest(reciprocalId, toUid);
+          return;
         }
-        const batch = firestore.batch();
-        batch.set(myEdgeRef, {
-          friendUid: toUid,
-          status: 'pending_out',
-          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
-          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+        await firestore.collection('friendRequests').doc(requestId).set({
+          fromUid,
+          toUid,
+          status: 'pending',
+          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
         }, { merge: true });
-        batch.set(theirEdgeRef, {
-          friendUid: fromUid,
-          status: 'pending_in',
-          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
-          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
-        }, { merge: true });
-        await batch.commit();
         await refreshFriendsData(true);
         await searchProfilesForFriends();
       }catch(err){
@@ -3552,24 +3074,24 @@ function track(eventName, payload = {}){
       }
     };
 
-    window.acceptFriendRequest = async (fromUid)=>{
+    window.acceptFriendRequest = async (requestId, fromUid)=>{
       if(!isOnlineProfileMode()) return;
       try{
         const uid = firebaseAuth.currentUser.uid;
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
         const batch = firestore.batch();
-        const myFriendRef = firestore.collection('friends').doc(uid).collection('edges').doc(fromUid);
-        const theirFriendRef = firestore.collection('friends').doc(fromUid).collection('edges').doc(uid);
-        batch.set(myFriendRef, {
-          friendUid: fromUid,
-          status: 'accepted',
-          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
-        }, { merge: true });
-        batch.set(theirFriendRef, {
-          friendUid: uid,
-          status: 'accepted',
-          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
-        }, { merge: true });
+        const requestRef = firestore.collection('friendRequests').doc(requestId);
+        batch.update(requestRef, { status: 'accepted' });
+        const reciprocalId = `${uid}_${fromUid}`;
+        const reciprocalRef = firestore.collection('friendRequests').doc(reciprocalId);
+        const reciprocalSnap = await reciprocalRef.get();
+        if(reciprocalSnap.exists && reciprocalSnap.data()?.status === 'pending'){
+          batch.update(reciprocalRef, { status: 'accepted' });
+        }
+        const myFriendRef = firestore.collection('friends').doc(uid).collection('list').doc(fromUid);
+        const theirFriendRef = firestore.collection('friends').doc(fromUid).collection('list').doc(uid);
+        batch.set(myFriendRef, { friendUid: fromUid, createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString() }, { merge: true });
+        batch.set(theirFriendRef, { friendUid: uid, createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString() }, { merge: true });
         await batch.commit();
         await refreshFriendsData(true);
         renderProfile(); setupEventListeners();
@@ -3580,14 +3102,10 @@ function track(eventName, payload = {}){
       }
     };
 
-    window.rejectFriendRequest = async (fromUid)=>{
+    window.rejectFriendRequest = async (requestId)=>{
       if(!isOnlineProfileMode()) return;
       try{
-        const uid = firebaseAuth.currentUser.uid;
-        const batch = firestore.batch();
-        batch.delete(firestore.collection('friends').doc(uid).collection('edges').doc(fromUid));
-        batch.delete(firestore.collection('friends').doc(fromUid).collection('edges').doc(uid));
-        await batch.commit();
+        await firestore.collection('friendRequests').doc(requestId).set({ status: 'declined' }, { merge: true });
         await refreshFriendsData(true);
         renderProfile(); setupEventListeners();
       }catch(err){
@@ -3597,14 +3115,10 @@ function track(eventName, payload = {}){
       }
     };
 
-    window.cancelFriendRequest = async (toUid)=>{
+    window.cancelFriendRequest = async (requestId)=>{
       if(!isOnlineProfileMode()) return;
       try{
-        const uid = firebaseAuth.currentUser.uid;
-        const batch = firestore.batch();
-        batch.delete(firestore.collection('friends').doc(uid).collection('edges').doc(toUid));
-        batch.delete(firestore.collection('friends').doc(toUid).collection('edges').doc(uid));
-        await batch.commit();
+        await firestore.collection('friendRequests').doc(requestId).set({ status: 'canceled' }, { merge: true });
         await refreshFriendsData(true);
         renderProfile(); setupEventListeners();
       }catch(err){
@@ -3619,8 +3133,8 @@ function track(eventName, payload = {}){
       try{
         const uid = firebaseAuth.currentUser.uid;
         const batch = firestore.batch();
-        const myFriendRef = firestore.collection('friends').doc(uid).collection('edges').doc(friendUid);
-        const theirFriendRef = firestore.collection('friends').doc(friendUid).collection('edges').doc(uid);
+        const myFriendRef = firestore.collection('friends').doc(uid).collection('list').doc(friendUid);
+        const theirFriendRef = firestore.collection('friends').doc(friendUid).collection('list').doc(uid);
         batch.delete(myFriendRef);
         batch.delete(theirFriendRef);
         await batch.commit();
@@ -3873,7 +3387,8 @@ function track(eventName, payload = {}){
           const existingProfile = normalizeProfileShape(profiles[streamerUsername] || viewingProfile || { username: streamerUsername }, streamerUsername);
           const aggregates = updateAggregatesWithRating(existingProfile || {}, previousRating?.stars, stars);
           const mergedProfile = { ...(profiles[streamerUsername] || {}), ...existingProfile, ...aggregates };
-          persistProfileCanonical(mergedProfile);
+          profiles[streamerUsername] = mergedProfile;
+          localStorage.setItem('userProfiles', JSON.stringify(profiles));
           if(viewingProfile && (viewingProfile.username === streamerUsername || viewingProfile.uid === streamerUsername)){
             viewingProfile = { ...viewingProfile, ...aggregates };
           }
@@ -3959,62 +3474,6 @@ function track(eventName, payload = {}){
     window.hideLanding = () => { localStorage.setItem('hasSeenLanding','true'); checkAuth(); };
 
     // -------------------- Login / Profile handlers ---------------------
-    function getOnlineStatusInfo(){
-      const offline = !appState.net.isOnline || isOffline;
-      if(offline){
-        return { tone: 'offline', message: 'Offline mode — saved locally.', showRetry: false };
-      }
-      if(appState.firebase.status === 'ready'){
-        return { tone: 'online', message: 'Online mode enabled — syncing profile.', showRetry: false };
-      }
-      if(appState.firebase.status === 'initializing'){
-        return { tone: 'info', message: 'Connecting to Online mode…', showRetry: false };
-      }
-      if(appState.firebase.status === 'config_missing'){
-        if(isDevHost()){
-          return { tone: 'offline', message: 'Local mode — saved locally.', showRetry: false };
-        }
-        return { tone: 'warn', message: 'Local mode — Firebase not configured; saved locally.', showRetry: false };
-      }
-      if(appState.firebase.status === 'error'){
-        return { tone: 'error', message: 'Online mode error — saved locally.', showRetry: true };
-      }
-      return { tone: 'offline', message: 'Offline mode — saved locally.', showRetry: false };
-    }
-
-    function getOnlineStatusBannerHtml({ includeRetry = false, bannerId = 'onlineStatusBanner' } = {}){
-      const info = getOnlineStatusInfo();
-      const toneClass = info.tone === 'online'
-        ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100'
-        : info.tone === 'warn'
-          ? 'bg-amber-500/20 border-amber-400/40 text-amber-100'
-          : info.tone === 'error'
-            ? 'bg-red-500/20 border-red-400/40 text-red-100'
-            : info.tone === 'info'
-              ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-100'
-              : 'bg-white/10 border-white/20 text-gray-200';
-      const retryButton = (includeRetry && info.showRetry)
-        ? `<button onclick="retryOnlineMode()" class="ml-auto px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Retry Online</button>`
-        : '';
-      return `
-        <div id="${bannerId}" class="flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${toneClass}">
-          <span>${info.message}</span>
-          ${retryButton}
-        </div>
-      `;
-    }
-
-    function refreshOnlineStatusBanner(){
-      const banner = document.getElementById('onlineStatusBanner');
-      if(banner){
-        banner.outerHTML = getOnlineStatusBannerHtml({ includeRetry: true, bannerId: 'onlineStatusBanner' });
-      }
-      const bannerProfile = document.getElementById('onlineStatusBannerProfile');
-      if(bannerProfile){
-        bannerProfile.outerHTML = getOnlineStatusBannerHtml({ includeRetry: true, bannerId: 'onlineStatusBannerProfile' });
-      }
-    }
-
     function showLoginScreen(){
       // default auth mode
       setTimeout(()=>{ try{ if(window.setAuthMode) window.setAuthMode('signin'); }catch(e){} }, 50);
@@ -4030,11 +3489,9 @@ function track(eventName, payload = {}){
 
             <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
               <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
-              <div class="mb-4">
-                ${getOnlineStatusBannerHtml({ includeRetry: true })}
-              </div>
+              ${!firebaseEnabled ? `<div class="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/50 text-yellow-100 text-sm text-center">Firebase not configured — using local profiles.</div>` : ''}
 
-              ${isFirebaseReady() ? `
+              ${firebaseEnabled ? `
                 <div class="mb-5">
                   <div class="flex gap-2 bg-black/30 p-1 rounded-xl border border-cyan-500/20">
                     <button type="button" id="tabSignIn" onclick="setAuthMode('signin')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
@@ -4101,16 +3558,6 @@ function track(eventName, payload = {}){
       }
     }
 
-    window.retryOnlineMode = async () => {
-      setFirebaseStatus('initializing');
-      refreshOnlineStatusBanner();
-      await initFirebaseOnce({ force: true });
-      refreshOnlineStatusBanner();
-      if(isFirebaseReady()){
-        showLoginScreen();
-      }
-    };
-
       // -------------------- Firebase Auth UI helpers ---------------------
     window.setAuthMode = (mode) => {
       const m = (mode === 'signup') ? 'signup' : 'signin';
@@ -4172,7 +3619,8 @@ function track(eventName, payload = {}){
       const savedId = activeUid || localStorage.getItem('currentUser');
       if(!savedId) return null;
       try{
-        return loadUserProfileSmart({ username: savedId, uid: savedId });
+        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+        if(profiles[savedId]) return normalizeProfileShape(profiles[savedId], savedId);
       }catch(err){ console.warn('[auth] stored profiles parse failed', err); }
       return null;
     }
@@ -4205,7 +3653,10 @@ function track(eventName, payload = {}){
         localStorage.setItem('activeProfileUid', currentUser.uid);
         localStorage.setItem('isAuthed', 'true');
       }
-      persistProfileCanonical(currentUser);
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      if(currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...currentUser };
+      if(currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...currentUser };
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
       view = 'browser';
       await persistCurrentUserProfile();
       await maybeLoadSharedProfile();
@@ -4265,7 +3716,7 @@ function track(eventName, payload = {}){
           setLocalAuthError('Choose a username with letters or numbers.');
           return;
         }
-        const existingProfile = await loadUserProfileSmart({ username });
+        const existingProfile = await loadUserProfile(username);
         const baseProfile = existingProfile || {
           ownedTracks: [],
           setlistIds: [],
@@ -4287,7 +3738,6 @@ function track(eventName, payload = {}){
           isPublic: true,
           allowFriendRequests: true,
           usernameLower: normalizeUsernameLower(username),
-          usernameNorm: normalizeUsernameKey(username),
           djNameLower: normalizeUsernameLower(djNameRaw || username),
           searchNameLower: normalizeUsernameLower(username),
           searchTokens: buildSearchTokens(username),
@@ -4319,7 +3769,7 @@ function track(eventName, payload = {}){
     }
 
     window.continueOffline = async () => {
-      if(isFirebaseReady()){
+      if(firebaseEnabled){
         alert('Sign in is required while cloud sync is enabled.');
         return;
       }
@@ -4347,7 +3797,6 @@ function track(eventName, payload = {}){
         isPublic: true,
         allowFriendRequests: true,
         usernameLower: normalizeUsernameLower(username),
-        usernameNorm: normalizeUsernameKey(username),
         djNameLower: normalizeUsernameLower(username),
         searchNameLower: normalizeUsernameLower(username),
         searchTokens: buildSearchTokens(username),
@@ -4362,7 +3811,7 @@ function track(eventName, payload = {}){
     };
 
     window.forgotPassword = async () => {
-      if (!firebaseAuth || !isFirebaseReady()) return alert('Online mode not ready yet.');
+      if (!firebaseAuth) return alert('Firebase not ready yet.');
       const email = (document.getElementById('email')?.value || '').trim();
       if (!email) return alert('Type your email first, then click "Forgot password?"');
       try {
@@ -4385,11 +3834,12 @@ function track(eventName, payload = {}){
         const uid = firebaseAuth.currentUser.uid;
         const existing = profiles[uid] || {};
         if(linkData){
-          persistProfileCanonical({ ...existing, oauth: { ...(existing.oauth || {}), epic: linkData } });
+          profiles[uid] = { ...existing, oauth: { ...(existing.oauth || {}), epic: linkData } };
         } else if(existing.oauth && existing.oauth.epic){
           delete existing.oauth.epic;
-          persistProfileCanonical({ ...existing, oauth: { ...(existing.oauth || {}) } });
+          profiles[uid] = { ...existing, oauth: { ...(existing.oauth || {}) } };
         }
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
       }catch(e){ /* non-fatal cache failure */ }
     }
 
@@ -4543,13 +3993,12 @@ function track(eventName, payload = {}){
         }
 
         const profile = existingProfile || {};
-        const resolvedUsername = await resolveAvailableUsername(firebaseUser.uid, profile.username || defaultUsername);
         const liveDefaults = normalizeLiveProfileFields({ ...profile, ...importedProfile });
         const mergedProfile = {
           ...profile,
           uid: firebaseUser.uid,
-          username: resolvedUsername,
-          djName: profile.djName || resolvedUsername,
+          username: profile.username || defaultUsername,
+          djName: profile.djName || defaultUsername,
           ownedTracks: importedProfile?.ownedTracks || profile.ownedTracks || ownedTracks || [],
           setlistIds: importedProfile?.setlistIds || profile.setlistIds || importedProfile?.setlist || profile.setlist || profile.setlists || setlistIds || [],
           setlists: importedProfile?.setlists || profile.setlists || setlistIds || [],
@@ -4573,41 +4022,28 @@ function track(eventName, payload = {}){
       }
     }
 
-    async function applyAuthState(user){
-      appState.auth.user = user || null;
-      appState.auth.status = user ? 'signed_in' : 'signed_out';
-      appState.auth.errorMsg = '';
-      bootMark('auth_state_changed', { uid: user?.uid || null });
-      if (user) {
-        await bootProfile(user);
-      } else {
-        authSettledUser = null;
-        currentUser = null;
-        if(userProfileUnsub){
-          userProfileUnsub();
-          userProfileUnsub = null;
-        }
-        await bootProfile(null);
-      }
-      render();
-      setupEventListeners();
-      resetOverlaysAndLoading('auth');
-    }
-
     function setupFirebaseAuthListener() {
-      if (!firebaseAuth || firebaseAuthUnsub || authListenerBound) return;
-      authListenerBound = true;
+      if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
-        await applyAuthState(user);
+        if (user) {
+          await resolveAuthSuccess(user);
+        } else {
+          authSettledUser = null;
+          currentUser = null;
+          if(userProfileUnsub){
+            userProfileUnsub();
+            userProfileUnsub = null;
+          }
+          showLoginScreen();
+        }
       });
-      bootMark('auth_listener_bound');
     }
 
     async function handleFirebaseAuth(e){
       e.preventDefault();
       const errorBox = document.getElementById('authError');
-      if(!isFirebaseReady() || !firebaseAuth){
-        if(errorBox){ errorBox.textContent = 'Online mode unavailable — using local profiles.'; errorBox.style.display = 'block'; }
+      if(!firebaseEnabled || !firebaseAuth){
+        if(errorBox){ errorBox.textContent = 'Firebase not configured — using local profiles.'; errorBox.style.display = 'block'; }
         logEvent('auth_fail', { reason: 'config_missing' });
         return;
       }
@@ -4626,17 +4062,12 @@ function track(eventName, payload = {}){
       };
       const mapErrorCode = (code, message)=>{
         if(code === 'auth/invalid-credential' || code === 'auth/wrong-password') return 'Email/password incorrect';
-        if(code === 'auth/email-already-in-use') return 'Email already in use — try Sign In';
-        if(code === 'auth/weak-password') return 'Password too weak (min 6 characters)';
-        if(code === 'auth/invalid-email') return 'Enter a valid email address';
         if(code === 'auth/user-not-found') return 'No account found — click Register';
         if(code === 'auth/network-request-failed') return 'Network blocked/unstable. Try again or disable VPN.';
         if(code === 'auth/too-many-requests') return 'Too many attempts — wait a moment';
         return message || 'Sign-in failed';
       };
       authInFlight = true;
-      appState.auth.status = 'signing_in';
-      appState.auth.errorMsg = '';
       disableAuthUi(true);
       if(errorBox){ errorBox.textContent = ''; errorBox.style.display = 'none'; }
       logEvent('auth_attempt', { mode, email });
@@ -4649,19 +4080,15 @@ function track(eventName, payload = {}){
         }
 
         setupFirebaseAuthListener();
+        await resolveAuthSuccess(firebaseAuth.currentUser);
 
       } catch(err){
         console.error(err);
         const message = mapErrorCode(err?.code || '', err?.message);
         if(errorBox){ errorBox.textContent = message; errorBox.style.display = 'block'; }
-        appState.auth.status = 'error';
-        appState.auth.errorMsg = message;
         logEvent('auth_fail', { code: err?.code, message: err?.message });
       } finally {
         authInFlight = false;
-        if(appState.auth.status === 'signing_in'){
-          appState.auth.status = firebaseAuth?.currentUser ? 'signed_in' : 'signed_out';
-        }
         disableAuthUi(false);
       }
     }
@@ -4672,10 +4099,7 @@ function track(eventName, payload = {}){
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
-      appState.auth.user = null;
-      appState.auth.status = 'signed_out';
       currentUser = null; draftProfile = null; ownedTracks = []; setlistIds = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
-      friendSearchCache.clear();
       localStorage.removeItem('currentUser');
       showLoginScreen();
     }
@@ -4695,8 +4119,7 @@ function track(eventName, payload = {}){
       trackLoadNotice = '';
       render(); setupEventListeners();
       const cachedTracks = await readCachedTracks();
-      const tracksEndpoint = 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks';
-      const cacheNotice = 'Online data temporarily unavailable — using cached tracks.';
+      const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
       const canFetch = navigator.onLine;
       if(cachedTracks.length){
         console.warn('Using cached track data');
@@ -4711,38 +4134,55 @@ function track(eventName, payload = {}){
         maybeAutoStartTour();
       }
       if(canFetch){
-        const result = await fetchJsonWithFallback(tracksEndpoint, { cacheKey: 'spark-tracks', maxAgeMs: 6 * 60 * 60 * 1000 });
-        const nextSongs = result.data ? buildSongsFromSparkData(result.data) : [];
-        nextSongs.sort((a,b)=>a.title.localeCompare(b.title));
-        if(nextSongs.length>0){
-          songs = nextSongs;
-          songsById = Object.fromEntries(songs.map(s => [s.id, s]));
-          regressionWarnings = knownCorrections.filter(kc=>{
-            const track = songs.find(s=>s.id===kc.id);
-            return track && track.camelot !== kc.expectedCamelot;
-          });
-          if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
-          trackSource = result.fromCache ? 'cache' : 'network';
-          songsLoaded = true;
-          trackLoadNotice = result.fromCache ? cacheNotice : '';
-          trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
-          logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
-          cacheTracks(songs);
-          render(); setupEventListeners();
-          maybeAutoStartTour();
-          return;
-        }
-        if(result.error){
-          console.warn('endpoint err', result.error);
-          logEvent('songs_fetch_fail', { message: result.error?.message, step: 'network' });
+        for(let i=0;i<endpoints.length;i++){
+          try{
+            const res = await fetch(endpoints[i]);
+            if(!res.ok) continue;
+            const data = await res.json();
+            const entries = Object.entries(data).filter(([k])=>!k.startsWith('_'));
+            const nextSongs = [];
+            trackLoadState = { status: 'loading', loaded: 0, total: entries.length, message: 'Loading tracks…' };
+            updateTrackLoadProgressUI();
+            for(let idx=0; idx<entries.length; idx+=1){
+              const [id,item] = entries[idx];
+              const track = item?.track || {};
+              if(!track?.tt) continue;
+              const detectedGenre = detectGenre(track.an||'', track.tt);
+              const finalGenre = genreOverrides[id] || detectedGenre;
+              const rawBpm = Number(track.mt) || 0;
+              const camelotData = deriveCamelotForTrack({ ...track, id });
+              const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
+              const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
+              const keyInfo = parseKey(track.mk || camelotData.keyLabel || track.key || '', track.mm || camelotData.mode || track.mode || '');
+              const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: keyInfo.label || camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden, keyInfo };
+              enriched.flags = computeTrackFlags(enriched);
+              if(enriched.bpm>0) nextSongs.push(enriched);
+              trackLoadState.loaded = idx + 1;
+              if(idx % 120 === 0) updateTrackLoadProgressUI();
+            }
+            nextSongs.sort((a,b)=>a.title.localeCompare(b.title));
+            if(nextSongs.length>0){
+              songs = nextSongs;
+              songsById = Object.fromEntries(songs.map(s => [s.id, s]));
+              regressionWarnings = knownCorrections.filter(kc=>{
+                const track = songs.find(s=>s.id===kc.id);
+                return track && track.camelot !== kc.expectedCamelot;
+              });
+              if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
+              trackSource = 'network';
+              songsLoaded = true;
+              trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
+              logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
+              cacheTracks(songs);
+              render(); setupEventListeners();
+              maybeAutoStartTour();
+              return;
+            }
+          }catch(e){ console.warn('endpoint err',e); logEvent('songs_fetch_fail', { message: e?.message, step: 'network' }); }
         }
       }
       if(cachedTracks.length){
         trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
-        if(!canFetch || !trackLoadNotice){
-          trackLoadNotice = cacheNotice;
-          render();
-        }
         return;
       }
       console.warn('endpoints failed, using fallback sample');
@@ -5005,13 +4445,21 @@ function track(eventName, payload = {}){
       quickStartState.open = true;
       quickStartState.step = 0;
       quickStartState.preset = null;
-      showModal('quickStartModal');
+      const modal = document.getElementById('quickStartModal');
+      if(modal){
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden','false');
+      }
       renderQuickStartStep();
     }
 
     function closeQuickStart(){
       quickStartState.open = false;
-      hideModal('quickStartModal');
+      const modal = document.getElementById('quickStartModal');
+      if(modal){
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden','true');
+      }
     }
 
     function maybeAutoOpenQuickStart(){
@@ -5102,7 +4550,6 @@ function track(eventName, payload = {}){
     }
 
     function renderSongList(){
-      try{
       listRenderCount += 1;
       const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
       const isMobile = isMobileViewport();
@@ -5363,16 +4810,6 @@ function track(eventName, payload = {}){
           maxCardsLogged = true;
         }
       }
-      }catch(err){
-        __renderErrors.songList += 1;
-        console.error('[renderSongList] failed', err);
-        if(__renderErrors.songList > 3){
-          const list = document.getElementById('songList');
-          if(list){
-            list.innerHTML = '<div class="panel">Song list crashed. Open console.</div>';
-          }
-        }
-      }
     }
 
     function renderSetlist(){
@@ -5418,27 +4855,16 @@ function track(eventName, payload = {}){
 
     function renderProfile(){
       const profileEl = document.getElementById('profileView'); if(!profileEl) return;
-      try {
-        if(DEBUG_UI) console.log('[debug][profile] renderProfile');
-        bindUiDebugging();
-        bindProfileHandlers();
-        const viewOnly = !!viewingProfile;
-        if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
-          refreshDraftProfileFromCurrentUser();
-        }
-        const profileEditable = !viewOnly && profileEditMode;
-        const profileOwner = viewingProfile || currentUser || {};
-        const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
-        const recoveryStatus = (!viewOnly && currentUser) ? getProfileRecoveryStatus(currentUser) : { needsRecovery: false };
-        const recoveryBanner = recoveryStatus.needsRecovery
-          ? `<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <div class="font-semibold">⚠️ Profile mismatch detected</div>
-                <div class="text-xs text-amber-100/80">Some profile fields look empty. Recover automatically to re-sync your data.</div>
-              </div>
-              <button type="button" onclick="recoverProfileMismatch()" class="px-3 py-2 rounded-lg bg-amber-500/30 border border-amber-300/50 text-amber-100 text-xs font-semibold">Recover automatically</button>
-            </div>`
-          : '';
+      if(DEBUG_UI) console.log('[debug][profile] renderProfile');
+      bindUiDebugging();
+      bindProfileHandlers();
+      const viewOnly = !!viewingProfile;
+      if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
+        refreshDraftProfileFromCurrentUser();
+      }
+      const profileEditable = !viewOnly && profileEditMode;
+      const profileOwner = viewingProfile || currentUser || {};
+      const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
       const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
       const usernameVal = editableProfile?.username || '';
       const djVal = editableProfile?.djName || usernameVal;
@@ -5464,7 +4890,7 @@ function track(eventName, payload = {}){
       const streamUrlValue = editableProfile?.streamUrl || '';
       const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlValue);
       const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
-      const liveActive = profileOwner?.isLive === true;
+      const liveActive = streamUrlValid && profileOwner?.isLive === true;
       let liveSinceLabel = '';
       if(profileOwner?.liveStartedAt){
         const liveDate = new Date(profileOwner.liveStartedAt);
@@ -5492,22 +4918,6 @@ function track(eventName, payload = {}){
         <div class="text-xs text-gray-300">Multiple matches found. Pick one:</div>
         ${friendLookupResults.map(p=>`<button onclick="selectFriendProfile('${p.username || p.uid || ''}')" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
       </div>` : '';
-      function getDebugPanelHtml(){
-        if(!DEBUG_PROFILE) return '';
-        try {
-          return `
-        <div class="panel text-xs text-gray-300">
-          <div class="font-semibold text-white mb-1">Online Debug</div>
-          <div>Firebase status: ${appState.firebase.status}</div>
-          <div>Auth status: ${appState.auth.status}</div>
-          <div>Network: ${appState.net.isOnline ? 'online' : 'offline'}</div>
-          <div>Last Firestore error: ${appState.firebase.lastError || '—'}</div>
-        </div>
-      `;
-        } catch (error) {
-          return '';
-        }
-      }
       const ownedFiltered = songs
         .filter(s=>ownedIds.includes(s.id))
         .filter(s=>{
@@ -5530,16 +4940,13 @@ function track(eventName, payload = {}){
               <span class="px-2 py-1 bg-emerald-500/20 border border-emerald-400/40 rounded text-emerald-100">${song.genre}</span>
             </div>
           </div>
-          ${getDebugPanelHtml()}
         </div>`;
       }).join('');
       const ownedEmpty = `<div class="text-sm text-gray-400">${profileOwnedSearch ? 'No owned songs match your search.' : 'No owned songs yet.'}</div>`;
-      const livePill = liveActive && streamUrlValid
+      const livePill = liveActive
         ? `<a id="liveStatusPill" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1 rounded-full text-xs font-bold bg-green-400 text-black border border-green-200/80" style="box-shadow: 0 0 14px rgba(34,197,94,0.8);">LIVE</a>`
-        : liveActive
-          ? `<span id="liveStatusPill" class="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>`
-          : `<span id="liveStatusPill" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70">OFFLINE</span>`;
-      const liveToggleLabel = liveActive ? '🟢 Live (Click to Stop)' : 'Go Live';
+        : `<span id="liveStatusPill" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70">OFFLINE</span>`;
+      const liveToggleLabel = liveActive ? 'End Live' : 'Go Live';
       const streamHelperText = streamUrlValid ? '' : (viewOnly ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
       const ratingBreakdown = normalizeRatingBreakdown(profileOwner?.ratingBreakdown);
       const ratingDisplay = getProfileRatingDisplay(profileOwner);
@@ -5675,7 +5082,7 @@ function track(eventName, payload = {}){
               <div class="flex flex-wrap gap-2">
                 <span id="profileThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Theme: ${themeLabel}</span>
                 <span id="profilePersonaThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Energy: ${personaTheme.label}</span>
-                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">Profile Style (Neon DJ vibe)</span>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">Myspace vibes</span>
               </div>
             </div>
           </div>
@@ -5747,12 +5154,12 @@ function track(eventName, payload = {}){
         } else if(status === 'outgoing_pending'){
           actionMarkup = `<div class="flex gap-2 items-center">
             <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Request sent</span>
-            ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.toUid || ''}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
+            ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
           </div>`;
         } else if(status === 'incoming_pending'){
           actionMarkup = `<div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button onclick="acceptFriendRequest('${incomingReq?.id || ''}','${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button onclick="rejectFriendRequest('${incomingReq?.id || ''}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
           </div>`;
         } else if(profile.allowFriendRequests === false){
           actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
@@ -5784,8 +5191,8 @@ function track(eventName, payload = {}){
             </div>
           </div>
           <div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${req.fromUid}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button onclick="acceptFriendRequest('${req.id}','${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button onclick="rejectFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
           </div>
         </div>`;
       }).join('');
@@ -5801,7 +5208,7 @@ function track(eventName, payload = {}){
           </div>
           <div class="flex gap-2">
             <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-500/20 border border-purple-400/40 text-purple-100">Pending</span>
-            <button onclick="cancelFriendRequest('${req.toUid}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
+            <button onclick="cancelFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
           </div>
         </div>`;
       }).join('');
@@ -5843,7 +5250,7 @@ function track(eventName, payload = {}){
             </div>
             ${friendsGateMessage ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendsGateClass}">${friendsGateMessage}</div>` : ''}
             <form id="socialFriendSearchForm" class="flex flex-col sm:flex-row gap-2" onsubmit="handleFriendSearch(event)">
-              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs (min ${FRIEND_SEARCH_MIN} chars)…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
               <button id="socialFriendSearchButton" type="submit" onclick="logFriendSearchClick()" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
             </form>
             ${socialFriendSearchNotice ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendNoticeClass}">${socialFriendSearchNotice}</div>` : ''}
@@ -5879,12 +5286,9 @@ function track(eventName, payload = {}){
           </div>
       ` : '';
       const profileErrorBanner = `<div id="profileErrorBanner" class="panel border border-red-400/40 bg-red-500/10 text-red-100 text-sm" style="display:${profileScriptError ? 'block' : 'none'};">Profile scripts failed. Open console.</div>`;
-      const onlineStatusBanner = getOnlineStatusBannerHtml({ includeRetry: true, bannerId: 'onlineStatusBannerProfile' });
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-5xl mx-auto relative z-10" style="${profileAccentStyle}">
           ${profileErrorBanner}
-          ${recoveryBanner}
-          ${onlineStatusBanner}
           <div class="panel space-y-3">
             <div class="flex items-center justify-between">
               <div>
@@ -5915,7 +5319,7 @@ function track(eventName, payload = {}){
               </div>
               <div class="md:col-span-2">
                 <label class="text-sm text-gray-300">Stream URL</label>
-                <input id="profileStreamUrl" data-oninput="stream-url" value="${streamUrlValue}" ${editDisabledAttr} placeholder="https://twitch.tv/yourname" class="w-full px-4 py-3 bg-black/40 border border-green-500/30 rounded-lg text-white ${editDisabledClass}" />
+                <input id="profileStreamUrl" value="${streamUrlValue}" ${editDisabledAttr} placeholder="https://twitch.tv/yourname" class="w-full px-4 py-3 bg-black/40 border border-green-500/30 rounded-lg text-white ${editDisabledClass}" />
                 <p class="text-xs text-gray-400 mt-1">Examples: twitch.tv/yourname, youtube.com/@you/live, kick.com/yourname</p>
                 <p id="streamUrlHelper" class="text-xs text-amber-200 mt-1" ${streamHelperText ? '' : 'style="display:none;"'}>${streamHelperText}</p>
               </div>
@@ -5925,7 +5329,7 @@ function track(eventName, payload = {}){
                   <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'live_icon', target: 'live' })" aria-label="Open help: Live streaming" title="How Live status works">?</button>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
-                  <button id="liveToggleBtn" data-action="live:toggle" onclick="toggleLive()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" ${!profileEditable || (!streamUrlValid && !liveActive) ? 'disabled' : ''}>${liveToggleLabel}</button>
+                  <button id="liveToggleBtn" onclick="toggleLiveStatus()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" ${!profileEditable || !streamUrlValid ? 'disabled' : ''}>${liveToggleLabel}</button>
                   <a id="watchStreamBtn" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-lg bg-blue-500/20 border border-blue-400/40 text-blue-100 text-sm font-semibold" style="display:${streamUrlValid ? 'inline-flex' : 'none'};">Watch Stream</a>
                   ${livePill}
                   ${liveSinceLabel && liveActive ? `<span class="text-xs text-gray-400">Live since ${liveSinceLabel}</span>` : ''}
@@ -6023,18 +5427,6 @@ function track(eventName, payload = {}){
         }, { totalItems: ownedFiltered.length, totalPages: ownedPagination.totalPages, from: ownedPagination.from, to: ownedPagination.to });
       }
       updateTourUI();
-      } catch (error) {
-        __renderErrors.profile += 1;
-        console.error('[renderProfile] failed', error);
-        profileScriptError = true;
-        if(__renderErrors.profile > 3){
-          profileEl.innerHTML = `
-            <div class="panel border border-red-400/40 bg-red-500/10 text-red-100 text-sm">
-              Profile crashed. Open console.
-            </div>
-          `;
-        }
-      }
     }
 
     function updateStreamControlsFromInput(){
@@ -6042,7 +5434,6 @@ function track(eventName, payload = {}){
       if(!input) return;
       const normalized = normalizeStreamUrlInput(input.value || '');
       const valid = isValidStreamUrl(normalized);
-      const liveActive = currentUser?.isLive === true;
       const helper = document.getElementById('streamUrlHelper');
       if(helper){
         helper.textContent = valid ? '' : (viewingProfile ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
@@ -6055,10 +5446,9 @@ function track(eventName, payload = {}){
           toggleBtn.style.opacity = '0.6';
           toggleBtn.style.cursor = 'not-allowed';
         } else {
-          const allowToggle = valid || liveActive;
-          toggleBtn.disabled = !allowToggle;
-          toggleBtn.style.opacity = allowToggle ? '1' : '0.6';
-          toggleBtn.style.cursor = allowToggle ? 'pointer' : 'not-allowed';
+          toggleBtn.disabled = !valid;
+          toggleBtn.style.opacity = valid ? '1' : '0.6';
+          toggleBtn.style.cursor = valid ? 'pointer' : 'not-allowed';
         }
       }
       const pill = document.getElementById('liveStatusPill');
@@ -6084,44 +5474,40 @@ function track(eventName, payload = {}){
       }
     }
 
-    async function toggleLive(){
+    window.toggleLiveStatus = async () => {
       if(viewingProfile) return;
-      if(!currentUser) return alert('Sign in first.');
+      if(!currentUser) return;
       if(!profileEditMode) return;
       const status = document.getElementById('profileStatus');
       const input = document.getElementById('profileStreamUrl');
       const normalizedStreamUrl = normalizeStreamUrlInput(input?.value || currentUser.streamUrl || '');
       const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
-      if(currentUser.isLive !== true){
-        if(!streamUrlValid){
-          if(status) status.textContent = 'Add a valid stream link to enable Live.';
-          updateStreamControlsFromInput();
-          return;
-        }
-        currentUser.isLive = true;
-        currentUser.liveStartedAt = Date.now();
-      } else {
-        currentUser.isLive = false;
-        currentUser.liveStartedAt = null;
+      if(!streamUrlValid){
+        if(status) status.textContent = 'Add a valid stream link to enable Live.';
+        updateStreamControlsFromInput();
+        return;
       }
-      if(normalizedStreamUrl) currentUser.streamUrl = normalizedStreamUrl;
-      renderProfile();
-      setupEventListeners();
+      draftProfile = draftProfile || cloneProfile(currentUser) || {};
+      const nextIsLive = !(draftProfile.isLive ?? currentUser.isLive ?? false);
+      const nextLiveStartedAt = nextIsLive ? (draftProfile.liveStartedAt || currentUser.liveStartedAt || currentUser.liveSince || new Date().toISOString()) : null;
+      draftProfile.streamUrl = normalizedStreamUrl;
+      draftProfile.isLive = nextIsLive;
+      draftProfile.liveStartedAt = nextLiveStartedAt;
+      const previousProfile = currentUser;
+      currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt });
+      await persistAdminFlagIfNeeded(previousProfile, currentUser);
       try{
-        if(status) status.textContent = currentUser.isLive ? 'Going live...' : 'Ending live...';
+        if(status) status.textContent = nextIsLive ? 'Going live...' : 'Ending live...';
         await persistCurrentUserProfile();
         refreshLiveNowUsers();
         renderProfile();
         setupEventListeners();
-        if(status) status.textContent = currentUser.isLive ? 'Live ✅' : 'Offline ✅';
+        if(status) status.textContent = nextIsLive ? 'Live ✅' : 'Offline ✅';
       }catch(err){
         if(status) status.textContent = 'Live toggle failed ❌: ' + (err.message || err);
-        console.error('[live] persist failed', err);
-        appToast?.('Live status saved locally but failed to sync.');
+        console.error('[profile] live toggle failed', err);
       }
-    }
-    window.toggleLiveStatus = toggleLive;
-    window.toggleLive = toggleLive;
+    };
 
     function renderAuditView(){
       const auditEl = document.getElementById('auditView');
@@ -6181,7 +5567,7 @@ function track(eventName, payload = {}){
           </div>
           <div class="panel text-xs text-gray-300">
             <div class="font-semibold text-white mb-1">Debug</div>
-            <div>Firebase status: ${appState.firebase.status}</div>
+            <div>Firebase enabled: ${firebaseEnabled}</div>
             <div>User key: ${computeUserKey()}</div>
             <div>Songs loaded: ${songs.length}</div>
             <div>Overrides loaded: ${camelotCount} camelot / ${bpmCount} bpm</div>
@@ -6220,23 +5606,37 @@ function track(eventName, payload = {}){
               username: newUsername,
               djName: newDjName,
               usernameLower: normalizeUsernameLower(newUsername),
-              usernameNorm: normalizeUsernameKey(newUsername),
               djNameLower: normalizeUsernameLower(newDjName),
               searchNameLower: normalizeUsernameLower(newUsername),
               searchTokens: buildSearchTokens(newUsername)
             }
             : merged;
           await newRef.set(payload, { merge:true });
+          try{
+            const snapshot = await collection.get();
+            const batch = firestore.batch();
+            let needsCommit = false;
+            snapshot.forEach(doc=>{
+              const data = doc.data()||{};
+              const members = data.bandMembers || [];
+              const updated = members.map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDjName } : m);
+              const changed = JSON.stringify(updated)!==JSON.stringify(members);
+              if(changed){ batch.set(doc.ref,{ bandMembers: updated },{merge:true}); needsCommit=true; }
+            });
+            if(needsCommit) await batch.commit();
+          }catch(err){ console.warn('band member update failed', err); }
           await oldRef.delete().catch(()=>{});
         }catch(e){ if(status) status.textContent = 'Error migrating in Firestore: ' + (e.message||e); throw e; }
       }
 
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
       if(profiles[oldUsername]){
+        profiles[newUsername] = { ...profiles[oldUsername], ...merged, username:newUsername, djName:newDjName };
         delete profiles[oldUsername];
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      } else {
+        profiles[newUsername] = merged;
       }
-      persistProfileCanonical({ ...merged, username:newUsername, djName:newDjName });
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
       updateBandReferencesLocal(oldUsername,newUsername,newDjName);
       currentUser = merged;
       refreshDraftProfileFromCurrentUser();
@@ -6261,17 +5661,6 @@ function track(eventName, payload = {}){
         if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
         alert('Username must be 3-20 chars, letters/numbers/underscore only');
         return;
-      }
-      if(isFirebaseReady() && firebaseAuth?.currentUser){
-        const availability = await ensureUsernameMapping(newUsername, firebaseAuth.currentUser.uid);
-        if(!availability.ok && availability.reason === 'taken'){
-          if(status) status.textContent = 'Username is taken. Choose another.';
-          alert('That username is already taken. Try another.');
-          return;
-        }
-        if(!availability.ok && availability.reason === 'error'){
-          if(status) status.textContent = 'Unable to verify username availability.';
-        }
       }
       draftProfile = draftProfile || cloneProfile(currentUser) || {};
       draftProfile.username = newUsername;
@@ -6316,22 +5705,12 @@ function renderCommunityStat(id, label, icon, value, caption=''){
 }
 
 function render(){
-  bootMark('render_start');
   logEvent('ui_render', { view });
   if(view === 'audit' && !isAdmin()){
     alert('Admin only');
     view = 'browser';
   }
   currentUser = getActiveProfile() || currentUser;
-  if(appState.auth.status === 'signed_out' && !currentUser && !firebaseAuth?.currentUser){
-    showLoginScreen();
-    bootMark('render_done');
-    if(!initialRenderComplete){
-      resetOverlaysAndLoading('initial_render');
-      initialRenderComplete = true;
-    }
-    return;
-  }
   if(!isAdmin() && adminMenuOpen){
     adminMenuOpen = false;
   }
@@ -6371,7 +5750,6 @@ function render(){
   const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}${adminLabel}`;
   const authButtonLabel = firebaseAuth?.currentUser ? 'Logout' : 'Sign In';
   const authButtonAction = firebaseAuth?.currentUser ? 'logoutUser()' : 'showLoginScreen()';
-  const authButtonDataAction = firebaseAuth?.currentUser ? 'auth:logout' : 'auth:login';
   const stickyCtaActive = getStickyCtaConfig().visible;
   document.getElementById('app').innerHTML = `
     <div class="min-h-screen ${stickyCtaActive ? 'sticky-cta-active' : ''}" id="appRoot">
@@ -6393,9 +5771,9 @@ function render(){
                   <button id="adminMenuWhatsNewEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
                   <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
                 </div>`:''}</div>`:''}
-              <button data-action="nav:profile" onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
-              <button data-action="modal:help_open" onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
-              <button data-action="${authButtonDataAction}" onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
+              <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
+              <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
+              <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
             </div>
           </div>
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
@@ -6413,12 +5791,12 @@ function render(){
       <main class="max-w-[1400px] mx-auto px-4 py-6 space-y-4" style="padding-bottom: calc(6rem + var(--safe-bottom));">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div class="flex gap-2 flex-wrap">
-            <button id="browserBtn" data-action="nav:browse" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
+            <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
             <div class="flex items-center gap-1">
-              <button id="setlistBtn" data-action="nav:setlist" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlistIds.length}</span>)</button>
+              <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlistIds.length}</span>)</button>
               <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
-            <button id="profileBtn" data-action="nav:profile" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
+            <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
           </div>
           ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
         </div>
@@ -6548,13 +5926,6 @@ function render(){
   updateTourUI();
   updateStickyCTA();
   maybeAutoOpenQuickStart();
-  bindAppDelegates();
-  bindQuickStartDelegates();
-  bootMark('render_done');
-  if(!initialRenderComplete){
-    resetOverlaysAndLoading('initial_render');
-    initialRenderComplete = true;
-  }
 }
 
 
@@ -6667,39 +6038,20 @@ function render(){
 
     // ------------------ Event listeners and interactions --------------
     let appDelegatesBound = false;
-    function getAppRoot(){
-      return document.getElementById('app');
-    }
-    function isEventInApp(event, app){
-      const target = getEventElement(event);
-      return !!(app && target && app.contains(target));
-    }
     function bindAppDelegates(){
-      const appRoot = getAppRoot();
-      if(!appRoot) {
-        console.error('[Delegates] #app not found — cannot bind delegates');
-        return;
-      }
-      if(window.__appDelegatesBound) return;
-      window.__appDelegatesBound = true;
-      appDelegatesBound = true;
-      document.addEventListener('click', safeOn('click', (e)=>{
-        const appRoot = getAppRoot();
-        if(!appRoot) return;
-        const actionEl = closestFromEvent(e, '[data-action]', { within: appRoot });
-        const action = actionEl?.dataset?.action;
-        if(actionEl && isRoutedAction(action) && handleAction(action, actionEl, e)) return;
       if(appDelegatesBound) return;
-      appRoot.addEventListener('click', safeOn('click', (e)=>{
-        if(closestFromEvent(e, '#mixableFilterBtn', { within: appRoot })){ toggleMixableFilter(); return; }
-        if(closestFromEvent(e, '#ownedFilterBtn', { within: appRoot })){ toggleOwnedFilter(); return; }
-        if(closestFromEvent(e, '#clearSearchBtn', { within: appRoot }) || closestFromEvent(e, '#panelClearSearchBtn', { within: appRoot })){ clearSearch(); return; }
-        if(closestFromEvent(e, '[data-action="clearFilters"]', { within: appRoot })){ clearFilters(); return; }
-        if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: appRoot })){ openQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: appRoot })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: appRoot })){ completeQuickStart({ skipped: true }); return; }
-        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: appRoot })){ moveQuickStartStep(-1); return; }
-        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: appRoot });
+      const app = document.getElementById('app');
+      if(!app) return;
+      app.addEventListener('click', safeOn('click', (e)=>{
+        if(closestFromEvent(e, '#mixableFilterBtn', { within: app })){ toggleMixableFilter(); return; }
+        if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
+        if(closestFromEvent(e, '#clearSearchBtn', { within: app }) || closestFromEvent(e, '#panelClearSearchBtn', { within: app })){ clearSearch(); return; }
+        if(closestFromEvent(e, '[data-action="clearFilters"]', { within: app })){ clearFilters(); return; }
+        if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: app })){ openQuickStart(); return; }
+        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: app })){ closeQuickStart(); return; }
+        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: app })){ completeQuickStart({ skipped: true }); return; }
+        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: app })){ moveQuickStartStep(-1); return; }
+        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: app });
         if(presetBtn){
           const preset = presetBtn.dataset.preset;
           const applied = applyQuickStartPreset(preset);
@@ -6709,7 +6061,7 @@ function render(){
           }
           return;
         }
-        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: appRoot });
+        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: app });
         if(pickBtn){
           const songId = pickBtn.dataset.songId || pickBtn.getAttribute('data-song-id');
           if(songId){
@@ -6726,11 +6078,11 @@ function render(){
           }
           return;
         }
-        if(closestFromEvent(e, '[data-action="mobileNextWindow"]', { within: appRoot })){ shiftMobileWindow(1); return; }
-        if(closestFromEvent(e, '[data-action="mobilePrevWindow"]', { within: appRoot })){ shiftMobileWindow(-1); return; }
-        const headerMoreBtn = closestFromEvent(e, '[data-action="toggleHeaderMore"]', { within: appRoot });
+        if(closestFromEvent(e, '[data-action="mobileNextWindow"]', { within: app })){ shiftMobileWindow(1); return; }
+        if(closestFromEvent(e, '[data-action="mobilePrevWindow"]', { within: app })){ shiftMobileWindow(-1); return; }
+        const headerMoreBtn = closestFromEvent(e, '[data-action="toggleHeaderMore"]', { within: app });
         if(headerMoreBtn){ headerMoreOpen = !headerMoreOpen; render(); setupEventListeners(); return; }
-        const stickyBtn = closestFromEvent(e, '[data-action="stickyCta"]', { within: appRoot });
+        const stickyBtn = closestFromEvent(e, '[data-action="stickyCta"]', { within: app });
         if(stickyBtn){
           const action = stickyBtn.dataset.stickyAction || '';
           if(action === 'open-quickstart'){ openQuickStart(); return; }
@@ -6748,14 +6100,14 @@ function render(){
             return;
           }
         }
-        if(closestFromEvent(e, '#markAllBtn', { within: appRoot }) && !viewingProfile){ markAllOwned(); return; }
-        if(closestFromEvent(e, '#clearAllBtn', { within: appRoot }) && !viewingProfile){ clearAllOwned(); return; }
-        const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: appRoot });
+        if(closestFromEvent(e, '#markAllBtn', { within: app }) && !viewingProfile){ markAllOwned(); return; }
+        if(closestFromEvent(e, '#clearAllBtn', { within: app }) && !viewingProfile){ clearAllOwned(); return; }
+        const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: app });
         if(genreBtn && isAdmin()){
           showGenreMenu(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), e);
           return;
         }
-        const songAction = closestFromEvent(e, '[data-song-action]', { within: appRoot });
+        const songAction = closestFromEvent(e, '[data-song-action]', { within: app });
         if(songAction){
           const action = songAction.dataset.songAction;
           const songId = songAction.dataset.songId || songAction.getAttribute('data-song-id');
@@ -6764,14 +6116,10 @@ function render(){
           if(action === 'toggle-owned' && songId){ toggleOwned(songId); return; }
           if(action === 'toggle-setlist' && songId){ addToSetlist(songId); return; }
           if(action === 'add-sandbox' && songId){ addToSandbox(songId); return; }
-        if(action === 'preview' && songId){ onPreviewClick(songId); return; }
+          if(action === 'preview' && songId){ onPreviewClick(songId); return; }
         }
-      }, { action: 'app-click' }), { capture: true });
-      document.addEventListener('input', safeOn('input', (e)=>{
-        const appRoot = getAppRoot();
-        if(!isEventInApp(e, appRoot)) return;
-        const actionEl = closestFromEvent(e, '[data-oninput]', { within: appRoot });
-        if(actionEl && handleOnInput(actionEl.dataset.oninput, actionEl, e)) return;
+      }, { action: 'app-click' }));
+      app.addEventListener('input', safeOn('input', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
         if(target.id === 'searchInput'){
@@ -6815,24 +6163,14 @@ function render(){
           socialFriendSearchError = '';
           if(socialFriendSearchNotice) setFriendSearchNotice('');
           if(socialFriendSearchDebounce) clearTimeout(socialFriendSearchDebounce);
-          const normalizedQuery = normalizeUsernameKey(socialFriendSearchQuery);
-          if(!normalizedQuery){
+          if(!socialFriendSearchQuery){
             socialFriendSearchResults = [];
             socialFriendSearchLoading = false;
-            setFriendSearchNotice('Type a DJ name to search.', 'info');
             renderProfile();
             setupEventListeners();
             return;
           }
-          if(normalizedQuery.length < FRIEND_SEARCH_MIN){
-            socialFriendSearchResults = [];
-            socialFriendSearchLoading = false;
-            setFriendSearchNotice(`Type at least ${FRIEND_SEARCH_MIN} characters.`, 'warn');
-            renderProfile();
-            setupEventListeners();
-            return;
-          }
-          socialFriendSearchDebounce = setTimeout(()=>{ handleFriendSearch(null, { explicit: false }); }, 320);
+          socialFriendSearchDebounce = setTimeout(()=>{ handleFriendSearch(null, { explicit: false }); }, 300);
         }
         if(target.id === 'ratingCommentInput'){
           ratingDraft.comment = target.value;
@@ -6840,10 +6178,8 @@ function render(){
           if(countEl) countEl.textContent = `${ratingDraft.comment.length}/${RATING_MAX_COMMENT}`;
         }
         if(target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(target.value); }
-      }, { action: 'app-input' }), { capture: true });
-      document.addEventListener('change', safeOn('change', (e)=>{
-        const appRoot = getAppRoot();
-        if(!isEventInApp(e, appRoot)) return;
+      }, { action: 'app-input' }));
+      app.addEventListener('change', safeOn('change', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
         if(target.id === 'keyMatchModeSelect'){ setKeyMatchMode(target.value); }
@@ -6854,28 +6190,22 @@ function render(){
         if(target.id === 'profileFriendRequestsToggle' && !viewingProfile){
           updateDraftProfile({ allowFriendRequests: target.checked });
         }
-      }, { action: 'app-change' }), { capture: true });
-      document.addEventListener('focusin', safeOn('focusin', (e)=>{
-        const appRoot = getAppRoot();
-        if(!isEventInApp(e, appRoot)) return;
+      }, { action: 'app-change' }));
+      app.addEventListener('focusin', safeOn('focusin', (e)=>{
         const target = getEventElement(e);
         if(target?.id === 'searchInput'){
           isSearchFocused = true;
           updateStickyCTA();
         }
-      }, { action: 'app-focusin' }), { capture: true });
-      document.addEventListener('focusout', safeOn('focusout', (e)=>{
-        const appRoot = getAppRoot();
-        if(!isEventInApp(e, appRoot)) return;
+      }, { action: 'app-focusin' }));
+      app.addEventListener('focusout', safeOn('focusout', (e)=>{
         const target = getEventElement(e);
         if(target?.id === 'searchInput'){
           isSearchFocused = false;
           updateStickyCTA();
         }
-      }, { action: 'app-focusout' }), { capture: true });
-      document.addEventListener('keydown', safeOn('keydown', (e)=>{
-        const appRoot = getAppRoot();
-        if(!isEventInApp(e, appRoot)) return;
+      }, { action: 'app-focusout' }));
+      app.addEventListener('keydown', safeOn('keydown', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
         if(target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
@@ -6884,24 +6214,15 @@ function render(){
           localStorage.setItem('jamMixer.stickyCtaDismissed', 'true');
           updateStickyCTA();
         }
-      }, { action: 'app-keydown' }), { capture: true });
-      document.addEventListener('contextmenu', safeOn('contextmenu', (e)=>{
-        const appRoot = getAppRoot();
-        if(!appRoot) return;
-        const target = closestFromEvent(e, '[data-song-id-genre]', { within: appRoot });
+      }, { action: 'app-keydown' }));
+      app.addEventListener('contextmenu', safeOn('contextmenu', (e)=>{
+        const target = closestFromEvent(e, '[data-song-id-genre]', { within: app });
         if(target && isAdmin()){
           e.preventDefault();
           showGenreMenu(target.dataset.songIdGenre || target.getAttribute('data-song-id-genre'), e);
         }
-      }, { action: 'app-contextmenu' }), { capture: true });
-      window.__delegates = window.__delegates || {};
-      window.__delegates.appDelegatesBound = true;
-      console.debug('[ui] app delegates bound ✅');
       }, { action: 'app-contextmenu' }));
       appDelegatesBound = true;
-      window.__delegates = window.__delegates || {};
-      window.__delegates.appDelegatesBound = true;
-      console.log('[Delegates] app delegates bound ✅');
     }
 
     function bindQuickStartDelegates(){
@@ -6952,8 +6273,6 @@ function render(){
       bindProfileHandlers();
       updateProfileErrorBanner();
       runDelegationSelfTest();
-      window.__uiBoundAt = Date.now();
-      console.debug('[ui] delegates bound at', window.__uiBoundAt);
       const searchInput = document.getElementById('searchInput');
       if(searchInput){
         const clearSearchBtn = document.getElementById('clearSearchBtn');
@@ -7022,84 +6341,47 @@ function render(){
       }, { passive: false });
     }
 
-    function isRoutedAction(action){
-      return action?.startsWith('nav:')
-        || action?.startsWith('modal:')
-        || action?.startsWith('auth:')
-        || action?.startsWith('live:')
-        || action === 'addSet'
-        || action === 'removeSet'
-        || action === 'switchView';
-    }
-    function handleAction(action, el, event){
-      if(!action) return false;
-      let handled = true;
-      switch(action){
-        case 'nav:browse':
-          switchView('browser');
-          break;
-        case 'nav:setlist':
-          switchView('setlist');
-          break;
-        case 'nav:profile':
-          openProfileView();
-          break;
-        case 'modal:help_open':
-          openHelp();
-          break;
-        case 'modal:help_close':
-          closeHelp();
-          break;
-        case 'auth:logout':
-          logoutUser();
-          break;
-        case 'auth:login':
-          showLoginScreen();
-          break;
-        case 'live:toggle':
-          toggleLive();
-          break;
-        case 'addSet': {
-          const id = el?.dataset?.id;
-          if(!id) { handled = false; break; }
-          addToSetlist(id);
-          break;
-        }
-        case 'removeSet': {
-          const id = el?.dataset?.id;
-          if(!id) { handled = false; break; }
-          removeFromSetlist(id);
-          break;
-        }
-        case 'switchView': {
-          const viewName = el?.dataset?.view;
-          if(!viewName) { handled = false; break; }
-          switchView(viewName);
-          break;
-        }
-        default:
-          console.warn('[ui] unknown action', action);
-          handled = false;
+    let dataActionDelegatesBound = false;
+    function handleDataAction(el, event){
+      if(!el) return;
+      const action = el.dataset?.action;
+      if(!action) return;
+      if(action === 'addSet'){
+        const id = el.dataset?.id;
+        if(!id) return;
+        event?.preventDefault();
+        addToSetlist(id);
+        return;
       }
-      if(handled && event){
-        event.preventDefault();
-        event.stopPropagation();
+      if(action === 'removeSet'){
+        const id = el.dataset?.id;
+        if(!id) return;
+        event?.preventDefault();
+        removeFromSetlist(id);
+        return;
       }
-      return handled;
+      if(action === 'switchView'){
+        const viewName = el.dataset?.view;
+        if(!viewName) return;
+        event?.preventDefault();
+        switchView(viewName);
+      }
     }
 
-    function handleOnInput(action, el){
-      if(!action) return false;
-      try{
-        if(action === 'stream-url'){
-          updateStreamControlsFromInput();
-          return true;
-        }
-      }catch(err){
-        console.error('[ui] input failed', action, err);
-      }
-      return false;
-    }
+    document.addEventListener('click', safeOn('click', (e) => {
+      const el = closestFromEvent(e, '[data-action]');
+      if (!el) return;
+      handleDataAction(el, e);
+    }, { action: 'data-action-click' }));
+
+    document.addEventListener('keydown', safeOn('keydown', (e) => {
+      if(e.key !== 'Enter' && e.key !== ' ') return;
+      const el = closestFromEvent(e, '[data-action]');
+      if (!el) return;
+      e.preventDefault();
+      handleDataAction(el, e);
+    }, { action: 'data-action-keydown' }));
+    dataActionDelegatesBound = true;
 
     window.setPriorityStrength = (val) => {
       const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
@@ -7382,17 +6664,8 @@ function render(){
     const HELP_SECTION_IDS = {
       setlist: 'help-setlist',
       live: 'help-live',
-      offline: 'help-offline',
-      owned: 'help-owned',
-      mixer_basics: 'help-mixer-basics',
-      camelot_bpm: 'help-camelot-bpm',
-      mixable: 'help-mixable',
-      profile_style: 'help-profile-style',
-      mashup_tools: 'help-mashup-tools',
-      sandbox: 'help-sandbox',
-      admin_overrides: 'help-admin-overrides',
-      export_import: 'help-export-import',
-      advanced_tips: 'help-advanced-tips'
+      offline: 'offlineHelp',
+      owned: 'ownedHelp'
     };
     const HELP_FAQ_FEATURES = {
       go_live_disabled: 'hasLiveProfile',
@@ -7484,13 +6757,8 @@ function render(){
       if(basicSectionsEl){
         basicSectionsEl.innerHTML = '';
         const sections = Array.isArray(helpData?.basic?.sections) ? helpData.basic.sections : [];
-        sections.forEach((section, index) => {
+        sections.forEach(section => {
           basicSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ol', includeFeatures, includeIds }));
-          if(index < sections.length - 1){
-            const divider = document.createElement('hr');
-            divider.className = 'helpDivider';
-            basicSectionsEl.appendChild(divider);
-          }
         });
       }
       if(faqListEl){
@@ -7520,13 +6788,8 @@ function render(){
       if(advancedSectionsEl){
         advancedSectionsEl.innerHTML = '';
         const sections = Array.isArray(helpData?.advanced?.sections) ? helpData.advanced.sections : [];
-        sections.forEach((section, index) => {
+        sections.forEach(section => {
           advancedSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ul', includeFeatures: false, includeIds }));
-          if(index < sections.length - 1){
-            const divider = document.createElement('hr');
-            divider.className = 'helpDivider';
-            advancedSectionsEl.appendChild(divider);
-          }
         });
       }
     }
@@ -7747,13 +7010,14 @@ function render(){
       const helpContent = document.getElementById('helpContent');
       if(!helpContent) return;
       const panes = document.querySelectorAll('[data-help-pane]');
+      helpScroll[helpTab] = helpContent.scrollTop;
       const previousTab = helpTab;
       helpTab = tab === 'advanced' ? 'advanced' : 'basic';
       panes.forEach(pane => {
         const isActive = pane.dataset.helpPane === helpTab;
         pane.style.display = isActive ? 'block' : 'none';
       });
-      helpContent.scrollTop = 0;
+      helpContent.scrollTop = helpScroll[helpTab] || 0;
       syncHelpTabsA11y();
       if(helpOpenedAt && (!helpTabTracked || previousTab !== helpTab)){
         track('help_tab_viewed', { tab: helpTab, target: helpOpenTarget });
@@ -7791,87 +7055,6 @@ function render(){
       });
     }
 
-    const HELP_TOUR_STEPS = [
-      { tab: 'basic', id: 'help-mixer-basics', label: 'Mixer Basics' },
-      { tab: 'basic', id: 'help-camelot-bpm', label: 'Camelot & BPM' },
-      { tab: 'basic', id: 'help-mixable', label: 'Mixable' },
-      { tab: 'basic', id: 'help-setlist', label: 'Setlist' },
-      { tab: 'advanced', id: 'help-mashup-tools', label: 'Mashup Tools & Sandbox' }
-    ];
-    const HELP_TOUR_DELAY_MS = 1800;
-
-    function clearHelpTourTimer(){
-      if(helpTourTimer){
-        clearTimeout(helpTourTimer);
-        helpTourTimer = null;
-      }
-    }
-
-    function clearHelpTourHighlights(){
-      document.querySelectorAll('.helpTourHighlight').forEach((el) => {
-        el.classList.remove('helpTourHighlight');
-      });
-    }
-
-    function updateHelpTourProgress(){
-      const progress = document.getElementById('helpTourProgress');
-      if(!progress) return;
-      if(!helpTourActive){
-        progress.style.display = 'none';
-        progress.textContent = '';
-        return;
-      }
-      progress.style.display = 'inline-flex';
-      progress.textContent = `Step ${helpTourStep + 1}/${HELP_TOUR_STEPS.length}`;
-    }
-
-    function focusHelpHeading(){
-      const pane = document.querySelector(`[data-help-pane="${helpTab}"]`);
-      const heading = pane?.querySelector('h3');
-      if(heading){
-        heading.setAttribute('tabindex', '-1');
-        heading.focus({ preventScroll: true });
-        return;
-      }
-      const modal = document.getElementById('helpModal');
-      if(modal){
-        modal.setAttribute('tabindex', '-1');
-        modal.focus({ preventScroll: true });
-      }
-    }
-
-    function goToHelpTourStep(index){
-      if(index >= HELP_TOUR_STEPS.length){
-        helpTourActive = false;
-        updateHelpTourProgress();
-        return;
-      }
-      helpTourStep = index;
-      helpTourActive = true;
-      updateHelpTourProgress();
-      const step = HELP_TOUR_STEPS[index];
-      setHelpTab(step.tab);
-      requestAnimationFrame(() => {
-        const targetEl = document.getElementById(step.id);
-        if(targetEl){
-          clearHelpTourHighlights();
-          targetEl.classList.add('helpTourHighlight');
-          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          setTimeout(() => targetEl.classList.remove('helpTourHighlight'), 1200);
-        }
-      });
-      clearHelpTourTimer();
-      helpTourTimer = setTimeout(() => goToHelpTourStep(index + 1), HELP_TOUR_DELAY_MS);
-    }
-
-    function runHelpTour(){
-      clearHelpTourTimer();
-      clearHelpTourHighlights();
-      helpTourStep = 0;
-      helpTourActive = true;
-      goToHelpTourStep(0);
-    }
-
     function openHelpModal(options = {}){
       const modal = document.getElementById('helpModal');
       if(!modal) return;
@@ -7881,10 +7064,6 @@ function render(){
       helpOpenSource = source;
       helpOpenedAt = Date.now();
       helpTabTracked = false;
-      helpTourActive = false;
-      clearHelpTourTimer();
-      clearHelpTourHighlights();
-      updateHelpTourProgress();
       track('help_opened', buildHelpOpenedPayload(source, target));
       const features = resolveFeatureFlags();
       renderWhatsNew(features);
@@ -7893,8 +7072,10 @@ function render(){
       helpTab = 'basic';
       helpScroll = { basic: 0, advanced: 0 };
       setHelpTab('basic');
-      showModal('helpModal');
-      focusHelpHeading();
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden','false');
+      const activeTab = document.querySelector('.helpTabBtn.active');
+      if(activeTab){ activeTab.focus(); } else { modal.focus(); }
       const targetId = target === 'setlist' ? 'help-setlist' : target === 'live' ? 'help-live' : null;
       if(targetId){
         setTimeout(() => {
@@ -7919,11 +7100,8 @@ function render(){
       helpOpenTarget = 'none';
       helpOpenSource = 'other';
       helpTabTracked = false;
-      helpTourActive = false;
-      clearHelpTourTimer();
-      clearHelpTourHighlights();
-      updateHelpTourProgress();
-      hideModal('helpModal');
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden','true');
     }
 
     function closeAdminEditorModal(id){
@@ -8407,7 +7585,7 @@ function render(){
     // ----------------------- Init / Auth check ------------------------
     loadOverridesFromStorage();
     handleNetworkStatusChange();
-    window.addEventListener('online', ()=>{ handleNetworkStatusChange(); initFirebaseOnce(); if(!songs.length) loadSongs(); });
+    window.addEventListener('online', ()=>{ handleNetworkStatusChange(); if(!songs.length) loadSongs(); });
     window.addEventListener('offline', handleNetworkStatusChange);
     if('serviceWorker' in navigator){
       window.addEventListener('load', ()=>{
@@ -8416,12 +7594,21 @@ function render(){
     }
     initCommunityMetrics();
     async function checkAuth(){
-      await initFirebaseOnce();
-      refreshOnlineStatusBanner();
-      if (isFirebaseReady() && firebaseAuth) {
+      if (firebaseEnabled && firebaseAuth) {
+        setupFirebaseAuthListener();
+        const fbUser = firebaseAuth.currentUser;
+        if (fbUser) {
+          await resolveAuthSuccess(fbUser);
+          return;
+        }
+      }
+      const activeProfile = getActiveProfile();
+      if(activeProfile){
+        await enterAppWithProfile(activeProfile, { loadOverrides: !!firebaseAuth?.currentUser });
         return;
       }
-      await applyAuthState(null);
+      await loadRemoteConfig();
+      showLoginScreen();
     }
 
     updatePerformanceMode();
@@ -8452,16 +7639,11 @@ function render(){
       }
     }, { action: 'drag-song-card' }));
     // ---------------- Expose some helpers for debugging ----------------
-    window.appState = appState;
-    window.refreshOnlineStatusBanner = refreshOnlineStatusBanner;
-    window.showLoginScreen = showLoginScreen;
-    window.renderProfile = renderProfile;
     window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile; window.startTour = startTour; window.refreshLiveNowUsers = refreshLiveNowUsers;
     window.__perfState = {
       get listRenderCount(){ return listRenderCount; },
       get maxMobileCards(){ return maxMobileCardsRendered; }
     };
-    console.info('[boot] main script parsed');
   </script>
 </body>
 </html>

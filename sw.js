@@ -1,9 +1,10 @@
-const APP_SHELL_CACHE = 'fortnite-jam-mixer-shell-v5';
-const RUNTIME_CACHE = 'fortnite-jam-mixer-runtime-v5';
+const APP_SHELL_CACHE = 'fortnite-jam-mixer-shell-v4';
+const RUNTIME_CACHE = 'fortnite-jam-mixer-runtime-v4';
 const APP_SHELL = ['/', '/index.html', '/offline.css', '/manifest.webmanifest'];
 const RUNTIME_PREFIXES = [
   'https://cdn.tailwindcss.com',
-  'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks'
+  'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
+  'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks'
 ];
 const FIREBASE_BYPASS_PATTERNS = ['firebaseio.com', 'firebasedatabase.app', 'www.gstatic.com/firebasejs'];
 

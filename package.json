@@ -5,7 +5,9 @@
   "description": "Fortnite Jam Mixer web app with Firebase-backed metrics.",
   "type": "module",
   "scripts": {
-    "check:no-legacy-proxy": "node ./scripts/check-no-legacy-proxy.mjs"
+    "check:merge-markers": "bash scripts/no-merge-markers.sh",
+    "check:index-syntax": "node scripts/check-index-syntax.js",
+    "check:guardrails": "npm run check:merge-markers && npm run check:index-syntax"
   },
   "dependencies": {
     "firebase-admin": "^12.5.0"
