@@ -1410,6 +1410,37 @@ function track(eventName, payload = {}){
       (ids||[]).forEach(id=>{ map[id] = true; });
       return map;
     }
+    function persistProfileCanonical(profile){
+      if(!profile) return null;
+      const normalized = normalizeProfileShape(profile, profile.uid || profile.username || '');
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      if(normalized.username) profiles[normalized.username] = normalized;
+      if(normalized.uid) profiles[normalized.uid] = normalized;
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      return normalized;
+    }
+    function migrateAndMergeProfiles(a, b){
+      const merged = {
+        ...b,
+        ...a,
+        ownedTracks: a.ownedTracks?.length ? a.ownedTracks : b.ownedTracks,
+        setlist: a.setlist?.length ? a.setlist : b.setlist,
+        bandMembers: a.bandMembers?.length ? a.bandMembers : b.bandMembers,
+        genreOverrides: { ...b.genreOverrides, ...a.genreOverrides },
+        preferences: { ...b.preferences, ...a.preferences },
+        updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0)
+      };
+      return persistProfileCanonical(merged);
+    }
+    function loadUserProfileSmart({ username, uid }){
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      const byUid = uid && profiles[uid];
+      const byUsername = username && profiles[username];
+      if(byUid && byUsername){
+        return migrateAndMergeProfiles(byUid, byUsername);
+      }
+      return normalizeProfileShape(byUid || byUsername || null, uid || username);
+    }
     async function saveUserProfileToBackend(profile) {
       if (!profile) return;
       const firebaseUser = firebaseAuth?.currentUser;
@@ -1457,10 +1488,7 @@ function track(eventName, payload = {}){
           backendOk = false;
         }
       }
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      if (payload.username) profiles[payload.username] = payload;
-      if (profileKey) profiles[profileKey] = payload;
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      persistProfileCanonical(payload);
       return backendOk;
     }
     async function loadUserProfileFromBackend(identifier) {
@@ -2026,6 +2054,38 @@ function track(eventName, payload = {}){
     function cloneProfile(profile){
       if(!profile) return null;
       try { return structuredClone(profile); } catch(_) { return JSON.parse(JSON.stringify(profile)); }
+    }
+    function getProfileRecoveryStatus(profile){
+      if(!profile) return { needsRecovery: false };
+      const ownedList = profile?.ownedTracks;
+      const missingOwnedTracks = !Array.isArray(ownedList) || ownedList.length === 0;
+      const missingDjName = !profile?.djName;
+      const missingPreferences = !profile?.preferences;
+      return {
+        needsRecovery: missingOwnedTracks || missingDjName || missingPreferences,
+        missingOwnedTracks,
+        missingDjName,
+        missingPreferences
+      };
+    }
+    async function recoverProfileMismatch(){
+      const savedUsername = localStorage.getItem('currentUser') || currentUser?.username;
+      const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid;
+      const recovered = await loadUserProfileSmart({ username: savedUsername, uid });
+      console.warn('[profile] recovery requested', { recovered, savedUsername, uid });
+      if(recovered){
+        currentUser = applyAdminFlag(recovered);
+        ownedTracks = currentUser.ownedTracks || [];
+        bandMembers = currentUser.bandMembers || [];
+        genreOverrides = currentUser.genreOverrides || {};
+        applyPreferencesFromProfile(currentUser);
+        refreshDraftProfileFromCurrentUser();
+        persistProfileCanonical(currentUser);
+        renderProfile();
+        setupEventListeners();
+      } else {
+        showLoginScreen();
+      }
     }
     function refreshDraftProfileFromCurrentUser(){
       if(viewingProfile) return;
@@ -2780,14 +2840,11 @@ function track(eventName, payload = {}){
         persistNamespacedState();
         persistKeyMatchSettings();
         localStorage.setItem('currentUser', currentUser.username);
-        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-        if (currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...mergedProfile };
-        if (currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...mergedProfile };
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+        persistProfileCanonical(mergedProfile);
         console.debug('[profile] local save ok');
         const backendOk = await saveUserProfileToBackend(mergedProfile);
         console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
-        const verifyProfile = await loadUserProfile(currentUser.username);
+        const verifyProfile = await loadUserProfileSmart({ username: currentUser.username, uid: currentUser.uid });
         const ownedMatch = JSON.stringify(normalizeOwnedList(verifyProfile?.ownedTracks)) === JSON.stringify(normalizeOwnedList(mergedProfile.ownedTracks));
         const prefMatch = JSON.stringify(verifyProfile?.preferences || {}) === JSON.stringify(mergedProfile.preferences || {});
         const genreMatch = JSON.stringify(verifyProfile?.genreOverrides || {}) === JSON.stringify(mergedProfile.genreOverrides || {});
@@ -2806,31 +2863,45 @@ function track(eventName, payload = {}){
         isPersistingProfile = false;
       }
     }
-    async function loadUserProfile(username){
-      if(!username && !firebaseAuth?.currentUser) return null;
-      const firebaseUser = firebaseAuth?.currentUser;
-      if(firestore && (firebaseUser || username)){
-        try{
-          const collection = getProfileCollection();
-          const legacyCollection = getLegacyProfileCollection();
-          if(collection){
-            const doc = await firestoreApi.getDoc(collection.doc(firebaseUser?.uid || username), 'profiles.load.local');
-            if(doc.exists) return normalizeProfileShape(doc.data(), firebaseUser?.uid || username);
-          }
-          if(legacyCollection){
-            const legacyDoc = await firestoreApi.getDoc(legacyCollection.doc(firebaseUser?.uid || username), 'profiles.load.local.legacy');
-            if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), firebaseUser?.uid || username);
-          }
-        }catch(e){ console.warn('Firestore load failed',e); }
+    async function bootProfile(firebaseUser){
+      const savedUsername = localStorage.getItem('currentUser') || localStorage.getItem('activeProfileUid');
+      const profile = await loadUserProfileSmart({
+        username: savedUsername,
+        uid: firebaseUser?.uid
+      });
+      if(profile){
+        currentUser = applyAdminFlag(profile);
+        ownedTracks = currentUser.ownedTracks || [];
+        bandMembers = currentUser.bandMembers || [];
+        genreOverrides = currentUser.genreOverrides || {};
+        applyPreferencesFromProfile(currentUser);
+        loadNamespacedState();
+        loadOverridesFromStorage();
+        if(firebaseUser){
+          await loadUserOverridesFromBackend();
+        }
+        refreshDraftProfileFromCurrentUser();
+        persistProfileCanonical(currentUser);
+        if(currentUser?.uid || currentUser?.username){
+          localStorage.setItem('currentUser', currentUser.uid || currentUser.username);
+        }
+        view = 'browser';
+        loadSongs();
+        await maybeLoadSharedProfile();
+        await loadRemoteConfig();
+        return;
       }
-      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      if(firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
-      return normalizeProfileShape(profiles[username], username) || null;
+      if(firebaseUser){
+        await resolveAuthSuccess(firebaseUser);
+        return;
+      }
+      await loadRemoteConfig();
+      showLoginScreen();
     }
 
     async function loadProfileForViewing(username){
       if(!username) return null;
-      const profile = await loadUserProfileFromBackend(username) || await loadUserProfile(username);
+      const profile = await loadUserProfileFromBackend(username) || await loadUserProfileSmart({ username, uid: firebaseAuth?.currentUser?.uid });
       if(profile?.isPublic === false){
         const ownerId = firebaseAuth?.currentUser?.uid || currentUser?.uid || currentUser?.username;
         if(ownerId !== profile.uid && ownerId !== profile.username){
@@ -3627,8 +3698,7 @@ function track(eventName, payload = {}){
           const existingProfile = normalizeProfileShape(profiles[streamerUsername] || viewingProfile || { username: streamerUsername }, streamerUsername);
           const aggregates = updateAggregatesWithRating(existingProfile || {}, previousRating?.stars, stars);
           const mergedProfile = { ...(profiles[streamerUsername] || {}), ...existingProfile, ...aggregates };
-          profiles[streamerUsername] = mergedProfile;
-          localStorage.setItem('userProfiles', JSON.stringify(profiles));
+          persistProfileCanonical(mergedProfile);
           if(viewingProfile && (viewingProfile.username === streamerUsername || viewingProfile.uid === streamerUsername)){
             viewingProfile = { ...viewingProfile, ...aggregates };
           }
@@ -3927,8 +3997,7 @@ function track(eventName, payload = {}){
       const savedId = activeUid || localStorage.getItem('currentUser');
       if(!savedId) return null;
       try{
-        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-        if(profiles[savedId]) return normalizeProfileShape(profiles[savedId], savedId);
+        return loadUserProfileSmart({ username: savedId, uid: savedId });
       }catch(err){ console.warn('[auth] stored profiles parse failed', err); }
       return null;
     }
@@ -3961,10 +4030,7 @@ function track(eventName, payload = {}){
         localStorage.setItem('activeProfileUid', currentUser.uid);
         localStorage.setItem('isAuthed', 'true');
       }
-      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      if(currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...currentUser };
-      if(currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...currentUser };
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      persistProfileCanonical(currentUser);
       view = 'browser';
       await persistCurrentUserProfile();
       await maybeLoadSharedProfile();
@@ -4024,7 +4090,7 @@ function track(eventName, payload = {}){
           setLocalAuthError('Choose a username with letters or numbers.');
           return;
         }
-        const existingProfile = await loadUserProfile(username);
+        const existingProfile = await loadUserProfileSmart({ username });
         const baseProfile = existingProfile || {
           ownedTracks: [],
           setlistIds: [],
@@ -4144,12 +4210,11 @@ function track(eventName, payload = {}){
         const uid = firebaseAuth.currentUser.uid;
         const existing = profiles[uid] || {};
         if(linkData){
-          profiles[uid] = { ...existing, oauth: { ...(existing.oauth || {}), epic: linkData } };
+          persistProfileCanonical({ ...existing, oauth: { ...(existing.oauth || {}), epic: linkData } });
         } else if(existing.oauth && existing.oauth.epic){
           delete existing.oauth.epic;
-          profiles[uid] = { ...existing, oauth: { ...(existing.oauth || {}) } };
+          persistProfileCanonical({ ...existing, oauth: { ...(existing.oauth || {}) } });
         }
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
       }catch(e){ /* non-fatal cache failure */ }
     }
 
@@ -4336,21 +4401,19 @@ function track(eventName, payload = {}){
     function setupFirebaseAuthListener() {
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
+        appState.auth.user = user || null;
+        appState.auth.status = user ? 'signed_in' : 'signed_out';
+        appState.auth.errorMsg = '';
         if (user) {
-          appState.auth.user = user;
-          appState.auth.status = 'signed_in';
-          appState.auth.errorMsg = '';
-          await resolveAuthSuccess(user);
+          await bootProfile(user);
         } else {
           authSettledUser = null;
           currentUser = null;
-          appState.auth.user = null;
-          appState.auth.status = 'signed_out';
           if(userProfileUnsub){
             userProfileUnsub();
             userProfileUnsub = null;
           }
-          showLoginScreen();
+          await bootProfile(null);
         }
       });
     }
@@ -4401,7 +4464,6 @@ function track(eventName, payload = {}){
         }
 
         setupFirebaseAuthListener();
-        await resolveAuthSuccess(firebaseAuth.currentUser);
 
       } catch(err){
         console.error(err);
@@ -5194,6 +5256,16 @@ function track(eventName, payload = {}){
       const profileEditable = !viewOnly && profileEditMode;
       const profileOwner = viewingProfile || currentUser || {};
       const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
+      const recoveryStatus = (!viewOnly && currentUser) ? getProfileRecoveryStatus(currentUser) : { needsRecovery: false };
+      const recoveryBanner = recoveryStatus.needsRecovery
+        ? `<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <div class="font-semibold">⚠️ Profile mismatch detected</div>
+              <div class="text-xs text-amber-100/80">Some profile fields look empty. Recover automatically to re-sync your data.</div>
+            </div>
+            <button type="button" onclick="recoverProfileMismatch()" class="px-3 py-2 rounded-lg bg-amber-500/30 border border-amber-300/50 text-amber-100 text-xs font-semibold">Recover automatically</button>
+          </div>`
+        : '';
       const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
       const usernameVal = editableProfile?.username || '';
       const djVal = editableProfile?.djName || usernameVal;
@@ -5629,6 +5701,7 @@ function track(eventName, payload = {}){
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-5xl mx-auto relative z-10" style="${profileAccentStyle}">
           ${profileErrorBanner}
+          ${recoveryBanner}
           ${onlineStatusBanner}
           <div class="panel space-y-3">
             <div class="flex items-center justify-between">
@@ -5960,12 +6033,10 @@ function track(eventName, payload = {}){
 
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
       if(profiles[oldUsername]){
-        profiles[newUsername] = { ...profiles[oldUsername], ...merged, username:newUsername, djName:newDjName };
         delete profiles[oldUsername];
-      } else {
-        profiles[newUsername] = merged;
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
       }
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      persistProfileCanonical({ ...merged, username:newUsername, djName:newDjName });
       updateBandReferencesLocal(oldUsername,newUsername,newDjName);
       currentUser = merged;
       refreshDraftProfileFromCurrentUser();
@@ -8054,19 +8125,9 @@ function render(){
       refreshOnlineStatusBanner();
       if (isFirebaseReady() && firebaseAuth) {
         setupFirebaseAuthListener();
-        const fbUser = firebaseAuth.currentUser;
-        if (fbUser) {
-          await resolveAuthSuccess(fbUser);
-          return;
-        }
-      }
-      const activeProfile = getActiveProfile();
-      if(activeProfile){
-        await enterAppWithProfile(activeProfile, { loadOverrides: !!firebaseAuth?.currentUser });
         return;
       }
-      await loadRemoteConfig();
-      showLoginScreen();
+      await bootProfile(null);
     }
 
     updatePerformanceMode();
