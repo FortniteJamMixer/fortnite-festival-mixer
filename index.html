@@ -216,6 +216,14 @@
     @keyframes personaSpark { 0%,100% { transform: translateY(0); opacity: 0.8; } 50% { transform: translateY(-3px); opacity: 1; } }
     .profile-toggle { accent-color: var(--profile-accent, #ff6b9d); }
 
+    [aria-hidden="true"] { pointer-events: none !important; }
+
+    .quickstart-modal[aria-hidden="true"],
+    #helpModal[aria-hidden="true"],
+    #tourOverlay[aria-hidden="true"] {
+      display: none !important;
+    }
+
     /* Help modal */
     #helpModal {
       display: none;
@@ -570,6 +578,14 @@ const BRAND = Object.freeze({
 });
 const DEBUG_UI = false;
 const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).get('debug') === '1');
+const DEBUG_CLICKS = false;
+if (DEBUG_CLICKS && !window.__clickTracerBound) {
+  window.__clickTracerBound = true;
+  document.addEventListener('click', (e) => {
+    const el = e.target;
+    console.log('[Click]', el?.tagName, el?.id, el?.className, el?.dataset);
+  }, { capture: true });
+}
 let profileScriptError = null;
 document.title = BRAND.BROWSER_TITLE;
 
@@ -657,18 +673,17 @@ function showDelegationToast(message){
   setTimeout(()=>{ toast.remove(); }, 3000);
 }
 
-function safeOn(type, handler, meta = {}){
-  return function(event){
-    try{
-      handler(event);
-    }catch(err){
-      const detail = {
-        type,
-        action: meta.action || meta.selector || 'unknown',
-        stack: err?.stack || String(err)
-      };
-      console.error('[delegation] handler error', detail);
-      showDelegationToast(`[delegation] ${type} error`);
+function safeOn(eventName, handler, meta = {}) {
+  if (typeof handler !== 'function') {
+    console.error('[safeOn] handler is not a function', { eventName, meta, handler });
+    return function noop(){};
+  }
+  return function safeWrapped(ev) {
+    try {
+      return handler(ev);
+    } catch (err) {
+      console.error(`[safeOn:${eventName}] handler crashed`, { err, meta });
+      // Do NOT throw; never break all future interactions
     }
   };
 }
@@ -6356,6 +6371,8 @@ function render(){
   updateTourUI();
   updateStickyCTA();
   maybeAutoOpenQuickStart();
+  bindAppDelegates();
+  bindQuickStartDelegates();
 }
 
 
@@ -6469,9 +6486,12 @@ function render(){
     // ------------------ Event listeners and interactions --------------
     let appDelegatesBound = false;
     function bindAppDelegates(){
-      if(appDelegatesBound) return;
       const app = document.getElementById('app');
-      if(!app) return;
+      if(!app) {
+        console.error('[Delegates] #app not found — cannot bind delegates');
+        return;
+      }
+      if(appDelegatesBound) return;
       app.addEventListener('click', safeOn('click', (e)=>{
         if(closestFromEvent(e, '#mixableFilterBtn', { within: app })){ toggleMixableFilter(); return; }
         if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
@@ -6663,6 +6683,9 @@ function render(){
         }
       }, { action: 'app-contextmenu' }));
       appDelegatesBound = true;
+      window.__delegates = window.__delegates || {};
+      window.__delegates.appDelegatesBound = true;
+      console.log('[Delegates] app delegates bound ✅');
     }
 
     function bindQuickStartDelegates(){
