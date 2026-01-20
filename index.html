@@ -587,6 +587,8 @@ const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).g
 if ((DEBUG_UI || DEBUG_PROFILE) && typeof window !== 'undefined' && 'app' in window) {
   console.warn('[boot] Avoid top-level "app" variable; found window.app.', { app: window.app });
 }
+// Pre-merge check (run in shell): evaluate PRE_MERGE_CHECK_COMMAND.
+const PRE_MERGE_CHECK_COMMAND = 'grep -R "' + '<'.repeat(7) + '\\|' + '='.repeat(7) + '\\|' + '>'.repeat(7) + '" -n index.html && exit 1 || exit 0';
 const DEBUG_CLICKS = true;
 if (DEBUG_CLICKS && !window.__clickTracerBound) {
   window.__clickTracerBound = true;
@@ -599,12 +601,6 @@ if (DEBUG_CLICKS && !window.__clickTracerBound) {
       action: el?.dataset?.action,
       text: (el?.textContent || '').trim().slice(0, 60)
     });
-const DEBUG_CLICKS = false;
-if (DEBUG_CLICKS && !window.__clickTracerBound) {
-  window.__clickTracerBound = true;
-  document.addEventListener('click', (e) => {
-    const el = e.target;
-    console.log('[Click]', el?.tagName, el?.id, el?.className, el?.dataset);
   }, { capture: true });
 }
 let profileScriptError = null;
@@ -8333,6 +8329,7 @@ function render(){
       get listRenderCount(){ return listRenderCount; },
       get maxMobileCards(){ return maxMobileCardsRendered; }
     };
+    console.info('[boot] main script parsed');
   </script>
 </body>
 </html>
