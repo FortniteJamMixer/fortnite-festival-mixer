@@ -583,6 +583,10 @@ const BRAND = Object.freeze({
 });
 const DEBUG_UI = false;
 const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).get('debug') === '1');
+// NOTE: do not declare a top-level variable named "app" to avoid merge collisions.
+if ((DEBUG_UI || DEBUG_PROFILE) && typeof window !== 'undefined' && 'app' in window) {
+  console.warn('[boot] Avoid top-level "app" variable; found window.app.', { app: window.app });
+}
 const DEBUG_CLICKS = true;
 if (DEBUG_CLICKS && !window.__clickTracerBound) {
   window.__clickTracerBound = true;
@@ -3310,12 +3314,12 @@ function track(eventName, payload = {}){
 
     function bindProfileHandlers(){
       if(profileHandlersBound || window.__profileEventsBound) return;
-      const app = document.getElementById('app');
-      if(!app) return;
+      const appRoot = document.getElementById('app');
+      if(!appRoot) return;
       if(DEBUG_UI) console.log('[debug][profile] bindProfileHandlers');
       window.__profileEventsBound = true;
-      app.addEventListener('click', safeOn('click', (e)=>{
-        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: app });
+      appRoot.addEventListener('click', safeOn('click', (e)=>{
+        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: appRoot });
         if(toggle){
           if(viewingProfile) return;
           profileEditMode = !profileEditMode;
@@ -3323,15 +3327,15 @@ function track(eventName, payload = {}){
           setupEventListeners();
           return;
         }
-        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
+        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: appRoot });
         if(editTrigger){
           debugProfileLog('persona edit click detected');
           openProfileEditor();
         }
       }, { action: 'profile-click' }));
-      app.addEventListener('keydown', safeOn('keydown', (e)=>{
+      appRoot.addEventListener('keydown', safeOn('keydown', (e)=>{
         if(e.key !== 'Enter' && e.key !== ' ') return;
-        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
+        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: appRoot });
         if(!trigger) return;
         e.preventDefault();
         debugProfileLog('persona edit keydown detected', { key: e.key });
@@ -3848,9 +3852,9 @@ function track(eventName, payload = {}){
       }
       if(appState.firebase.status === 'config_missing'){
         if(isDevHost()){
-          return { tone: 'offline', message: 'Offline mode — saved locally.', showRetry: false };
+          return { tone: 'offline', message: 'Local mode — saved locally.', showRetry: false };
         }
-        return { tone: 'warn', message: 'Online mode unavailable (Firebase not configured) — saved locally.', showRetry: false };
+        return { tone: 'warn', message: 'Local mode — Firebase not configured; saved locally.', showRetry: false };
       }
       if(appState.firebase.status === 'error'){
         return { tone: 'error', message: 'Online mode error — saved locally.', showRetry: true };
@@ -6542,9 +6546,8 @@ function render(){
       return !!(app && target && app.contains(target));
     }
     function bindAppDelegates(){
-      const app = getAppRoot();
-      const app = document.getElementById('app');
-      if(!app) {
+      const appRoot = getAppRoot();
+      if(!appRoot) {
         console.error('[Delegates] #app not found — cannot bind delegates');
         return;
       }
@@ -6552,22 +6555,22 @@ function render(){
       window.__appDelegatesBound = true;
       appDelegatesBound = true;
       document.addEventListener('click', safeOn('click', (e)=>{
-        const app = getAppRoot();
-        if(!app) return;
-        const actionEl = closestFromEvent(e, '[data-action]', { within: app });
+        const appRoot = getAppRoot();
+        if(!appRoot) return;
+        const actionEl = closestFromEvent(e, '[data-action]', { within: appRoot });
         const action = actionEl?.dataset?.action;
         if(actionEl && isRoutedAction(action) && handleAction(action, actionEl, e)) return;
       if(appDelegatesBound) return;
-      app.addEventListener('click', safeOn('click', (e)=>{
-        if(closestFromEvent(e, '#mixableFilterBtn', { within: app })){ toggleMixableFilter(); return; }
-        if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
-        if(closestFromEvent(e, '#clearSearchBtn', { within: app }) || closestFromEvent(e, '#panelClearSearchBtn', { within: app })){ clearSearch(); return; }
-        if(closestFromEvent(e, '[data-action="clearFilters"]', { within: app })){ clearFilters(); return; }
-        if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: app })){ openQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: app })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: app })){ completeQuickStart({ skipped: true }); return; }
-        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: app })){ moveQuickStartStep(-1); return; }
-        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: app });
+      appRoot.addEventListener('click', safeOn('click', (e)=>{
+        if(closestFromEvent(e, '#mixableFilterBtn', { within: appRoot })){ toggleMixableFilter(); return; }
+        if(closestFromEvent(e, '#ownedFilterBtn', { within: appRoot })){ toggleOwnedFilter(); return; }
+        if(closestFromEvent(e, '#clearSearchBtn', { within: appRoot }) || closestFromEvent(e, '#panelClearSearchBtn', { within: appRoot })){ clearSearch(); return; }
+        if(closestFromEvent(e, '[data-action="clearFilters"]', { within: appRoot })){ clearFilters(); return; }
+        if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: appRoot })){ openQuickStart(); return; }
+        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: appRoot })){ closeQuickStart(); return; }
+        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: appRoot })){ completeQuickStart({ skipped: true }); return; }
+        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: appRoot })){ moveQuickStartStep(-1); return; }
+        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: appRoot });
         if(presetBtn){
           const preset = presetBtn.dataset.preset;
           const applied = applyQuickStartPreset(preset);
@@ -6577,7 +6580,7 @@ function render(){
           }
           return;
         }
-        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: app });
+        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: appRoot });
         if(pickBtn){
           const songId = pickBtn.dataset.songId || pickBtn.getAttribute('data-song-id');
           if(songId){
@@ -6594,11 +6597,11 @@ function render(){
           }
           return;
         }
-        if(closestFromEvent(e, '[data-action="mobileNextWindow"]', { within: app })){ shiftMobileWindow(1); return; }
-        if(closestFromEvent(e, '[data-action="mobilePrevWindow"]', { within: app })){ shiftMobileWindow(-1); return; }
-        const headerMoreBtn = closestFromEvent(e, '[data-action="toggleHeaderMore"]', { within: app });
+        if(closestFromEvent(e, '[data-action="mobileNextWindow"]', { within: appRoot })){ shiftMobileWindow(1); return; }
+        if(closestFromEvent(e, '[data-action="mobilePrevWindow"]', { within: appRoot })){ shiftMobileWindow(-1); return; }
+        const headerMoreBtn = closestFromEvent(e, '[data-action="toggleHeaderMore"]', { within: appRoot });
         if(headerMoreBtn){ headerMoreOpen = !headerMoreOpen; render(); setupEventListeners(); return; }
-        const stickyBtn = closestFromEvent(e, '[data-action="stickyCta"]', { within: app });
+        const stickyBtn = closestFromEvent(e, '[data-action="stickyCta"]', { within: appRoot });
         if(stickyBtn){
           const action = stickyBtn.dataset.stickyAction || '';
           if(action === 'open-quickstart'){ openQuickStart(); return; }
@@ -6616,14 +6619,14 @@ function render(){
             return;
           }
         }
-        if(closestFromEvent(e, '#markAllBtn', { within: app }) && !viewingProfile){ markAllOwned(); return; }
-        if(closestFromEvent(e, '#clearAllBtn', { within: app }) && !viewingProfile){ clearAllOwned(); return; }
-        const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: app });
+        if(closestFromEvent(e, '#markAllBtn', { within: appRoot }) && !viewingProfile){ markAllOwned(); return; }
+        if(closestFromEvent(e, '#clearAllBtn', { within: appRoot }) && !viewingProfile){ clearAllOwned(); return; }
+        const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: appRoot });
         if(genreBtn && isAdmin()){
           showGenreMenu(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), e);
           return;
         }
-        const songAction = closestFromEvent(e, '[data-song-action]', { within: app });
+        const songAction = closestFromEvent(e, '[data-song-action]', { within: appRoot });
         if(songAction){
           const action = songAction.dataset.songAction;
           const songId = songAction.dataset.songId || songAction.getAttribute('data-song-id');
@@ -6636,9 +6639,9 @@ function render(){
         }
       }, { action: 'app-click' }), { capture: true });
       document.addEventListener('input', safeOn('input', (e)=>{
-        const app = getAppRoot();
-        if(!isEventInApp(e, app)) return;
-        const actionEl = closestFromEvent(e, '[data-oninput]', { within: app });
+        const appRoot = getAppRoot();
+        if(!isEventInApp(e, appRoot)) return;
+        const actionEl = closestFromEvent(e, '[data-oninput]', { within: appRoot });
         if(actionEl && handleOnInput(actionEl.dataset.oninput, actionEl, e)) return;
         const target = getEventElement(e);
         if(!target) return;
@@ -6710,8 +6713,8 @@ function render(){
         if(target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(target.value); }
       }, { action: 'app-input' }), { capture: true });
       document.addEventListener('change', safeOn('change', (e)=>{
-        const app = getAppRoot();
-        if(!isEventInApp(e, app)) return;
+        const appRoot = getAppRoot();
+        if(!isEventInApp(e, appRoot)) return;
         const target = getEventElement(e);
         if(!target) return;
         if(target.id === 'keyMatchModeSelect'){ setKeyMatchMode(target.value); }
@@ -6724,8 +6727,8 @@ function render(){
         }
       }, { action: 'app-change' }), { capture: true });
       document.addEventListener('focusin', safeOn('focusin', (e)=>{
-        const app = getAppRoot();
-        if(!isEventInApp(e, app)) return;
+        const appRoot = getAppRoot();
+        if(!isEventInApp(e, appRoot)) return;
         const target = getEventElement(e);
         if(target?.id === 'searchInput'){
           isSearchFocused = true;
@@ -6733,8 +6736,8 @@ function render(){
         }
       }, { action: 'app-focusin' }), { capture: true });
       document.addEventListener('focusout', safeOn('focusout', (e)=>{
-        const app = getAppRoot();
-        if(!isEventInApp(e, app)) return;
+        const appRoot = getAppRoot();
+        if(!isEventInApp(e, appRoot)) return;
         const target = getEventElement(e);
         if(target?.id === 'searchInput'){
           isSearchFocused = false;
@@ -6742,8 +6745,8 @@ function render(){
         }
       }, { action: 'app-focusout' }), { capture: true });
       document.addEventListener('keydown', safeOn('keydown', (e)=>{
-        const app = getAppRoot();
-        if(!isEventInApp(e, app)) return;
+        const appRoot = getAppRoot();
+        if(!isEventInApp(e, appRoot)) return;
         const target = getEventElement(e);
         if(!target) return;
         if(target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
@@ -6754,9 +6757,9 @@ function render(){
         }
       }, { action: 'app-keydown' }), { capture: true });
       document.addEventListener('contextmenu', safeOn('contextmenu', (e)=>{
-        const app = getAppRoot();
-        if(!app) return;
-        const target = closestFromEvent(e, '[data-song-id-genre]', { within: app });
+        const appRoot = getAppRoot();
+        if(!appRoot) return;
+        const target = closestFromEvent(e, '[data-song-id-genre]', { within: appRoot });
         if(target && isAdmin()){
           e.preventDefault();
           showGenreMenu(target.dataset.songIdGenre || target.getAttribute('data-song-id-genre'), e);
