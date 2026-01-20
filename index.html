@@ -223,6 +223,9 @@
     #tourOverlay[aria-hidden="true"],
     #overlayOverlay[aria-hidden="true"],
     .quickstart-modal[aria-hidden="true"] {
+    .quickstart-modal[aria-hidden="true"],
+    #helpModal[aria-hidden="true"],
+    #tourOverlay[aria-hidden="true"] {
       display: none !important;
     }
 
@@ -592,6 +595,12 @@ if (DEBUG_CLICKS && !window.__clickTracerBound) {
       action: el?.dataset?.action,
       text: (el?.textContent || '').trim().slice(0, 60)
     });
+const DEBUG_CLICKS = false;
+if (DEBUG_CLICKS && !window.__clickTracerBound) {
+  window.__clickTracerBound = true;
+  document.addEventListener('click', (e) => {
+    const el = e.target;
+    console.log('[Click]', el?.tagName, el?.id, el?.className, el?.dataset);
   }, { capture: true });
 }
 let profileScriptError = null;
@@ -6534,6 +6543,7 @@ function render(){
     }
     function bindAppDelegates(){
       const app = getAppRoot();
+      const app = document.getElementById('app');
       if(!app) {
         console.error('[Delegates] #app not found — cannot bind delegates');
         return;
@@ -6547,6 +6557,8 @@ function render(){
         const actionEl = closestFromEvent(e, '[data-action]', { within: app });
         const action = actionEl?.dataset?.action;
         if(actionEl && isRoutedAction(action) && handleAction(action, actionEl, e)) return;
+      if(appDelegatesBound) return;
+      app.addEventListener('click', safeOn('click', (e)=>{
         if(closestFromEvent(e, '#mixableFilterBtn', { within: app })){ toggleMixableFilter(); return; }
         if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
         if(closestFromEvent(e, '#clearSearchBtn', { within: app }) || closestFromEvent(e, '#panelClearSearchBtn', { within: app })){ clearSearch(); return; }
@@ -6753,6 +6765,11 @@ function render(){
       window.__delegates = window.__delegates || {};
       window.__delegates.appDelegatesBound = true;
       console.debug('[ui] app delegates bound ✅');
+      }, { action: 'app-contextmenu' }));
+      appDelegatesBound = true;
+      window.__delegates = window.__delegates || {};
+      window.__delegates.appDelegatesBound = true;
+      console.log('[Delegates] app delegates bound ✅');
     }
 
     function bindQuickStartDelegates(){
