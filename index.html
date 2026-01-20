@@ -581,8 +581,13 @@ const BRAND = Object.freeze({
   EXPORT_PREFIX: 'fortnite-jam-mixer',
   BROWSER_TITLE: 'Fortnite Jam Mixer – Cross-Browser Edition'
 });
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+function bootMark(step, extra = {}) {
+  if (DEBUG) console.log('[boot]', step, extra);
+}
+bootMark('script_start');
 const DEBUG_UI = false;
-const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).get('debug') === '1');
+const DEBUG_PROFILE = DEBUG_UI || DEBUG;
 // NOTE: do not declare a top-level variable named "app" to avoid merge collisions.
 if ((DEBUG_UI || DEBUG_PROFILE) && typeof window !== 'undefined' && 'app' in window) {
   console.warn('[boot] Avoid top-level "app" variable; found window.app.', { app: window.app });
@@ -718,6 +723,34 @@ function hideModal(id){
   el.style.display = 'none';
   el.setAttribute('aria-hidden','true');
 }
+function resetOverlaysAndLoading(reason){
+  const overlayIds = ['helpModal', 'quickStartModal', 'tourOverlay', 'overlayOverlay'];
+  overlayIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.style.display = 'none';
+    el.setAttribute('aria-hidden', 'true');
+    if(id === 'tourOverlay') el.dataset.open = 'false';
+  });
+  ['adminHelpEditorModal', 'adminWhatsNewEditorModal', 'overrideModal'].forEach((id) => {
+    const el = document.getElementById(id);
+    if(el) el.remove();
+  });
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  if(loadingOverlay) loadingOverlay.style.display = 'none';
+  const appRoot = document.getElementById('app');
+  if(appRoot){
+    appRoot.style.pointerEvents = 'auto';
+    appRoot.style.filter = 'none';
+    appRoot.style.opacity = '1';
+    appRoot.removeAttribute('aria-hidden');
+  }
+  document.body.classList.remove('modal-open', 'blur', 'blurred', 'dim', 'dimmed');
+  document.documentElement.classList.remove('modal-open', 'blur', 'blurred', 'dim', 'dimmed');
+  document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
+  bootMark('overlays_reset_done', { reason });
+}
 
 const appState = {
   firebase: {
@@ -802,6 +835,7 @@ async function fetchFirebaseConfig(){
     }
   }catch(err){
     recordFirestoreError('config.fetch', err);
+    resetOverlaysAndLoading('firebase_config_fetch_fail');
   }
   return null;
 }
@@ -809,17 +843,21 @@ async function loadFirebaseConfig(){
   const windowConfig = getFirebaseConfigFromWindow();
   if(windowConfig && windowConfig.firebaseEnabled === false){
     setFirebaseStatus('disabled');
+    bootMark('firebase_config_missing', { reason: 'disabled' });
     return null;
   }
   if(windowConfig && isFirebaseConfigValid(windowConfig)){
     appState.firebase.config = windowConfig;
+    bootMark('firebase_config_loaded', { source: 'window' });
     return windowConfig;
   }
   const fetched = await fetchFirebaseConfig();
   if(fetched && isFirebaseConfigValid(fetched)){
     appState.firebase.config = fetched;
+    bootMark('firebase_config_loaded', { source: 'api' });
     return fetched;
   }
+  bootMark('firebase_config_missing');
   return null;
 }
 
@@ -899,12 +937,19 @@ let authProcessing = false;
 let authInFlight = false;
 let appConfigLoaded = false;
 let firebaseInitPromise = null;
+let authListenerBound = false;
+let initialRenderComplete = false;
 async function initFirebaseOnce({ force = false } = {}){
   if(firebaseInitPromise && !force) return firebaseInitPromise;
   firebaseInitPromise = (async ()=>{
+    if(firebaseApp && firebaseAuth && firestore && !force){
+      return { firebaseApp, firebaseAuth, firestore };
+    }
     if(!window.firebase?.initializeApp){
       setFirebaseStatus('error', 'Firebase SDK missing.');
+      bootMark('firebase_init_fail', { message: 'sdk_missing' });
       logEvent('firebase_init_fail', { reason: 'sdk_missing' });
+      resetOverlaysAndLoading('firebase_sdk_missing');
       return null;
     }
     setFirebaseStatus('initializing');
@@ -914,6 +959,7 @@ async function initFirebaseOnce({ force = false } = {}){
         setFirebaseStatus('config_missing');
       }
       logEvent('firebase_disabled', { reason: 'config_missing' });
+      resetOverlaysAndLoading('firebase_config_missing');
       return null;
     }
     try{
@@ -937,15 +983,19 @@ async function initFirebaseOnce({ force = false } = {}){
         });
       }
       console.log('Firebase initialized');
+      setupFirebaseAuthListener();
+      bootMark('firebase_init_ok', { projectId: config.projectId });
       logEvent('firebase_init', { projectId: config.projectId });
       return { firebaseApp, firebaseAuth, firestore };
     }catch(err){
       console.warn('Firebase init failed', err);
       setFirebaseStatus('error', err?.message || String(err));
+      bootMark('firebase_init_fail', { message: err?.message });
       logEvent('firebase_init_fail', { message: err?.message, code: err?.code });
       firebaseApp = null;
       firebaseAuth = null;
       firestore = null;
+      resetOverlaysAndLoading('firebase_init_fail');
       return null;
     }
   })();
@@ -4523,24 +4573,34 @@ function track(eventName, payload = {}){
       }
     }
 
-    function setupFirebaseAuthListener() {
-      if (!firebaseAuth || firebaseAuthUnsub) return;
-      firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
-        appState.auth.user = user || null;
-        appState.auth.status = user ? 'signed_in' : 'signed_out';
-        appState.auth.errorMsg = '';
-        if (user) {
-          await bootProfile(user);
-        } else {
-          authSettledUser = null;
-          currentUser = null;
-          if(userProfileUnsub){
-            userProfileUnsub();
-            userProfileUnsub = null;
-          }
-          await bootProfile(null);
+    async function applyAuthState(user){
+      appState.auth.user = user || null;
+      appState.auth.status = user ? 'signed_in' : 'signed_out';
+      appState.auth.errorMsg = '';
+      bootMark('auth_state_changed', { uid: user?.uid || null });
+      if (user) {
+        await bootProfile(user);
+      } else {
+        authSettledUser = null;
+        currentUser = null;
+        if(userProfileUnsub){
+          userProfileUnsub();
+          userProfileUnsub = null;
         }
+        await bootProfile(null);
+      }
+      render();
+      setupEventListeners();
+      resetOverlaysAndLoading('auth');
+    }
+
+    function setupFirebaseAuthListener() {
+      if (!firebaseAuth || firebaseAuthUnsub || authListenerBound) return;
+      authListenerBound = true;
+      firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
+        await applyAuthState(user);
       });
+      bootMark('auth_listener_bound');
     }
 
     async function handleFirebaseAuth(e){
@@ -6256,12 +6316,22 @@ function renderCommunityStat(id, label, icon, value, caption=''){
 }
 
 function render(){
+  bootMark('render_start');
   logEvent('ui_render', { view });
   if(view === 'audit' && !isAdmin()){
     alert('Admin only');
     view = 'browser';
   }
   currentUser = getActiveProfile() || currentUser;
+  if(appState.auth.status === 'signed_out' && !currentUser && !firebaseAuth?.currentUser){
+    showLoginScreen();
+    bootMark('render_done');
+    if(!initialRenderComplete){
+      resetOverlaysAndLoading('initial_render');
+      initialRenderComplete = true;
+    }
+    return;
+  }
   if(!isAdmin() && adminMenuOpen){
     adminMenuOpen = false;
   }
@@ -6480,6 +6550,11 @@ function render(){
   maybeAutoOpenQuickStart();
   bindAppDelegates();
   bindQuickStartDelegates();
+  bootMark('render_done');
+  if(!initialRenderComplete){
+    resetOverlaysAndLoading('initial_render');
+    initialRenderComplete = true;
+  }
 }
 
 
@@ -8344,10 +8419,9 @@ function render(){
       await initFirebaseOnce();
       refreshOnlineStatusBanner();
       if (isFirebaseReady() && firebaseAuth) {
-        setupFirebaseAuthListener();
         return;
       }
-      await bootProfile(null);
+      await applyAuthState(null);
     }
 
     updatePerformanceMode();
