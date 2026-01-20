@@ -38,6 +38,7 @@ Presence uses Firebase Realtime Database (`/presence/{uid}`) with anonymous auth
 The app keeps Firebase email/password as the primary login but now includes an Epic-link flow with server-side PKCE/state storage. Configure these Vercel env vars:
 
 - `EPIC_CLIENT_ID`
+
 - `EPIC_CLIENT_SECRET`
 - `APP_ORIGIN` (optional; falls back to the current host)
 
@@ -68,11 +69,9 @@ Notes:
   the canonical schema and operational guardrails.
 - Jam Track ownership remains manual; OAuth links only record Epic account ids for potential future entitlement APIs.
 
-## Test checklist (manual)
-- Production/Vercel: load app → Online banner shows when env vars are set; no config warning.
-- Missing env vars: load app → Online unavailable banner + local profile flow.
-- Sign up → refresh → still signed in (onAuthStateChanged restores session).
-- Edit profile → refresh → changes persist online (Firestore) and offline (local storage).
-- Friends search: <3 chars shows prompt; 3+ chars returns limited results; backspace doesn’t spam reads.
-- Rules sanity: user A cannot write user B profile via devtools.
-- Toggle offline in devtools → Offline banner shown; app continues to work locally.
+## Pre-merge guardrails
+Run these checks before merging to main (or wire them into CI):
+
+```bash
+npm run check:guardrails
+```
