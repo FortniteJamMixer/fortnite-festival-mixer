@@ -4,6 +4,9 @@
   "private": true,
   "description": "Fortnite Jam Mixer web app with Firebase-backed metrics.",
   "type": "module",
+  "scripts": {
+    "check:no-legacy-proxy": "node ./scripts/check-no-legacy-proxy.mjs"
+  },
   "dependencies": {
     "firebase-admin": "^12.5.0"
   }

@@ -2321,6 +2321,80 @@ function track(eventName, payload = {}){
       });
     }
 
+    const CORS_SAFE_ORIGINS = new Set([window.location.origin]);
+    const PROXY_ENDPOINT = '/api/proxy?url=';
+
+    function isCorsSafeUrl(url){
+      const target = new URL(url, window.location.origin);
+      return CORS_SAFE_ORIGINS.has(target.origin);
+    }
+
+    function readCachedPayload(cacheKey, maxAgeMs){
+      if(!cacheKey) return null;
+      try{
+        const raw = localStorage.getItem(`cache:${cacheKey}`);
+        if(!raw) return null;
+        const parsed = JSON.parse(raw);
+        if(!parsed || typeof parsed !== 'object') return null;
+        const ts = Number(parsed.timestamp || 0);
+        const isStale = !!(maxAgeMs && ts && (Date.now() - ts > maxAgeMs));
+        return { data: parsed.data, stale: isStale };
+      }catch(err){
+        return null;
+      }
+    }
+
+    function writeCachedPayload(cacheKey, data){
+      if(!cacheKey) return;
+      try{
+        localStorage.setItem(`cache:${cacheKey}`, JSON.stringify({ timestamp: Date.now(), data }));
+      }catch(err){
+        console.warn('cache write failed', err);
+      }
+    }
+
+    async function fetchJsonWithFallback(url, { cacheKey = '', maxAgeMs = 0 } = {}){
+      const requestUrl = isCorsSafeUrl(url) ? url : `${PROXY_ENDPOINT}${encodeURIComponent(url)}`;
+      try{
+        const resp = await fetch(requestUrl, { cache: 'no-store' });
+        if(!resp.ok) throw new Error(`Request failed with status ${resp.status}`);
+        const data = await resp.json();
+        writeCachedPayload(cacheKey, data);
+        return { data, fromCache: false, source: isCorsSafeUrl(url) ? 'direct' : 'proxy' };
+      }catch(err){
+        const cached = readCachedPayload(cacheKey, maxAgeMs);
+        if(cached?.data){
+          return { data: cached.data, fromCache: true, source: 'cache', stale: cached.stale, error: err };
+        }
+        return { data: null, fromCache: false, source: 'error', error: err };
+      }
+    }
+
+    function buildSongsFromSparkData(data){
+      const entries = Object.entries(data || {}).filter(([key])=>!key.startsWith('_'));
+      const nextSongs = [];
+      trackLoadState = { status: 'loading', loaded: 0, total: entries.length, message: 'Loading tracks…' };
+      updateTrackLoadProgressUI();
+      for(let idx=0; idx<entries.length; idx+=1){
+        const [id,item] = entries[idx];
+        const track = item?.track || {};
+        if(!track?.tt) continue;
+        const detectedGenre = detectGenre(track.an||'', track.tt);
+        const finalGenre = genreOverrides[id] || detectedGenre;
+        const rawBpm = Number(track.mt) || 0;
+        const camelotData = deriveCamelotForTrack({ ...track, id });
+        const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
+        const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
+        const keyInfo = parseKey(track.mk || camelotData.keyLabel || track.key || '', track.mm || camelotData.mode || track.mode || '');
+        const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: keyInfo.label || camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden, keyInfo };
+        enriched.flags = computeTrackFlags(enriched);
+        if(enriched.bpm>0) nextSongs.push(enriched);
+        trackLoadState.loaded = idx + 1;
+        if(idx % 120 === 0) updateTrackLoadProgressUI();
+      }
+      return nextSongs;
+    }
+
     // ---------------------- Utils & Scoring -----------------------
     function normalizeMode(mode,keyStr){
       const m=(mode||'').toLowerCase();
@@ -4561,7 +4635,8 @@ function track(eventName, payload = {}){
       trackLoadNotice = '';
       render(); setupEventListeners();
       const cachedTracks = await readCachedTracks();
-      const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
+      const tracksEndpoint = 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks';
+      const cacheNotice = 'Online data temporarily unavailable — using cached tracks.';
       const canFetch = navigator.onLine;
       if(cachedTracks.length){
         console.warn('Using cached track data');
@@ -4576,55 +4651,38 @@ function track(eventName, payload = {}){
         maybeAutoStartTour();
       }
       if(canFetch){
-        for(let i=0;i<endpoints.length;i++){
-          try{
-            const res = await fetch(endpoints[i]);
-            if(!res.ok) continue;
-            const data = await res.json();
-            const entries = Object.entries(data).filter(([k])=>!k.startsWith('_'));
-            const nextSongs = [];
-            trackLoadState = { status: 'loading', loaded: 0, total: entries.length, message: 'Loading tracks…' };
-            updateTrackLoadProgressUI();
-            for(let idx=0; idx<entries.length; idx+=1){
-              const [id,item] = entries[idx];
-              const track = item?.track || {};
-              if(!track?.tt) continue;
-              const detectedGenre = detectGenre(track.an||'', track.tt);
-              const finalGenre = genreOverrides[id] || detectedGenre;
-              const rawBpm = Number(track.mt) || 0;
-              const camelotData = deriveCamelotForTrack({ ...track, id });
-              const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
-              const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
-              const keyInfo = parseKey(track.mk || camelotData.keyLabel || track.key || '', track.mm || camelotData.mode || track.mode || '');
-              const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: keyInfo.label || camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden, keyInfo };
-              enriched.flags = computeTrackFlags(enriched);
-              if(enriched.bpm>0) nextSongs.push(enriched);
-              trackLoadState.loaded = idx + 1;
-              if(idx % 120 === 0) updateTrackLoadProgressUI();
-            }
-            nextSongs.sort((a,b)=>a.title.localeCompare(b.title));
-            if(nextSongs.length>0){
-              songs = nextSongs;
-              songsById = Object.fromEntries(songs.map(s => [s.id, s]));
-              regressionWarnings = knownCorrections.filter(kc=>{
-                const track = songs.find(s=>s.id===kc.id);
-                return track && track.camelot !== kc.expectedCamelot;
-              });
-              if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
-              trackSource = 'network';
-              songsLoaded = true;
-              trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
-              logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
-              cacheTracks(songs);
-              render(); setupEventListeners();
-              maybeAutoStartTour();
-              return;
-            }
-          }catch(e){ console.warn('endpoint err',e); logEvent('songs_fetch_fail', { message: e?.message, step: 'network' }); }
+        const result = await fetchJsonWithFallback(tracksEndpoint, { cacheKey: 'spark-tracks', maxAgeMs: 6 * 60 * 60 * 1000 });
+        const nextSongs = result.data ? buildSongsFromSparkData(result.data) : [];
+        nextSongs.sort((a,b)=>a.title.localeCompare(b.title));
+        if(nextSongs.length>0){
+          songs = nextSongs;
+          songsById = Object.fromEntries(songs.map(s => [s.id, s]));
+          regressionWarnings = knownCorrections.filter(kc=>{
+            const track = songs.find(s=>s.id===kc.id);
+            return track && track.camelot !== kc.expectedCamelot;
+          });
+          if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
+          trackSource = result.fromCache ? 'cache' : 'network';
+          songsLoaded = true;
+          trackLoadNotice = result.fromCache ? cacheNotice : '';
+          trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
+          logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
+          cacheTracks(songs);
+          render(); setupEventListeners();
+          maybeAutoStartTour();
+          return;
+        }
+        if(result.error){
+          console.warn('endpoint err', result.error);
+          logEvent('songs_fetch_fail', { message: result.error?.message, step: 'network' });
         }
       }
       if(cachedTracks.length){
         trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
+        if(!canFetch || !trackLoadNotice){
+          trackLoadNotice = cacheNotice;
+          render();
+        }
         return;
       }
       console.warn('endpoints failed, using fallback sample');
