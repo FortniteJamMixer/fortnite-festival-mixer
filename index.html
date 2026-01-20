@@ -558,7 +558,7 @@
     /**************************************************************************
      * Final merged app
      * - All fixes applied (setlist rendering, show-all toggle, mixable toggle, band member)
-     * - Optional Firebase (see firebaseEnabled & firebaseConfig)
+     * - Optional Firebase (see appState.firebase & firebaseConfig)
      * - Help modal integrated (manual open via header button)
      **************************************************************************/
 
@@ -575,7 +575,7 @@ document.title = BRAND.BROWSER_TITLE;
 
     // -------------------- FIREBASE (auto-detect) ----------------------------
 // We auto-enable Firebase if /api/firebase-config injected window.firebaseConfig (Vercel env vars).
-// This prevents the "no signup option" problem when firebaseEnabled was left false.
+// This prevents the "no signup option" problem when config was present but disabled.
 const DEBUG_LOG_MAX = 50;
 function logEvent(type, payload = {}) {
   const entry = {
@@ -673,9 +673,109 @@ function safeOn(type, handler, meta = {}){
   };
 }
 
-const firebaseConfig = window.firebaseConfig || {};
-const firebaseConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId);
-const firebaseEnabled = firebaseConfig.firebaseEnabled === true && firebaseConfigValid && !!window.firebase?.auth;
+const appState = {
+  firebase: {
+    status: 'disabled',
+    errorMsg: '',
+    lastError: '',
+    config: null
+  },
+  net: {
+    isOnline: navigator.onLine
+  },
+  auth: {
+    user: null,
+    status: 'signed_out',
+    errorMsg: ''
+  }
+};
+const isDevHost = () => {
+  const host = (location?.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
+};
+const setFirebaseStatus = (status, errorMsg = '') => {
+  appState.firebase.status = status;
+  appState.firebase.errorMsg = errorMsg || '';
+};
+const recordFirestoreError = (context, err) => {
+  const message = `${context}: ${err?.message || err || 'Unknown error'}`;
+  appState.firebase.lastError = message;
+  console.warn('[firestore]', message);
+};
+const firestoreApi = {
+  clearError(){
+    appState.firebase.lastError = '';
+  },
+  async getDoc(docRef, context){
+    try{
+      return await docRef.get();
+    }catch(err){
+      recordFirestoreError(context, err);
+      throw err;
+    }
+  },
+  async setDoc(docRef, payload, options, context){
+    try{
+      await docRef.set(payload, options);
+    }catch(err){
+      recordFirestoreError(context, err);
+      throw err;
+    }
+  },
+  async updateDoc(docRef, payload, context){
+    try{
+      await docRef.update(payload);
+    }catch(err){
+      recordFirestoreError(context, err);
+      throw err;
+    }
+  },
+  async runQuery(query, context){
+    try{
+      return await query.get();
+    }catch(err){
+      recordFirestoreError(context, err);
+      throw err;
+    }
+  }
+};
+const isFirebaseReady = () => appState.firebase.status === 'ready';
+const isOnlineMode = () => isFirebaseReady() && appState.auth.status === 'signed_in' && appState.net.isOnline && !isOffline;
+const getFirebaseConfigFromWindow = () => (window.firebaseConfig && typeof window.firebaseConfig === 'object')
+  ? window.firebaseConfig
+  : null;
+const isFirebaseConfigValid = (config) => !!(config?.apiKey && config?.authDomain && config?.projectId);
+async function fetchFirebaseConfig(){
+  try{
+    const resp = await fetch('/api/firebase-config?format=json', { cache: 'no-store' });
+    if(!resp.ok) throw new Error(`Config fetch failed: ${resp.status}`);
+    const data = await resp.json();
+    if(data && typeof data === 'object'){
+      window.firebaseConfig = data;
+      return data;
+    }
+  }catch(err){
+    recordFirestoreError('config.fetch', err);
+  }
+  return null;
+}
+async function loadFirebaseConfig(){
+  const windowConfig = getFirebaseConfigFromWindow();
+  if(windowConfig && windowConfig.firebaseEnabled === false){
+    setFirebaseStatus('disabled');
+    return null;
+  }
+  if(windowConfig && isFirebaseConfigValid(windowConfig)){
+    appState.firebase.config = windowConfig;
+    return windowConfig;
+  }
+  const fetched = await fetchFirebaseConfig();
+  if(fetched && isFirebaseConfigValid(fetched)){
+    appState.firebase.config = fetched;
+    return fetched;
+  }
+  return null;
+}
 
     const ADMIN_USERS = ['BattleNeBody'];
     function applyAdminFlag(profile){
@@ -724,7 +824,7 @@ window.addEventListener('error', (event) => {
     message: event?.message || 'Unknown error',
     stack: event?.error?.stack || null,
     view,
-    firebaseEnabled,
+    firebaseReady: isFirebaseReady(),
     online: navigator.onLine
   });
   notifyProfileScriptError(event?.message || 'Profile scripts failed. Open console.', event?.error || event);
@@ -734,7 +834,7 @@ window.addEventListener('unhandledrejection', (event) => {
     message: event?.reason?.message || event?.reason || 'Unknown rejection',
     stack: event?.reason?.stack || null,
     view,
-    firebaseEnabled,
+    firebaseReady: isFirebaseReady(),
     online: navigator.onLine
   });
   notifyProfileScriptError(event?.reason?.message || 'Profile scripts failed. Open console.', event?.reason || event);
@@ -752,30 +852,62 @@ let authSettledUser = null;
 let authProcessing = false;
 let authInFlight = false;
 let appConfigLoaded = false;
-if (firebaseEnabled) {
-  try {
-    firebaseApp = firebase.initializeApp(firebaseConfig);
-    firebaseAuth = firebase.auth();
-    firestore = firebase.firestore();
-    firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
-      console.warn('Firebase persistence failed', err);
-      logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
-    });
-    console.log('Firebase initialized');
-    logEvent('firebase_init', { projectId: firebaseConfig.projectId });
-  } catch (e) {
-    console.warn('Firebase init failed', e);
-    logEvent('firebase_init_fail', { message: e?.message, code: e?.code });
-    firebaseApp = null;
-    firebaseAuth = null;
-    firestore = null;
-  }
-} else {
-  logEvent('firebase_disabled', { reason: 'missing config or sdk', firebaseConfigValid });
+let firebaseInitPromise = null;
+async function initFirebaseOnce({ force = false } = {}){
+  if(firebaseInitPromise && !force) return firebaseInitPromise;
+  firebaseInitPromise = (async ()=>{
+    if(!window.firebase?.initializeApp){
+      setFirebaseStatus('error', 'Firebase SDK missing.');
+      logEvent('firebase_init_fail', { reason: 'sdk_missing' });
+      return null;
+    }
+    setFirebaseStatus('initializing');
+    const config = await loadFirebaseConfig();
+    if(!config){
+      if(appState.firebase.status !== 'disabled'){
+        setFirebaseStatus('config_missing');
+      }
+      logEvent('firebase_disabled', { reason: 'config_missing' });
+      return null;
+    }
+    try{
+      if(firebase?.apps?.length){
+        firebaseApp = firebase.app();
+      } else {
+        firebaseApp = firebase.initializeApp(config);
+      }
+      firebaseAuth = firebase.auth();
+      firestore = firebase.firestore();
+      firestoreApi.clearError();
+      setFirebaseStatus('ready');
+      firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
+        console.warn('Firebase persistence failed', err);
+        logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
+      });
+      if(typeof firestore.enablePersistence === 'function'){
+        firestore.enablePersistence({ synchronizeTabs: true }).catch((err)=>{
+          console.warn('Firestore persistence unavailable', err);
+          logEvent('firestore_persistence_fail', { message: err?.message, code: err?.code });
+        });
+      }
+      console.log('Firebase initialized');
+      logEvent('firebase_init', { projectId: config.projectId });
+      return { firebaseApp, firebaseAuth, firestore };
+    }catch(err){
+      console.warn('Firebase init failed', err);
+      setFirebaseStatus('error', err?.message || String(err));
+      logEvent('firebase_init_fail', { message: err?.message, code: err?.code });
+      firebaseApp = null;
+      firebaseAuth = null;
+      firestore = null;
+      return null;
+    }
+  })();
+  return firebaseInitPromise;
 }
 
 function getAppVersion(){
-  return window.appVersion || window.APP_VERSION || firebaseConfig?.appVersion || firebaseConfig?.version || null;
+  return window.appVersion || window.APP_VERSION || appState.firebase.config?.appVersion || window.firebaseConfig?.appVersion || window.firebaseConfig?.version || null;
 }
 function warnIfWhatsNewStale(){
   const host = typeof location !== 'undefined' ? location.hostname : '';
@@ -799,7 +931,7 @@ let helpContentState = window.DEFAULT_HELP_CONTENT || null;
 let whatsNewState = window.DEFAULT_WHATS_NEW || null;
 let configLoadPromise = null;
 function getFirebaseAnalytics(){
-  if(!firebaseEnabled) return null;
+  if(!isFirebaseReady()) return null;
   if(typeof firebase?.analytics !== 'function') return null;
   try {
     return firebase.analytics();
@@ -1045,6 +1177,10 @@ function track(eventName, payload = {}){
       return (value || '').trim().toLowerCase();
     }
 
+    function normalizeUsernameKey(value){
+      return normalizeUsernameLower(value).replace(/[^a-z0-9_]/g, '');
+    }
+
     function buildSearchTokens(value){
       const normalized = normalizeUsernameLower(value);
       const maxTokens = Math.min(20, normalized.length);
@@ -1053,6 +1189,48 @@ function track(eventName, payload = {}){
         tokens.push(normalized.slice(0, i));
       }
       return tokens;
+    }
+
+    async function ensureUsernameMapping(username, uid){
+      if(!firestore || !uid || !username) return { ok: true, reason: 'offline' };
+      const usernameNorm = normalizeUsernameKey(username);
+      if(!usernameNorm) return { ok: false, reason: 'invalid' };
+      const docRef = firestore.collection('usernames').doc(usernameNorm);
+      const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+      try{
+        const snap = await firestoreApi.getDoc(docRef, 'usernames.get');
+        if(snap.exists && snap.data()?.uid !== uid){
+          return { ok: false, reason: 'taken' };
+        }
+        if(!snap.exists){
+          await firestoreApi.setDoc(docRef, {
+            uid,
+            username,
+            usernameNorm,
+            createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+          }, { merge: false }, 'usernames.create');
+        }
+        return { ok: true, usernameNorm };
+      }catch(err){
+        return { ok: false, reason: 'error', error: err };
+      }
+    }
+
+    async function resolveAvailableUsername(uid, desired){
+      const trimmed = (desired || '').trim();
+      if(!uid) return trimmed;
+      if(!firestore){
+        return trimmed || `user_${uid.slice(0, 6)}`;
+      }
+      let candidate = trimmed || `user_${uid.slice(0, 6)}`;
+      let result = await ensureUsernameMapping(candidate, uid);
+      if(result.ok) return candidate;
+      if(result.reason === 'taken'){
+        candidate = `user_${uid.slice(0, 6)}`;
+        result = await ensureUsernameMapping(candidate, uid);
+        if(result.ok) return candidate;
+      }
+      return trimmed || `user_${uid.slice(0, 6)}`;
     }
 
     function hexToRgba(hex, alpha = 0.45){
@@ -1194,6 +1372,7 @@ function track(eventName, payload = {}){
       const rulesAccepted = profile.rulesAccepted === true;
       const rulesAcceptedAt = profile.rulesAcceptedAt || null;
       const usernameLower = profile.usernameLower || normalizeUsernameLower(username);
+      const usernameNorm = profile.usernameNorm || normalizeUsernameKey(username);
       const djNameLower = profile.djNameLower || normalizeUsernameLower(djName);
       const searchNameLower = profile.searchNameLower || usernameLower;
       const searchTokens = Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower);
@@ -1220,6 +1399,7 @@ function track(eventName, payload = {}){
         rulesAccepted,
         rulesAcceptedAt,
         usernameLower,
+        usernameNorm,
         djNameLower,
         searchNameLower,
         searchTokens
@@ -1237,6 +1417,7 @@ function track(eventName, payload = {}){
       const ownedIds = profile.ownedTracks || [];
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
       const usernameLower = normalizeUsernameLower(profile.username || profileKey);
+      const usernameNorm = normalizeUsernameKey(profile.username || profileKey);
       const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
       const searchNameLower = profile.searchNameLower || usernameLower;
       const persona = ensurePersona(profile);
@@ -1246,6 +1427,7 @@ function track(eventName, payload = {}){
         username: profile.username || profileKey,
         djName: profile.djName || profile.username || profileKey,
         usernameLower,
+        usernameNorm,
         djNameLower,
         searchNameLower,
         searchTokens: Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower),
@@ -1268,7 +1450,7 @@ function track(eventName, payload = {}){
         try {
           const collection = getProfileCollection();
           if(collection){
-            await collection.doc(profileKey).set(payload, { merge: true });
+            await firestoreApi.setDoc(collection.doc(profileKey), payload, { merge: true }, 'profiles.save');
           }
         } catch (e) {
           console.warn('Firestore save failed', e);
@@ -1290,18 +1472,18 @@ function track(eventName, payload = {}){
           const primaryCollection = getProfileCollection();
           const legacyCollection = getLegacyProfileCollection();
           if(primaryCollection){
-            const doc = await primaryCollection.doc(lookupKey).get();
+            const doc = await firestoreApi.getDoc(primaryCollection.doc(lookupKey), 'profiles.load');
             if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
           }
           if(legacyCollection){
-            const legacyDoc = await legacyCollection.doc(lookupKey).get();
+            const legacyDoc = await firestoreApi.getDoc(legacyCollection.doc(lookupKey), 'profiles.load.legacy');
             if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), lookupKey);
           }
           if (firebaseUser?.email) {
             const emailKey = firebaseUser.email.split('@')[0];
             if (emailKey && emailKey !== lookupKey) {
               if(legacyCollection){
-                const legacyDoc = await legacyCollection.doc(emailKey).get();
+                const legacyDoc = await firestoreApi.getDoc(legacyCollection.doc(emailKey), 'profiles.load.legacy.email');
                 if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), emailKey);
               }
             }
@@ -1506,6 +1688,10 @@ function track(eventName, payload = {}){
     let friendSearchTerm = '';
     let socialFriendSearchTerm = '';
     let socialFriendSearchDebounce = null;
+    const FRIEND_SEARCH_MIN = 3;
+    const FRIEND_SEARCH_LIMIT = 10;
+    const FRIEND_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+    const friendSearchCache = new Map();
     let socialFriendSearchResults = [];
     let socialFriendSearchLoading = false;
     let socialFriendSearchError = '';
@@ -1958,7 +2144,8 @@ function track(eventName, payload = {}){
 
     // ---------------------- Offline helpers -----------------------
     function handleNetworkStatusChange(){
-      isOffline = !navigator.onLine;
+      appState.net.isOnline = navigator.onLine;
+      isOffline = !appState.net.isOnline;
       const badges = document.querySelectorAll('[data-network-badge]');
       badges.forEach(el=>{
         el.textContent = isOffline ? 'Offline' : 'Online';
@@ -1966,6 +2153,7 @@ function track(eventName, payload = {}){
           ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100'
           : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100';
       });
+      refreshOnlineStatusBanner();
     }
 
     function isMobileViewport(){
@@ -2530,9 +2718,13 @@ function track(eventName, payload = {}){
       isPersistingProfile = true;
       try{
         syncPreferencesIntoProfile();
+        if(isFirebaseReady() && firebaseAuth?.currentUser){
+          await ensureUsernameMapping(currentUser.username, firebaseAuth.currentUser.uid);
+        }
         const normalizedStreamUrl = normalizeStreamUrlInput(currentUser.streamUrl || '');
         const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
         const usernameLower = normalizeUsernameLower(currentUser.username);
+        const usernameNorm = normalizeUsernameKey(currentUser.username);
         const djNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
         const displayNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
         const searchNameLower = usernameLower;
@@ -2550,6 +2742,7 @@ function track(eventName, payload = {}){
           username: currentUser.username,
           djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
           usernameLower,
+          usernameNorm,
           djNameLower,
           displayNameLower,
           searchNameLower,
@@ -2621,11 +2814,11 @@ function track(eventName, payload = {}){
           const collection = getProfileCollection();
           const legacyCollection = getLegacyProfileCollection();
           if(collection){
-            const doc = await collection.doc(firebaseUser?.uid || username).get();
+            const doc = await firestoreApi.getDoc(collection.doc(firebaseUser?.uid || username), 'profiles.load.local');
             if(doc.exists) return normalizeProfileShape(doc.data(), firebaseUser?.uid || username);
           }
           if(legacyCollection){
-            const legacyDoc = await legacyCollection.doc(firebaseUser?.uid || username).get();
+            const legacyDoc = await firestoreApi.getDoc(legacyCollection.doc(firebaseUser?.uid || username), 'profiles.load.local.legacy');
             if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), firebaseUser?.uid || username);
           }
         }catch(e){ console.warn('Firestore load failed',e); }
@@ -2655,23 +2848,23 @@ function track(eventName, payload = {}){
         if(!collection) return [];
         let query = collection.where(field,'==',value);
         if(publicOnly) query = query.where('isPublic','==',true);
-        const snap = await query.get();
+        const snap = await firestoreApi.runQuery(query, 'profiles.fieldQuery');
         return snap.docs.map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id));
       }catch(err){ console.warn('profile lookup failed', err); return []; }
     }
 
     function getFriendsOnlineStatus(){
-      const firebaseReady = firebaseEnabled && !!firestore;
+      const firebaseReady = isFirebaseReady() && !!firestore;
       const signedIn = !!firebaseAuth?.currentUser;
-      const offline = !navigator.onLine || isOffline;
+      const offline = !appState.net.isOnline || isOffline;
       const online = firebaseReady && signedIn && !offline;
       return { firebaseReady, signedIn, offline, online };
     }
 
     function getFriendsGateMessage(status){
       if(!status) return '';
-      if(status.offline) return 'Friends require Online mode.';
-      if(!status.firebaseReady) return 'Friends require Firebase online mode.';
+      if(status.offline) return 'Offline mode — friends are unavailable.';
+      if(!status.firebaseReady) return 'Online mode unavailable.';
       if(!status.signedIn) return 'Sign in to search friends.';
       return '';
     }
@@ -2704,11 +2897,12 @@ function track(eventName, payload = {}){
       if(viewingProfile) return;
       const query = getFriendSearchQuery();
       socialFriendSearchError = '';
-      if(!query){
+      const normalizedQuery = normalizeUsernameKey(query);
+      if(!normalizedQuery || normalizedQuery.length < FRIEND_SEARCH_MIN){
         if(explicit){
           socialFriendSearchResults = [];
           socialFriendSearchLoading = false;
-          setFriendSearchNotice('Type a DJ name.', 'warn');
+          setFriendSearchNotice(`Type at least ${FRIEND_SEARCH_MIN} characters.`, 'warn');
           renderProfile();
           setupEventListeners();
         }
@@ -2731,10 +2925,10 @@ function track(eventName, payload = {}){
     async function fetchProfilesByUids(uids){
       const collection = getProfileCollection();
       if(!collection) return {};
-      const unique = Array.from(new Set(uids)).filter(Boolean);
+      const unique = Array.from(new Set(uids)).filter(Boolean).slice(0, 50);
       const results = await Promise.all(unique.map(async (uid)=>{
         try{
-          const doc = await collection.doc(uid).get();
+          const doc = await firestoreApi.getDoc(collection.doc(uid), 'profiles.batchFetch');
           if(doc.exists) return [uid, normalizeProfileShape({ ...doc.data(), uid }, uid)];
         }catch(err){ console.warn('profile fetch failed', err); }
         return [uid, null];
@@ -2753,12 +2947,12 @@ function track(eventName, payload = {}){
       friendsError = '';
       try{
         const uid = firebaseAuth.currentUser.uid;
-        const requestsRef = firestore.collection('friendRequests');
-        const incomingSnap = await requestsRef.where('toUid','==',uid).where('status','==','pending').get();
-        const outgoingSnap = await requestsRef.where('fromUid','==',uid).where('status','==','pending').get();
-        const friendsSnap = await firestore.collection('friends').doc(uid).collection('list').get();
-        const incoming = incomingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
-        const outgoing = outgoingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
+        const edgesRef = firestore.collection('friends').doc(uid).collection('edges');
+        const incomingSnap = await firestoreApi.runQuery(edgesRef.where('status','==','pending_in'), 'friends.pendingIn');
+        const outgoingSnap = await firestoreApi.runQuery(edgesRef.where('status','==','pending_out'), 'friends.pendingOut');
+        const friendsSnap = await firestoreApi.runQuery(edgesRef.where('status','==','accepted'), 'friends.accepted');
+        const incoming = incomingSnap.docs.map(doc=>({ id: doc.id, fromUid: doc.id, ...doc.data() }));
+        const outgoing = outgoingSnap.docs.map(doc=>({ id: doc.id, toUid: doc.id, ...doc.data() }));
         const friendDocs = friendsSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
         const profileMap = await fetchProfilesByUids([
           ...incoming.map(req=>req.fromUid),
@@ -2800,7 +2994,16 @@ function track(eventName, payload = {}){
       socialFriendSearchQuery = queryRaw;
       socialFriendSearchError = '';
       socialFriendSearchResults = [];
-      if(!queryRaw){
+      const queryNorm = normalizeUsernameKey(queryRaw);
+      if(!queryNorm || queryNorm.length < FRIEND_SEARCH_MIN){
+        socialFriendSearchLoading = false;
+        renderProfile();
+        setupEventListeners();
+        return;
+      }
+      const cached = friendSearchCache.get(queryNorm);
+      if(cached && (Date.now() - cached.ts) < FRIEND_SEARCH_CACHE_TTL_MS){
+        socialFriendSearchResults = cached.results;
         socialFriendSearchLoading = false;
         renderProfile();
         setupEventListeners();
@@ -2811,29 +3014,22 @@ function track(eventName, payload = {}){
       renderProfile();
       setupEventListeners();
       try{
-        const queryLower = normalizeUsernameLower(queryRaw);
         const collection = getProfileCollection();
         if(!collection) throw new Error('Profile collection unavailable');
-        const resultsMap = {};
-        const prefixQuery = async (field)=>{
-          const snap = await collection
-            .where(field, '>=', queryLower)
-            .where(field, '<=', queryLower + '\uf8ff')
+        const snap = await firestoreApi.runQuery(
+          collection
+            .where('usernameNorm', '>=', queryNorm)
+            .where('usernameNorm', '<=', queryNorm + '\uf8ff')
             .where('isPublic', '==', true)
-            .limit(20)
-            .get();
-          snap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
-        };
-        await Promise.all([
-          prefixQuery('displayNameLower'),
-          prefixQuery('usernameLower'),
-          prefixQuery('djNameLower'),
-          prefixQuery('searchNameLower')
-        ]);
+            .limit(FRIEND_SEARCH_LIMIT),
+          'friends.search'
+        );
         const currentUid = firebaseAuth.currentUser.uid;
-        socialFriendSearchResults = Object.values(resultsMap)
+        socialFriendSearchResults = snap.docs
+          .map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id))
           .filter(profile=> profile?.uid !== currentUid)
-          .slice(0, 20);
+          .slice(0, FRIEND_SEARCH_LIMIT);
+        friendSearchCache.set(queryNorm, { results: socialFriendSearchResults, ts: Date.now() });
       }catch(err){
         console.error('[friends] search failed', err);
         socialFriendSearchError = 'Search failed. Try again later.';
@@ -3075,21 +3271,32 @@ function track(eventName, payload = {}){
       const fromUid = firebaseAuth.currentUser.uid;
       if(fromUid === toUid) return;
       try{
-        const requestId = `${fromUid}_${toUid}`;
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-        const reciprocalId = `${toUid}_${fromUid}`;
-        const reciprocalRef = firestore.collection('friendRequests').doc(reciprocalId);
-        const reciprocalSnap = await reciprocalRef.get();
-        if(reciprocalSnap.exists && reciprocalSnap.data()?.status === 'pending'){
-          await acceptFriendRequest(reciprocalId, toUid);
-          return;
+        const myEdgeRef = firestore.collection('friends').doc(fromUid).collection('edges').doc(toUid);
+        const theirEdgeRef = firestore.collection('friends').doc(toUid).collection('edges').doc(fromUid);
+        const existing = await firestoreApi.getDoc(myEdgeRef, 'friends.edgeLookup');
+        if(existing.exists){
+          const status = existing.data()?.status;
+          if(status === 'pending_in'){
+            await acceptFriendRequest(toUid);
+            return;
+          }
+          if(status === 'accepted' || status === 'pending_out') return;
         }
-        await firestore.collection('friendRequests').doc(requestId).set({
-          fromUid,
-          toUid,
-          status: 'pending',
-          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+        const batch = firestore.batch();
+        batch.set(myEdgeRef, {
+          friendUid: toUid,
+          status: 'pending_out',
+          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
         }, { merge: true });
+        batch.set(theirEdgeRef, {
+          friendUid: fromUid,
+          status: 'pending_in',
+          createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+        }, { merge: true });
+        await batch.commit();
         await refreshFriendsData(true);
         await searchProfilesForFriends();
       }catch(err){
@@ -3099,24 +3306,24 @@ function track(eventName, payload = {}){
       }
     };
 
-    window.acceptFriendRequest = async (requestId, fromUid)=>{
+    window.acceptFriendRequest = async (fromUid)=>{
       if(!isOnlineProfileMode()) return;
       try{
         const uid = firebaseAuth.currentUser.uid;
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
         const batch = firestore.batch();
-        const requestRef = firestore.collection('friendRequests').doc(requestId);
-        batch.update(requestRef, { status: 'accepted' });
-        const reciprocalId = `${uid}_${fromUid}`;
-        const reciprocalRef = firestore.collection('friendRequests').doc(reciprocalId);
-        const reciprocalSnap = await reciprocalRef.get();
-        if(reciprocalSnap.exists && reciprocalSnap.data()?.status === 'pending'){
-          batch.update(reciprocalRef, { status: 'accepted' });
-        }
-        const myFriendRef = firestore.collection('friends').doc(uid).collection('list').doc(fromUid);
-        const theirFriendRef = firestore.collection('friends').doc(fromUid).collection('list').doc(uid);
-        batch.set(myFriendRef, { friendUid: fromUid, createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString() }, { merge: true });
-        batch.set(theirFriendRef, { friendUid: uid, createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString() }, { merge: true });
+        const myFriendRef = firestore.collection('friends').doc(uid).collection('edges').doc(fromUid);
+        const theirFriendRef = firestore.collection('friends').doc(fromUid).collection('edges').doc(uid);
+        batch.set(myFriendRef, {
+          friendUid: fromUid,
+          status: 'accepted',
+          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+        }, { merge: true });
+        batch.set(theirFriendRef, {
+          friendUid: uid,
+          status: 'accepted',
+          updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
+        }, { merge: true });
         await batch.commit();
         await refreshFriendsData(true);
         renderProfile(); setupEventListeners();
@@ -3127,10 +3334,14 @@ function track(eventName, payload = {}){
       }
     };
 
-    window.rejectFriendRequest = async (requestId)=>{
+    window.rejectFriendRequest = async (fromUid)=>{
       if(!isOnlineProfileMode()) return;
       try{
-        await firestore.collection('friendRequests').doc(requestId).set({ status: 'declined' }, { merge: true });
+        const uid = firebaseAuth.currentUser.uid;
+        const batch = firestore.batch();
+        batch.delete(firestore.collection('friends').doc(uid).collection('edges').doc(fromUid));
+        batch.delete(firestore.collection('friends').doc(fromUid).collection('edges').doc(uid));
+        await batch.commit();
         await refreshFriendsData(true);
         renderProfile(); setupEventListeners();
       }catch(err){
@@ -3140,10 +3351,14 @@ function track(eventName, payload = {}){
       }
     };
 
-    window.cancelFriendRequest = async (requestId)=>{
+    window.cancelFriendRequest = async (toUid)=>{
       if(!isOnlineProfileMode()) return;
       try{
-        await firestore.collection('friendRequests').doc(requestId).set({ status: 'canceled' }, { merge: true });
+        const uid = firebaseAuth.currentUser.uid;
+        const batch = firestore.batch();
+        batch.delete(firestore.collection('friends').doc(uid).collection('edges').doc(toUid));
+        batch.delete(firestore.collection('friends').doc(toUid).collection('edges').doc(uid));
+        await batch.commit();
         await refreshFriendsData(true);
         renderProfile(); setupEventListeners();
       }catch(err){
@@ -3158,8 +3373,8 @@ function track(eventName, payload = {}){
       try{
         const uid = firebaseAuth.currentUser.uid;
         const batch = firestore.batch();
-        const myFriendRef = firestore.collection('friends').doc(uid).collection('list').doc(friendUid);
-        const theirFriendRef = firestore.collection('friends').doc(friendUid).collection('list').doc(uid);
+        const myFriendRef = firestore.collection('friends').doc(uid).collection('edges').doc(friendUid);
+        const theirFriendRef = firestore.collection('friends').doc(friendUid).collection('edges').doc(uid);
         batch.delete(myFriendRef);
         batch.delete(theirFriendRef);
         await batch.commit();
@@ -3499,6 +3714,62 @@ function track(eventName, payload = {}){
     window.hideLanding = () => { localStorage.setItem('hasSeenLanding','true'); checkAuth(); };
 
     // -------------------- Login / Profile handlers ---------------------
+    function getOnlineStatusInfo(){
+      const offline = !appState.net.isOnline || isOffline;
+      if(offline){
+        return { tone: 'offline', message: 'Offline mode — saved locally.', showRetry: false };
+      }
+      if(appState.firebase.status === 'ready'){
+        return { tone: 'online', message: 'Online mode enabled — syncing profile.', showRetry: false };
+      }
+      if(appState.firebase.status === 'initializing'){
+        return { tone: 'info', message: 'Connecting to Online mode…', showRetry: false };
+      }
+      if(appState.firebase.status === 'config_missing'){
+        if(isDevHost()){
+          return { tone: 'offline', message: 'Offline mode — saved locally.', showRetry: false };
+        }
+        return { tone: 'warn', message: 'Online mode unavailable (Firebase not configured) — saved locally.', showRetry: false };
+      }
+      if(appState.firebase.status === 'error'){
+        return { tone: 'error', message: 'Online mode error — saved locally.', showRetry: true };
+      }
+      return { tone: 'offline', message: 'Offline mode — saved locally.', showRetry: false };
+    }
+
+    function getOnlineStatusBannerHtml({ includeRetry = false, bannerId = 'onlineStatusBanner' } = {}){
+      const info = getOnlineStatusInfo();
+      const toneClass = info.tone === 'online'
+        ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100'
+        : info.tone === 'warn'
+          ? 'bg-amber-500/20 border-amber-400/40 text-amber-100'
+          : info.tone === 'error'
+            ? 'bg-red-500/20 border-red-400/40 text-red-100'
+            : info.tone === 'info'
+              ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-100'
+              : 'bg-white/10 border-white/20 text-gray-200';
+      const retryButton = (includeRetry && info.showRetry)
+        ? `<button onclick="retryOnlineMode()" class="ml-auto px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Retry Online</button>`
+        : '';
+      return `
+        <div id="${bannerId}" class="flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${toneClass}">
+          <span>${info.message}</span>
+          ${retryButton}
+        </div>
+      `;
+    }
+
+    function refreshOnlineStatusBanner(){
+      const banner = document.getElementById('onlineStatusBanner');
+      if(banner){
+        banner.outerHTML = getOnlineStatusBannerHtml({ includeRetry: true, bannerId: 'onlineStatusBanner' });
+      }
+      const bannerProfile = document.getElementById('onlineStatusBannerProfile');
+      if(bannerProfile){
+        bannerProfile.outerHTML = getOnlineStatusBannerHtml({ includeRetry: true, bannerId: 'onlineStatusBannerProfile' });
+      }
+    }
+
     function showLoginScreen(){
       // default auth mode
       setTimeout(()=>{ try{ if(window.setAuthMode) window.setAuthMode('signin'); }catch(e){} }, 50);
@@ -3514,9 +3785,11 @@ function track(eventName, payload = {}){
 
             <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
               <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
-              ${!firebaseEnabled ? `<div class="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/50 text-yellow-100 text-sm text-center">Firebase not configured — using local profiles.</div>` : ''}
+              <div class="mb-4">
+                ${getOnlineStatusBannerHtml({ includeRetry: true })}
+              </div>
 
-              ${firebaseEnabled ? `
+              ${isFirebaseReady() ? `
                 <div class="mb-5">
                   <div class="flex gap-2 bg-black/30 p-1 rounded-xl border border-cyan-500/20">
                     <button type="button" id="tabSignIn" onclick="setAuthMode('signin')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
@@ -3582,6 +3855,16 @@ function track(eventName, payload = {}){
         localForm.addEventListener('submit', onEnterMixSubmit);
       }
     }
+
+    window.retryOnlineMode = async () => {
+      setFirebaseStatus('initializing');
+      refreshOnlineStatusBanner();
+      await initFirebaseOnce({ force: true });
+      refreshOnlineStatusBanner();
+      if(isFirebaseReady()){
+        showLoginScreen();
+      }
+    };
 
       // -------------------- Firebase Auth UI helpers ---------------------
     window.setAuthMode = (mode) => {
@@ -3763,6 +4046,7 @@ function track(eventName, payload = {}){
           isPublic: true,
           allowFriendRequests: true,
           usernameLower: normalizeUsernameLower(username),
+          usernameNorm: normalizeUsernameKey(username),
           djNameLower: normalizeUsernameLower(djNameRaw || username),
           searchNameLower: normalizeUsernameLower(username),
           searchTokens: buildSearchTokens(username),
@@ -3794,7 +4078,7 @@ function track(eventName, payload = {}){
     }
 
     window.continueOffline = async () => {
-      if(firebaseEnabled){
+      if(isFirebaseReady()){
         alert('Sign in is required while cloud sync is enabled.');
         return;
       }
@@ -3822,6 +4106,7 @@ function track(eventName, payload = {}){
         isPublic: true,
         allowFriendRequests: true,
         usernameLower: normalizeUsernameLower(username),
+        usernameNorm: normalizeUsernameKey(username),
         djNameLower: normalizeUsernameLower(username),
         searchNameLower: normalizeUsernameLower(username),
         searchTokens: buildSearchTokens(username),
@@ -3836,7 +4121,7 @@ function track(eventName, payload = {}){
     };
 
     window.forgotPassword = async () => {
-      if (!firebaseAuth) return alert('Firebase not ready yet.');
+      if (!firebaseAuth || !isFirebaseReady()) return alert('Online mode not ready yet.');
       const email = (document.getElementById('email')?.value || '').trim();
       if (!email) return alert('Type your email first, then click "Forgot password?"');
       try {
@@ -4018,12 +4303,13 @@ function track(eventName, payload = {}){
         }
 
         const profile = existingProfile || {};
+        const resolvedUsername = await resolveAvailableUsername(firebaseUser.uid, profile.username || defaultUsername);
         const liveDefaults = normalizeLiveProfileFields({ ...profile, ...importedProfile });
         const mergedProfile = {
           ...profile,
           uid: firebaseUser.uid,
-          username: profile.username || defaultUsername,
-          djName: profile.djName || defaultUsername,
+          username: resolvedUsername,
+          djName: profile.djName || resolvedUsername,
           ownedTracks: importedProfile?.ownedTracks || profile.ownedTracks || ownedTracks || [],
           setlistIds: importedProfile?.setlistIds || profile.setlistIds || importedProfile?.setlist || profile.setlist || profile.setlists || setlistIds || [],
           setlists: importedProfile?.setlists || profile.setlists || setlistIds || [],
@@ -4051,10 +4337,15 @@ function track(eventName, payload = {}){
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
         if (user) {
+          appState.auth.user = user;
+          appState.auth.status = 'signed_in';
+          appState.auth.errorMsg = '';
           await resolveAuthSuccess(user);
         } else {
           authSettledUser = null;
           currentUser = null;
+          appState.auth.user = null;
+          appState.auth.status = 'signed_out';
           if(userProfileUnsub){
             userProfileUnsub();
             userProfileUnsub = null;
@@ -4067,8 +4358,8 @@ function track(eventName, payload = {}){
     async function handleFirebaseAuth(e){
       e.preventDefault();
       const errorBox = document.getElementById('authError');
-      if(!firebaseEnabled || !firebaseAuth){
-        if(errorBox){ errorBox.textContent = 'Firebase not configured — using local profiles.'; errorBox.style.display = 'block'; }
+      if(!isFirebaseReady() || !firebaseAuth){
+        if(errorBox){ errorBox.textContent = 'Online mode unavailable — using local profiles.'; errorBox.style.display = 'block'; }
         logEvent('auth_fail', { reason: 'config_missing' });
         return;
       }
@@ -4087,12 +4378,17 @@ function track(eventName, payload = {}){
       };
       const mapErrorCode = (code, message)=>{
         if(code === 'auth/invalid-credential' || code === 'auth/wrong-password') return 'Email/password incorrect';
+        if(code === 'auth/email-already-in-use') return 'Email already in use — try Sign In';
+        if(code === 'auth/weak-password') return 'Password too weak (min 6 characters)';
+        if(code === 'auth/invalid-email') return 'Enter a valid email address';
         if(code === 'auth/user-not-found') return 'No account found — click Register';
         if(code === 'auth/network-request-failed') return 'Network blocked/unstable. Try again or disable VPN.';
         if(code === 'auth/too-many-requests') return 'Too many attempts — wait a moment';
         return message || 'Sign-in failed';
       };
       authInFlight = true;
+      appState.auth.status = 'signing_in';
+      appState.auth.errorMsg = '';
       disableAuthUi(true);
       if(errorBox){ errorBox.textContent = ''; errorBox.style.display = 'none'; }
       logEvent('auth_attempt', { mode, email });
@@ -4111,9 +4407,14 @@ function track(eventName, payload = {}){
         console.error(err);
         const message = mapErrorCode(err?.code || '', err?.message);
         if(errorBox){ errorBox.textContent = message; errorBox.style.display = 'block'; }
+        appState.auth.status = 'error';
+        appState.auth.errorMsg = message;
         logEvent('auth_fail', { code: err?.code, message: err?.message });
       } finally {
         authInFlight = false;
+        if(appState.auth.status === 'signing_in'){
+          appState.auth.status = firebaseAuth?.currentUser ? 'signed_in' : 'signed_out';
+        }
         disableAuthUi(false);
       }
     }
@@ -4124,7 +4425,10 @@ function track(eventName, payload = {}){
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
+      appState.auth.user = null;
+      appState.auth.status = 'signed_out';
       currentUser = null; draftProfile = null; ownedTracks = []; setlistIds = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
+      friendSearchCache.clear();
       localStorage.removeItem('currentUser');
       showLoginScreen();
     }
@@ -4965,6 +5269,7 @@ function track(eventName, payload = {}){
               <span class="px-2 py-1 bg-emerald-500/20 border border-emerald-400/40 rounded text-emerald-100">${song.genre}</span>
             </div>
           </div>
+          ${debugPanel}
         </div>`;
       }).join('');
       const ownedEmpty = `<div class="text-sm text-gray-400">${profileOwnedSearch ? 'No owned songs match your search.' : 'No owned songs yet.'}</div>`;
@@ -5179,12 +5484,12 @@ function track(eventName, payload = {}){
         } else if(status === 'outgoing_pending'){
           actionMarkup = `<div class="flex gap-2 items-center">
             <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Request sent</span>
-            ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
+            ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.toUid || ''}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
           </div>`;
         } else if(status === 'incoming_pending'){
           actionMarkup = `<div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${incomingReq?.id || ''}','${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${incomingReq?.id || ''}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button onclick="acceptFriendRequest('${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button onclick="rejectFriendRequest('${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
           </div>`;
         } else if(profile.allowFriendRequests === false){
           actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
@@ -5216,8 +5521,8 @@ function track(eventName, payload = {}){
             </div>
           </div>
           <div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${req.id}','${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button onclick="acceptFriendRequest('${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button onclick="rejectFriendRequest('${req.fromUid}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
           </div>
         </div>`;
       }).join('');
@@ -5233,7 +5538,7 @@ function track(eventName, payload = {}){
           </div>
           <div class="flex gap-2">
             <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-500/20 border border-purple-400/40 text-purple-100">Pending</span>
-            <button onclick="cancelFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
+            <button onclick="cancelFriendRequest('${req.toUid}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
           </div>
         </div>`;
       }).join('');
@@ -5275,7 +5580,7 @@ function track(eventName, payload = {}){
             </div>
             ${friendsGateMessage ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendsGateClass}">${friendsGateMessage}</div>` : ''}
             <form id="socialFriendSearchForm" class="flex flex-col sm:flex-row gap-2" onsubmit="handleFriendSearch(event)">
-              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs (min ${FRIEND_SEARCH_MIN} chars)…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
               <button id="socialFriendSearchButton" type="submit" onclick="logFriendSearchClick()" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
             </form>
             ${socialFriendSearchNotice ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendNoticeClass}">${socialFriendSearchNotice}</div>` : ''}
@@ -5311,9 +5616,20 @@ function track(eventName, payload = {}){
           </div>
       ` : '';
       const profileErrorBanner = `<div id="profileErrorBanner" class="panel border border-red-400/40 bg-red-500/10 text-red-100 text-sm" style="display:${profileScriptError ? 'block' : 'none'};">Profile scripts failed. Open console.</div>`;
+      const onlineStatusBanner = getOnlineStatusBannerHtml({ includeRetry: true, bannerId: 'onlineStatusBannerProfile' });
+      const debugPanel = DEBUG_PROFILE ? `
+        <div class="panel text-xs text-gray-300">
+          <div class="font-semibold text-white mb-1">Online Debug</div>
+          <div>Firebase status: ${appState.firebase.status}</div>
+          <div>Auth status: ${appState.auth.status}</div>
+          <div>Network: ${appState.net.isOnline ? 'online' : 'offline'}</div>
+          <div>Last Firestore error: ${appState.firebase.lastError || '—'}</div>
+        </div>
+      ` : '';
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-5xl mx-auto relative z-10" style="${profileAccentStyle}">
           ${profileErrorBanner}
+          ${onlineStatusBanner}
           <div class="panel space-y-3">
             <div class="flex items-center justify-between">
               <div>
@@ -5592,7 +5908,7 @@ function track(eventName, payload = {}){
           </div>
           <div class="panel text-xs text-gray-300">
             <div class="font-semibold text-white mb-1">Debug</div>
-            <div>Firebase enabled: ${firebaseEnabled}</div>
+            <div>Firebase status: ${appState.firebase.status}</div>
             <div>User key: ${computeUserKey()}</div>
             <div>Songs loaded: ${songs.length}</div>
             <div>Overrides loaded: ${camelotCount} camelot / ${bpmCount} bpm</div>
@@ -5631,25 +5947,13 @@ function track(eventName, payload = {}){
               username: newUsername,
               djName: newDjName,
               usernameLower: normalizeUsernameLower(newUsername),
+              usernameNorm: normalizeUsernameKey(newUsername),
               djNameLower: normalizeUsernameLower(newDjName),
               searchNameLower: normalizeUsernameLower(newUsername),
               searchTokens: buildSearchTokens(newUsername)
             }
             : merged;
           await newRef.set(payload, { merge:true });
-          try{
-            const snapshot = await collection.get();
-            const batch = firestore.batch();
-            let needsCommit = false;
-            snapshot.forEach(doc=>{
-              const data = doc.data()||{};
-              const members = data.bandMembers || [];
-              const updated = members.map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDjName } : m);
-              const changed = JSON.stringify(updated)!==JSON.stringify(members);
-              if(changed){ batch.set(doc.ref,{ bandMembers: updated },{merge:true}); needsCommit=true; }
-            });
-            if(needsCommit) await batch.commit();
-          }catch(err){ console.warn('band member update failed', err); }
           await oldRef.delete().catch(()=>{});
         }catch(e){ if(status) status.textContent = 'Error migrating in Firestore: ' + (e.message||e); throw e; }
       }
@@ -5686,6 +5990,17 @@ function track(eventName, payload = {}){
         if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
         alert('Username must be 3-20 chars, letters/numbers/underscore only');
         return;
+      }
+      if(isFirebaseReady() && firebaseAuth?.currentUser){
+        const availability = await ensureUsernameMapping(newUsername, firebaseAuth.currentUser.uid);
+        if(!availability.ok && availability.reason === 'taken'){
+          if(status) status.textContent = 'Username is taken. Choose another.';
+          alert('That username is already taken. Try another.');
+          return;
+        }
+        if(!availability.ok && availability.reason === 'error'){
+          if(status) status.textContent = 'Unable to verify username availability.';
+        }
       }
       draftProfile = draftProfile || cloneProfile(currentUser) || {};
       draftProfile.username = newUsername;
@@ -6188,14 +6503,24 @@ function render(){
           socialFriendSearchError = '';
           if(socialFriendSearchNotice) setFriendSearchNotice('');
           if(socialFriendSearchDebounce) clearTimeout(socialFriendSearchDebounce);
-          if(!socialFriendSearchQuery){
+          const normalizedQuery = normalizeUsernameKey(socialFriendSearchQuery);
+          if(!normalizedQuery){
             socialFriendSearchResults = [];
             socialFriendSearchLoading = false;
+            setFriendSearchNotice('Type a DJ name to search.', 'info');
             renderProfile();
             setupEventListeners();
             return;
           }
-          socialFriendSearchDebounce = setTimeout(()=>{ handleFriendSearch(null, { explicit: false }); }, 300);
+          if(normalizedQuery.length < FRIEND_SEARCH_MIN){
+            socialFriendSearchResults = [];
+            socialFriendSearchLoading = false;
+            setFriendSearchNotice(`Type at least ${FRIEND_SEARCH_MIN} characters.`, 'warn');
+            renderProfile();
+            setupEventListeners();
+            return;
+          }
+          socialFriendSearchDebounce = setTimeout(()=>{ handleFriendSearch(null, { explicit: false }); }, 320);
         }
         if(target.id === 'ratingCommentInput'){
           ratingDraft.comment = target.value;
@@ -7716,7 +8041,7 @@ function render(){
     // ----------------------- Init / Auth check ------------------------
     loadOverridesFromStorage();
     handleNetworkStatusChange();
-    window.addEventListener('online', ()=>{ handleNetworkStatusChange(); if(!songs.length) loadSongs(); });
+    window.addEventListener('online', ()=>{ handleNetworkStatusChange(); initFirebaseOnce(); if(!songs.length) loadSongs(); });
     window.addEventListener('offline', handleNetworkStatusChange);
     if('serviceWorker' in navigator){
       window.addEventListener('load', ()=>{
@@ -7725,7 +8050,9 @@ function render(){
     }
     initCommunityMetrics();
     async function checkAuth(){
-      if (firebaseEnabled && firebaseAuth) {
+      await initFirebaseOnce();
+      refreshOnlineStatusBanner();
+      if (isFirebaseReady() && firebaseAuth) {
         setupFirebaseAuthListener();
         const fbUser = firebaseAuth.currentUser;
         if (fbUser) {
@@ -7770,6 +8097,10 @@ function render(){
       }
     }, { action: 'drag-song-card' }));
     // ---------------- Expose some helpers for debugging ----------------
+    window.appState = appState;
+    window.refreshOnlineStatusBanner = refreshOnlineStatusBanner;
+    window.showLoginScreen = showLoginScreen;
+    window.renderProfile = renderProfile;
     window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile; window.startTour = startTour; window.refreshLiveNowUsers = refreshLiveNowUsers;
     window.__perfState = {
       get listRenderCount(){ return listRenderCount; },
