@@ -67,3 +67,12 @@ Notes:
 - Firestore shape is provider-agnostic under `users/{uid}/integrations/{provider}`; see `docs/epic-oauth-firestore.md` for
   the canonical schema and operational guardrails.
 - Jam Track ownership remains manual; OAuth links only record Epic account ids for potential future entitlement APIs.
+
+## Test checklist (manual)
+- Production/Vercel: load app → Online banner shows when env vars are set; no config warning.
+- Missing env vars: load app → Online unavailable banner + local profile flow.
+- Sign up → refresh → still signed in (onAuthStateChanged restores session).
+- Edit profile → refresh → changes persist online (Firestore) and offline (local storage).
+- Friends search: <3 chars shows prompt; 3+ chars returns limited results; backspace doesn’t spam reads.
+- Rules sanity: user A cannot write user B profile via devtools.
+- Toggle offline in devtools → Offline banner shown; app continues to work locally.
