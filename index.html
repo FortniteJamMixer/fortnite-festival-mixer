@@ -5246,26 +5246,28 @@ function track(eventName, payload = {}){
 
     function renderProfile(){
       const profileEl = document.getElementById('profileView'); if(!profileEl) return;
-      if(DEBUG_UI) console.log('[debug][profile] renderProfile');
-      bindUiDebugging();
-      bindProfileHandlers();
-      const viewOnly = !!viewingProfile;
-      if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
-        refreshDraftProfileFromCurrentUser();
-      }
-      const profileEditable = !viewOnly && profileEditMode;
-      const profileOwner = viewingProfile || currentUser || {};
-      const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
-      const recoveryStatus = (!viewOnly && currentUser) ? getProfileRecoveryStatus(currentUser) : { needsRecovery: false };
-      const recoveryBanner = recoveryStatus.needsRecovery
-        ? `<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <div class="font-semibold">⚠️ Profile mismatch detected</div>
-              <div class="text-xs text-amber-100/80">Some profile fields look empty. Recover automatically to re-sync your data.</div>
-            </div>
-            <button type="button" onclick="recoverProfileMismatch()" class="px-3 py-2 rounded-lg bg-amber-500/30 border border-amber-300/50 text-amber-100 text-xs font-semibold">Recover automatically</button>
-          </div>`
-        : '';
+      if(window.__profileRenderCrashed) return;
+      try {
+        if(DEBUG_UI) console.log('[debug][profile] renderProfile');
+        bindUiDebugging();
+        bindProfileHandlers();
+        const viewOnly = !!viewingProfile;
+        if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
+          refreshDraftProfileFromCurrentUser();
+        }
+        const profileEditable = !viewOnly && profileEditMode;
+        const profileOwner = viewingProfile || currentUser || {};
+        const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
+        const recoveryStatus = (!viewOnly && currentUser) ? getProfileRecoveryStatus(currentUser) : { needsRecovery: false };
+        const recoveryBanner = recoveryStatus.needsRecovery
+          ? `<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div class="font-semibold">⚠️ Profile mismatch detected</div>
+                <div class="text-xs text-amber-100/80">Some profile fields look empty. Recover automatically to re-sync your data.</div>
+              </div>
+              <button type="button" onclick="recoverProfileMismatch()" class="px-3 py-2 rounded-lg bg-amber-500/30 border border-amber-300/50 text-amber-100 text-xs font-semibold">Recover automatically</button>
+            </div>`
+          : '';
       const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
       const usernameVal = editableProfile?.username || '';
       const djVal = editableProfile?.djName || usernameVal;
@@ -5319,6 +5321,22 @@ function track(eventName, payload = {}){
         <div class="text-xs text-gray-300">Multiple matches found. Pick one:</div>
         ${friendLookupResults.map(p=>`<button onclick="selectFriendProfile('${p.username || p.uid || ''}')" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
       </div>` : '';
+      function getDebugPanelHtml(){
+        if(!DEBUG_PROFILE) return '';
+        try {
+          return `
+        <div class="panel text-xs text-gray-300">
+          <div class="font-semibold text-white mb-1">Online Debug</div>
+          <div>Firebase status: ${appState.firebase.status}</div>
+          <div>Auth status: ${appState.auth.status}</div>
+          <div>Network: ${appState.net.isOnline ? 'online' : 'offline'}</div>
+          <div>Last Firestore error: ${appState.firebase.lastError || '—'}</div>
+        </div>
+      `;
+        } catch (error) {
+          return '';
+        }
+      }
       const ownedFiltered = songs
         .filter(s=>ownedIds.includes(s.id))
         .filter(s=>{
@@ -5341,7 +5359,7 @@ function track(eventName, payload = {}){
               <span class="px-2 py-1 bg-emerald-500/20 border border-emerald-400/40 rounded text-emerald-100">${song.genre}</span>
             </div>
           </div>
-          ${debugPanel}
+          ${getDebugPanelHtml()}
         </div>`;
       }).join('');
       const ownedEmpty = `<div class="text-sm text-gray-400">${profileOwnedSearch ? 'No owned songs match your search.' : 'No owned songs yet.'}</div>`;
@@ -5689,15 +5707,6 @@ function track(eventName, payload = {}){
       ` : '';
       const profileErrorBanner = `<div id="profileErrorBanner" class="panel border border-red-400/40 bg-red-500/10 text-red-100 text-sm" style="display:${profileScriptError ? 'block' : 'none'};">Profile scripts failed. Open console.</div>`;
       const onlineStatusBanner = getOnlineStatusBannerHtml({ includeRetry: true, bannerId: 'onlineStatusBannerProfile' });
-      const debugPanel = DEBUG_PROFILE ? `
-        <div class="panel text-xs text-gray-300">
-          <div class="font-semibold text-white mb-1">Online Debug</div>
-          <div>Firebase status: ${appState.firebase.status}</div>
-          <div>Auth status: ${appState.auth.status}</div>
-          <div>Network: ${appState.net.isOnline ? 'online' : 'offline'}</div>
-          <div>Last Firestore error: ${appState.firebase.lastError || '—'}</div>
-        </div>
-      ` : '';
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-5xl mx-auto relative z-10" style="${profileAccentStyle}">
           ${profileErrorBanner}
@@ -5841,6 +5850,16 @@ function track(eventName, payload = {}){
         }, { totalItems: ownedFiltered.length, totalPages: ownedPagination.totalPages, from: ownedPagination.from, to: ownedPagination.to });
       }
       updateTourUI();
+      } catch (error) {
+        window.__profileRenderCrashed = true;
+        console.error('[Profile] renderProfile crashed:', error);
+        profileScriptError = true;
+        profileEl.innerHTML = `
+          <div class="panel border border-red-400/40 bg-red-500/10 text-red-100 text-sm">
+            Profile failed to render. Please refresh the page.
+          </div>
+        `;
+      }
     }
 
     function updateStreamControlsFromInput(){
