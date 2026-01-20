@@ -250,9 +250,17 @@
       gap:12px;
       flex-wrap:wrap;
     }
+    .helpHeaderControls {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      margin-left:auto;
+    }
     .helpTitle { font-size:20px; font-weight:800; color:#fff; display:flex; gap:10px; align-items:center; }
     .helpTabs { display:flex; gap:8px; align-items:center; }
-    .helpTabBtn { padding:8px 10px; border-radius:10px; border:1px solid rgba(0,217,255,0.18); background:rgba(255,255,255,0.06); color:#dff7ff; font-weight:800; cursor:pointer; }
+    .helpTabBtn { padding:8px 12px; border-radius:10px; border:1px solid rgba(0,217,255,0.18); background:rgba(255,255,255,0.06); color:#dff7ff; font-weight:800; cursor:pointer; min-height:38px; }
     .helpTabBtn.active { background: linear-gradient(90deg,#ff6b9d,#8b5cf6); border-color: rgba(255,255,255,0.14); box-shadow:0 0 18px rgba(139,92,246,0.18); color:#fff; }
     .helpContent {
       padding: 14px 18px;
@@ -273,7 +281,7 @@
     .helpFaq summary { cursor: pointer; font-weight: 700; color: #e6f7ff; list-style: none; }
     .helpFaq summary::-webkit-details-marker { display: none; }
     .helpFaq p { margin-top: 6px; color: rgba(230,247,255,0.8); font-size: 13px; }
-    .helpDivider { margin: 14px 0; border-color: rgba(0,217,255,0.08); }
+    .helpDivider { margin: 16px 0; border-color: rgba(0,217,255,0.08); }
     .anchorGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
     .anchorLink { display: block; padding: 10px 12px; border-radius: 10px; background: rgba(0,217,255,0.06); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; text-decoration: none; font-weight: 700; }
     .anchorLink:hover { border-color: rgba(255,107,157,0.35); box-shadow: 0 0 12px rgba(255,107,157,0.18); }
@@ -286,6 +294,7 @@
     .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
     .helpFooter { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .helpFooterMeta { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     .helpFooterActions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .helpAltBtn {
       background: rgba(255,255,255,0.08);
@@ -296,6 +305,7 @@
       cursor:pointer;
       border: 1px solid rgba(0,217,255,0.2);
       transition: all .2s ease;
+      min-height: 38px;
     }
     .helpAltBtn:hover { background: rgba(255,255,255,0.16); color: #fff; border-color: rgba(255,255,255,0.3); }
 
@@ -317,6 +327,8 @@
       cursor:pointer;
       border: none;
       box-shadow: 0 6px 24px rgba(139,92,246,0.12);
+      min-height: 38px;
+      white-space: nowrap;
     }
     .helpIconBtn {
       width: 40px;
@@ -337,6 +349,14 @@
     }
     .helpIconBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
     .helpIconBtn:focus-visible { outline: 2px solid rgba(0,217,255,0.8); outline-offset: 2px; }
+    .helpTourHighlight { border-radius: 12px; box-shadow: 0 0 0 2px rgba(56,189,248,0.7), 0 0 18px rgba(56,189,248,0.35); transition: box-shadow .2s ease; }
+
+    @media (max-width: 640px) {
+      .helpHeader { align-items:flex-start; }
+      .helpHeaderControls { width: 100%; justify-content: space-between; }
+      .helpTabs { flex-wrap: wrap; }
+      .helpTabBtn, .helpCloseBtn { flex: 1 1 auto; }
+    }
 
     /* Admin editor modal */
     .admin-editor-modal { position: fixed; inset: 0; z-index: 7000; display: flex; align-items: center; justify-content: center; background: rgba(3,7,18,0.75); backdrop-filter: blur(8px); }
@@ -443,16 +463,16 @@
             <div style="font-size:12px;color:#bdeeff">Everything the landing page explains — available anytime</div>
           </div>
         </div>
-        <div class="helpTabs" role="tablist" aria-label="Help tabs">
-          <button id="helpTabBasic" class="helpTabBtn active" data-tab="basic" role="tab" aria-selected="true" aria-controls="helpBasic">Basic</button>
-          <button id="helpTabAdvanced" class="helpTabBtn" data-tab="advanced" role="tab" aria-selected="false" aria-controls="helpAdvanced" tabindex="-1">Advanced</button>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div class="helpHeaderControls">
+          <div class="helpTabs" role="tablist" aria-label="Help tabs">
+            <button id="helpTabBasic" class="helpTabBtn active" data-tab="basic" role="tab" aria-selected="true" aria-controls="helpBasic">Basic</button>
+            <button id="helpTabAdvanced" class="helpTabBtn" data-tab="advanced" role="tab" aria-selected="false" aria-controls="helpAdvanced" tabindex="-1">Advanced</button>
+          </div>
           <button class="helpCloseBtn" onclick="closeHelp()" aria-label="Close help">✕ Close</button>
         </div>
       </div>
 
-      <div class="helpContent" id="helpContent">
+      <div class="helpContent" id="helpContent" tabindex="0">
         <div id="helpBasic" data-help-pane="basic">
           <div class="helpSection" id="welcome">
             <h3 data-brand="help-title">Fortnite Jam Mixer Help</h3>
@@ -484,10 +504,12 @@
       </div>
 
       <div class="helpFooter">
-        <span class="small-muted" id="helpVersion"></span>
+        <div class="helpFooterMeta">
+          <span class="small-muted" id="helpVersion"></span>
+          <span class="small-muted" id="helpTourProgress" style="display:none"></span>
+        </div>
         <div class="helpFooterActions">
-          <button class="helpAltBtn" onclick="startTour('help',{ force: true })">Run Quick Tour</button>
-          <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
+          <button class="helpAltBtn" onclick="runHelpTour()">Run Quick Tour</button>
         </div>
       </div>
     </div>
@@ -1518,6 +1540,9 @@ function track(eventName, payload = {}){
     let helpOpenTarget = 'none';
     let helpOpenSource = 'other';
     let helpTabTracked = false;
+    let helpTourStep = 0;
+    let helpTourTimer = null;
+    let helpTourActive = false;
     let profileEditMode = true;
     let profileHandlersBound = false;
     let debugUiBound = false;
@@ -5082,7 +5107,7 @@ function track(eventName, payload = {}){
               <div class="flex flex-wrap gap-2">
                 <span id="profileThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Theme: ${themeLabel}</span>
                 <span id="profilePersonaThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Energy: ${personaTheme.label}</span>
-                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">Myspace vibes</span>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">Profile Style (Neon DJ vibe)</span>
               </div>
             </div>
           </div>
@@ -6664,8 +6689,17 @@ function render(){
     const HELP_SECTION_IDS = {
       setlist: 'help-setlist',
       live: 'help-live',
-      offline: 'offlineHelp',
-      owned: 'ownedHelp'
+      offline: 'help-offline',
+      owned: 'help-owned',
+      mixer_basics: 'help-mixer-basics',
+      camelot_bpm: 'help-camelot-bpm',
+      mixable: 'help-mixable',
+      profile_style: 'help-profile-style',
+      mashup_tools: 'help-mashup-tools',
+      sandbox: 'help-sandbox',
+      admin_overrides: 'help-admin-overrides',
+      export_import: 'help-export-import',
+      advanced_tips: 'help-advanced-tips'
     };
     const HELP_FAQ_FEATURES = {
       go_live_disabled: 'hasLiveProfile',
@@ -6757,8 +6791,13 @@ function render(){
       if(basicSectionsEl){
         basicSectionsEl.innerHTML = '';
         const sections = Array.isArray(helpData?.basic?.sections) ? helpData.basic.sections : [];
-        sections.forEach(section => {
+        sections.forEach((section, index) => {
           basicSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ol', includeFeatures, includeIds }));
+          if(index < sections.length - 1){
+            const divider = document.createElement('hr');
+            divider.className = 'helpDivider';
+            basicSectionsEl.appendChild(divider);
+          }
         });
       }
       if(faqListEl){
@@ -6788,8 +6827,13 @@ function render(){
       if(advancedSectionsEl){
         advancedSectionsEl.innerHTML = '';
         const sections = Array.isArray(helpData?.advanced?.sections) ? helpData.advanced.sections : [];
-        sections.forEach(section => {
+        sections.forEach((section, index) => {
           advancedSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ul', includeFeatures: false, includeIds }));
+          if(index < sections.length - 1){
+            const divider = document.createElement('hr');
+            divider.className = 'helpDivider';
+            advancedSectionsEl.appendChild(divider);
+          }
         });
       }
     }
@@ -7010,14 +7054,13 @@ function render(){
       const helpContent = document.getElementById('helpContent');
       if(!helpContent) return;
       const panes = document.querySelectorAll('[data-help-pane]');
-      helpScroll[helpTab] = helpContent.scrollTop;
       const previousTab = helpTab;
       helpTab = tab === 'advanced' ? 'advanced' : 'basic';
       panes.forEach(pane => {
         const isActive = pane.dataset.helpPane === helpTab;
         pane.style.display = isActive ? 'block' : 'none';
       });
-      helpContent.scrollTop = helpScroll[helpTab] || 0;
+      helpContent.scrollTop = 0;
       syncHelpTabsA11y();
       if(helpOpenedAt && (!helpTabTracked || previousTab !== helpTab)){
         track('help_tab_viewed', { tab: helpTab, target: helpOpenTarget });
@@ -7055,6 +7098,87 @@ function render(){
       });
     }
 
+    const HELP_TOUR_STEPS = [
+      { tab: 'basic', id: 'help-mixer-basics', label: 'Mixer Basics' },
+      { tab: 'basic', id: 'help-camelot-bpm', label: 'Camelot & BPM' },
+      { tab: 'basic', id: 'help-mixable', label: 'Mixable' },
+      { tab: 'basic', id: 'help-setlist', label: 'Setlist' },
+      { tab: 'advanced', id: 'help-mashup-tools', label: 'Mashup Tools & Sandbox' }
+    ];
+    const HELP_TOUR_DELAY_MS = 1800;
+
+    function clearHelpTourTimer(){
+      if(helpTourTimer){
+        clearTimeout(helpTourTimer);
+        helpTourTimer = null;
+      }
+    }
+
+    function clearHelpTourHighlights(){
+      document.querySelectorAll('.helpTourHighlight').forEach((el) => {
+        el.classList.remove('helpTourHighlight');
+      });
+    }
+
+    function updateHelpTourProgress(){
+      const progress = document.getElementById('helpTourProgress');
+      if(!progress) return;
+      if(!helpTourActive){
+        progress.style.display = 'none';
+        progress.textContent = '';
+        return;
+      }
+      progress.style.display = 'inline-flex';
+      progress.textContent = `Step ${helpTourStep + 1}/${HELP_TOUR_STEPS.length}`;
+    }
+
+    function focusHelpHeading(){
+      const pane = document.querySelector(`[data-help-pane="${helpTab}"]`);
+      const heading = pane?.querySelector('h3');
+      if(heading){
+        heading.setAttribute('tabindex', '-1');
+        heading.focus({ preventScroll: true });
+        return;
+      }
+      const modal = document.getElementById('helpModal');
+      if(modal){
+        modal.setAttribute('tabindex', '-1');
+        modal.focus({ preventScroll: true });
+      }
+    }
+
+    function goToHelpTourStep(index){
+      if(index >= HELP_TOUR_STEPS.length){
+        helpTourActive = false;
+        updateHelpTourProgress();
+        return;
+      }
+      helpTourStep = index;
+      helpTourActive = true;
+      updateHelpTourProgress();
+      const step = HELP_TOUR_STEPS[index];
+      setHelpTab(step.tab);
+      requestAnimationFrame(() => {
+        const targetEl = document.getElementById(step.id);
+        if(targetEl){
+          clearHelpTourHighlights();
+          targetEl.classList.add('helpTourHighlight');
+          targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setTimeout(() => targetEl.classList.remove('helpTourHighlight'), 1200);
+        }
+      });
+      clearHelpTourTimer();
+      helpTourTimer = setTimeout(() => goToHelpTourStep(index + 1), HELP_TOUR_DELAY_MS);
+    }
+
+    function runHelpTour(){
+      clearHelpTourTimer();
+      clearHelpTourHighlights();
+      helpTourStep = 0;
+      helpTourActive = true;
+      goToHelpTourStep(0);
+    }
+
     function openHelpModal(options = {}){
       const modal = document.getElementById('helpModal');
       if(!modal) return;
@@ -7064,6 +7188,10 @@ function render(){
       helpOpenSource = source;
       helpOpenedAt = Date.now();
       helpTabTracked = false;
+      helpTourActive = false;
+      clearHelpTourTimer();
+      clearHelpTourHighlights();
+      updateHelpTourProgress();
       track('help_opened', buildHelpOpenedPayload(source, target));
       const features = resolveFeatureFlags();
       renderWhatsNew(features);
@@ -7074,8 +7202,7 @@ function render(){
       setHelpTab('basic');
       modal.style.display = 'flex';
       modal.setAttribute('aria-hidden','false');
-      const activeTab = document.querySelector('.helpTabBtn.active');
-      if(activeTab){ activeTab.focus(); } else { modal.focus(); }
+      focusHelpHeading();
       const targetId = target === 'setlist' ? 'help-setlist' : target === 'live' ? 'help-live' : null;
       if(targetId){
         setTimeout(() => {
@@ -7100,6 +7227,10 @@ function render(){
       helpOpenTarget = 'none';
       helpOpenSource = 'other';
       helpTabTracked = false;
+      helpTourActive = false;
+      clearHelpTourTimer();
+      clearHelpTourHighlights();
+      updateHelpTourProgress();
       modal.style.display = 'none';
       modal.setAttribute('aria-hidden','true');
     }
