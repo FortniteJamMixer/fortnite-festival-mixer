@@ -24,12 +24,11 @@ test('mergeGenreOverrides prefers cloud keys', () => {
 
 test('buildSyncPlan uploads local-only data when cloud is empty', () => {
   const plan = buildSyncPlan({
-    cloud: { ownedTracks: [], setlist: [] },
-    local: { ownedTracks: ['t1'], setlist: ['s1'] }
+    cloud: { setlist: [] },
+    local: { setlist: ['s1'] }
   });
   assert.equal(plan.cloudEmpty, true);
   assert.equal(plan.localHasData, true);
   assert.equal(plan.shouldWriteCloud, true);
-  assert.deepEqual(plan.merged.ownedTracks, ['t1']);
   assert.deepEqual(plan.merged.setlist, ['s1']);
 });

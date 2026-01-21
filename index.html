@@ -1219,14 +1219,13 @@ function track(eventName, payload = {}){
       if (!profile) return;
       const firebaseUser = firebaseAuth?.currentUser;
       const profileKey = profile.uid || firebaseUser?.uid;
-      const ownedIds = profile.ownedTracks || [];
       const setlistItems = profile.setlist || [];
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
       const usernameLower = normalizeUsernameLower(profile.username || profileKey);
       const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
       const searchNameLower = profile.searchNameLower || usernameLower;
       const persona = ensurePersona(profile);
-      const { setlists, setlistIds, ...profileRest } = profile;
+      const { setlists, setlistIds, ownedTracks, ownedMap, ...profileRest } = profile;
       const payload = {
         ...profileRest,
         uid: profileKey,
@@ -1246,9 +1245,7 @@ function track(eventName, payload = {}){
         rulesAccepted: profile.rulesAccepted === true,
         rulesAcceptedAt: profile.rulesAcceptedAt || null,
         email: profile.email || firebaseUser?.email || '',
-        ownedTracks: ownedIds,
         setlist: setlistItems,
-        ownedMap: buildOwnedMap(ownedIds),
         updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
       };
       let backendOk = true;
@@ -1465,6 +1462,9 @@ function track(eventName, payload = {}){
     let songsById = {};
     let draftProfile = null;
     let ownedTracks = [];
+    let ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
+    let ownedLibraryRestoring = false;
+    let ownedLibraryPendingWrite = null;
     let selectedSong = null;
     let sortMode = 'bpm';
     let previewSong = null;
@@ -1616,6 +1616,7 @@ function track(eventName, payload = {}){
     let adminMenuListenersBound = false;
     let isOffline = !navigator.onLine;
     let trackSource = 'network';
+    const FEATURE_SIGNIN_STATS = false;
     const communityStats = { totalDjs: '…' };
     const communityStatGraceTimers = {};
     const COMMUNITY_STAT_GRACE_MS = 3000;
@@ -1677,7 +1678,6 @@ function track(eventName, payload = {}){
         streamUrl: currentUser?.streamUrl || '',
         isLive: currentUser?.isLive === true,
         liveStartedAt: currentUser?.liveStartedAt || currentUser?.liveSince || null,
-        ownedTracks,
         setlist,
         genreOverrides,
         bandMembers
@@ -1687,13 +1687,11 @@ function track(eventName, payload = {}){
       clearTimeout(profileSyncTimeout);
       profileSyncTimeout = setTimeout(async ()=>{
         if(currentUser){
-          currentUser.ownedTracks = ownedTracks;
           currentUser.setlist = setlist;
           currentUser.genreOverrides = genreOverrides;
           currentUser.bandMembers = bandMembers;
         }
         if(draftProfile){
-          draftProfile.ownedTracks = ownedTracks;
           draftProfile.setlist = setlist;
           draftProfile.genreOverrides = genreOverrides;
           draftProfile.bandMembers = bandMembers;
@@ -1709,7 +1707,6 @@ function track(eventName, payload = {}){
               streamUrl: currentUser?.streamUrl || '',
               isLive: currentUser?.isLive === true,
               liveStartedAt: currentUser?.liveStartedAt || currentUser?.liveSince || null,
-              ownedTracks,
               setlist,
               genreOverrides,
               bandMembers
@@ -1916,6 +1913,7 @@ function track(eventName, payload = {}){
     }
 
     function syncCommunityStatsUI(){
+      if(!FEATURE_SIGNIN_STATS) return;
       const mapping = {
         totalDjs: communityStats.totalDjs,
       };
@@ -1958,6 +1956,7 @@ function track(eventName, payload = {}){
     }
 
     function initCommunityMetrics(){
+      if(!FEATURE_SIGNIN_STATS) return;
       startCommunityStatGrace('totalDjs');
       loadTotalDjs();
     }
@@ -1972,6 +1971,11 @@ function track(eventName, payload = {}){
           ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100'
           : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100';
       });
+      render();
+      setupEventListeners();
+      if(!isOffline){
+        flushOwnedLibraryPendingWrite().catch(err=>console.warn('[owned-library] pending flush failed', err));
+      }
     }
 
     function isMobileViewport(){
@@ -2291,6 +2295,158 @@ function track(eventName, payload = {}){
       const arr = Array.isArray(ids) ? ids.filter(Boolean) : [];
       return Array.from(new Set(arr)).sort();
     }
+    function buildOwnedLibrarySnapshot(trackIds, updatedAt = new Date().toISOString(), meta = null){
+      const normalized = normalizeOwnedList(trackIds);
+      const hash = window.profileStore?.computeOwnedTracksHash
+        ? window.profileStore.computeOwnedTracksHash(normalized)
+        : normalized.join('|');
+      return {
+        trackIds: normalized,
+        count: normalized.length,
+        schemaVersion: window.profileStore?.OWNED_LIBRARY_SCHEMA_VERSION || 1,
+        updatedAt,
+        hash,
+        ...(meta ? { meta } : {})
+      };
+    }
+    function readOwnedTracksCache(uid){
+      if(!uid) return null;
+      return window.profileStore?.readOwnedTracksCache?.(uid) || null;
+    }
+    function writeOwnedTracksCache(uid, trackIds, updatedAt = new Date().toISOString()){
+      if(!uid) return null;
+      const snapshot = buildOwnedLibrarySnapshot(trackIds, updatedAt);
+      return window.profileStore?.writeOwnedTracksCache?.(uid, snapshot) || snapshot;
+    }
+    async function writeOwnedTracksCloud(uid, trackIds, meta = null){
+      if(!uid) return null;
+      if(!window.profileStore?.writeOwnedLibraryDoc) return null;
+      const snapshot = buildOwnedLibrarySnapshot(trackIds, new Date().toISOString(), meta);
+      return window.profileStore.writeOwnedLibraryDoc(uid, snapshot);
+    }
+    function setOwnedLibraryStatus({ phase = 'idle', source = 'none', message = '' } = {}){
+      ownedLibraryState = { phase, source, message };
+    }
+    function resolveOwnedLibraryStatusMessage(){
+      if(!ownedLibraryState?.message) return '';
+      return ownedLibraryState.message;
+    }
+    async function flushOwnedLibraryPendingWrite(){
+      if(!ownedLibraryPendingWrite) return;
+      if(ownedLibraryRestoring) return;
+      const uid = firebaseAuth?.currentUser?.uid;
+      if(!uid || !firebaseEnabled || !firestore || !navigator.onLine) return;
+      const payload = ownedLibraryPendingWrite;
+      ownedLibraryPendingWrite = null;
+      const meta = payload.reason === 'explicit_clear' ? { reason: payload.reason } : null;
+      await writeOwnedTracksCloud(uid, payload.trackIds, meta);
+      setOwnedLibraryStatus({
+        phase: 'ready',
+        source: 'cloud',
+        message: 'Library loaded (Cloud)'
+      });
+    }
+    async function saveOwnedTracksSafe(nextTrackIds, { reason = 'update', allowEmpty = false, skipCloud = false } = {}){
+      const normalized = normalizeOwnedList(nextTrackIds);
+      const explicitClear = reason === 'explicit_clear';
+      const currentNormalized = normalizeOwnedList(ownedTracks);
+      if(JSON.stringify(normalized) === JSON.stringify(currentNormalized)){
+        return { skipped: true, reason: 'identical' };
+      }
+      if(normalized.length === 0 && !explicitClear && !allowEmpty){
+        console.warn('[owned-library] blocked empty save', { reason });
+        return { skipped: true, reason: 'empty_blocked' };
+      }
+      ownedTracks = normalized;
+      const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid;
+      if(uid) writeOwnedTracksCache(uid, normalized);
+      if(skipCloud || ownedLibraryRestoring){
+        ownedLibraryPendingWrite = { trackIds: normalized, reason };
+        return { savedLocal: true, queued: true };
+      }
+      if(uid && firebaseEnabled && firestore && navigator.onLine){
+        const meta = explicitClear ? { reason } : null;
+        await writeOwnedTracksCloud(uid, normalized, meta);
+        return { savedCloud: true };
+      }
+      ownedLibraryPendingWrite = { trackIds: normalized, reason };
+      return { savedLocal: true, queued: true };
+    }
+    async function restoreOwnedLibrary(uid, { legacyOwnedTracks = [] } = {}){
+      if(!uid) return;
+      ownedLibraryRestoring = true;
+      const cachedSnapshot = readOwnedTracksCache(uid);
+      const legacySnapshot = legacyOwnedTracks.length
+        ? buildOwnedLibrarySnapshot(legacyOwnedTracks, new Date().toISOString())
+        : null;
+      let localSnapshot = cachedSnapshot || legacySnapshot || null;
+      if(localSnapshot?.trackIds?.length){
+        ownedTracks = normalizeOwnedList(localSnapshot.trackIds);
+        setOwnedLibraryStatus({
+          phase: 'restoring',
+          source: 'cache',
+          message: 'Restoring your library… Using cached library.'
+        });
+        render();
+        setupEventListeners();
+      } else {
+        setOwnedLibraryStatus({
+          phase: 'restoring',
+          source: 'none',
+          message: 'Restoring your library…'
+        });
+        render();
+        setupEventListeners();
+      }
+      if(!firebaseEnabled || !firestore || !navigator.onLine){
+        if(localSnapshot && !cachedSnapshot){
+          writeOwnedTracksCache(uid, localSnapshot.trackIds, localSnapshot.updatedAt);
+        }
+        ownedLibraryRestoring = false;
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
+          message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        });
+        return;
+      }
+      try{
+        let cloudSnapshot = null;
+        try{
+          cloudSnapshot = await window.profileStore.readOwnedLibraryDoc(uid);
+        }catch(err){
+          console.warn('[owned-library] cloud read failed', err);
+        }
+        const plan = window.profileStore.buildOwnedLibraryPlan({ cache: localSnapshot, cloud: cloudSnapshot });
+        if(plan?.chosen?.trackIds){
+          ownedTracks = normalizeOwnedList(plan.chosen.trackIds);
+        }
+        if(plan.shouldUpdateCache){
+          writeOwnedTracksCache(uid, plan.chosen.trackIds, plan.chosen.updatedAt || new Date().toISOString());
+        }
+        if(plan.shouldSeedCloud || plan.shouldWriteCloud){
+          if(plan.chosen.trackIds.length){
+            await writeOwnedTracksCloud(uid, plan.chosen.trackIds, { reason: plan.shouldSeedCloud ? 'seed_cache' : 'reconcile_cache' });
+          }
+        }
+        const sourceLabel = plan.source === 'cloud' ? 'Cloud' : plan.source === 'cache' ? 'Cached' : 'Local';
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: plan.source,
+          message: `Library loaded (${sourceLabel})`
+        });
+        await flushOwnedLibraryPendingWrite();
+      } catch(err){
+        console.warn('[owned-library] reconcile failed', err);
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
+          message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        });
+      } finally {
+        ownedLibraryRestoring = false;
+      }
+    }
     function normalizeSetlistIds(ids){
       if(!Array.isArray(ids)) return [];
       const list = ids.map(item => (typeof item === 'string' ? item : item?.id)).filter(Boolean);
@@ -2550,8 +2706,9 @@ function track(eventName, payload = {}){
         const allowFriendRequests = currentUser.allowFriendRequests !== false;
         const rulesAccepted = currentUser.rulesAccepted === true;
         const rulesAcceptedAt = currentUser.rulesAcceptedAt || null;
+        const { ownedTracks: currentOwnedTracks, ownedMap: currentOwnedMap, ...currentUserRest } = currentUser || {};
         const mergedProfile = {
-          ...currentUser,
+          ...currentUserRest,
           uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
           username: currentUser.username,
           djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
@@ -2569,7 +2726,6 @@ function track(eventName, payload = {}){
           allowFriendRequests,
           rulesAccepted,
           rulesAcceptedAt,
-          ownedTracks,
           setlist: setlist || [],
           bandMembers,
           genreOverrides,
@@ -2601,11 +2757,10 @@ function track(eventName, payload = {}){
         const backendOk = await saveUserProfileToBackend(mergedProfile);
         console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
         const verifyProfile = await loadUserProfile(currentUser.uid || currentUser.username);
-        const ownedMatch = JSON.stringify(normalizeOwnedList(verifyProfile?.ownedTracks)) === JSON.stringify(normalizeOwnedList(mergedProfile.ownedTracks));
         const prefMatch = JSON.stringify(verifyProfile?.preferences || {}) === JSON.stringify(mergedProfile.preferences || {});
         const genreMatch = JSON.stringify(verifyProfile?.genreOverrides || {}) === JSON.stringify(mergedProfile.genreOverrides || {});
         const djMatch = (verifyProfile?.djName || '').trim() === (mergedProfile.djName || '').trim();
-        const verified = !!verifyProfile && ownedMatch && djMatch && prefMatch && genreMatch;
+        const verified = !!verifyProfile && djMatch && prefMatch && genreMatch;
         if(!verified){
           console.error('[profile] save verification failed', { mergedProfile, verifyProfile });
           throw new Error('Save verification failed');
@@ -2656,6 +2811,16 @@ function track(eventName, payload = {}){
         const ownerId = firebaseAuth?.currentUser?.uid || currentUser?.uid || currentUser?.username;
         if(ownerId !== profile.uid && ownerId !== profile.username){
           return null;
+        }
+      }
+      if(profile?.uid && firebaseEnabled && firestore && navigator.onLine){
+        try{
+          const ownedSnapshot = await window.profileStore.readOwnedLibraryDoc(profile.uid);
+          if(ownedSnapshot?.trackIds){
+            profile.ownedTracks = ownedSnapshot.trackIds;
+          }
+        }catch(err){
+          console.warn('[profile] owned library fetch failed', err);
         }
       }
       viewingProfile = profile || null;
@@ -3651,6 +3816,10 @@ function track(eventName, payload = {}){
       const activeUid = localStorage.getItem('activeProfileUid');
       const cachedProfile = window.profileStore?.readLocalProfileCache?.() || null;
       if(cachedProfile && window.profileStore?.hasMeaningfulProfileData?.(cachedProfile)){
+        const ownedCache = cachedProfile.uid ? readOwnedTracksCache(cachedProfile.uid) : null;
+        if(ownedCache?.trackIds?.length){
+          cachedProfile.ownedTracks = ownedCache.trackIds;
+        }
         const fallbackUid = cachedProfile.uid || activeUid || getLocalDeviceId();
         return normalizeProfileShape({
           ...cachedProfile,
@@ -3687,7 +3856,19 @@ function track(eventName, payload = {}){
       if(loadOverrides){
         await loadUserOverridesFromBackend();
       }
-      ownedTracks = currentUser.ownedTracks || [];
+      const incomingOwned = normalizeOwnedList(currentUser.ownedTracks || []);
+      if(incomingOwned.length){
+        ownedTracks = incomingOwned;
+      } else if(!ownedTracks.length) {
+        ownedTracks = [];
+      }
+      if(!firebaseAuth?.currentUser && ownedLibraryState.phase === 'idle'){
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: ownedTracks.length ? 'cache' : 'local',
+          message: ownedTracks.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        });
+      }
       setlist = normalizeSetlistIds(currentUser.setlist || currentUser.setlistIds || currentUser.setlists || []);
       bandMembers = currentUser.bandMembers || [];
       genreOverrides = currentUser.genreOverrides || {};
@@ -4026,11 +4207,13 @@ function track(eventName, payload = {}){
       const cached = window.profileStore?.readLocalProfileCache?.() || {};
       const fallbackUid = cached.uid || getLocalDeviceId();
       const fallbackName = cached.djName || cached.email || 'Guest';
+      const ownedCache = readOwnedTracksCache(fallbackUid);
       const hydrated = normalizeProfileShape({
         ...cached,
         uid: fallbackUid,
         username: cached.username || fallbackName,
-        djName: cached.djName || fallbackName
+        djName: cached.djName || fallbackName,
+        ownedTracks: ownedCache?.trackIds || cached.ownedTracks || []
       }, fallbackUid);
       if(window.profileStore?.hasMeaningfulProfileData?.(hydrated)) return hydrated;
       return null;
@@ -4041,9 +4224,10 @@ function track(eventName, payload = {}){
         return { legacyProfile: {}, usedLegacy: false };
       }
       const legacyProfile = readLegacyLocalProfile();
-      const usedLegacy = window.profileStore?.hasMeaningfulProfileData
+      const usedLegacyProfile = window.profileStore?.hasMeaningfulProfileData
         ? window.profileStore.hasMeaningfulProfileData(legacyProfile)
         : hasMeaningfulData(legacyProfile);
+      const usedLegacy = usedLegacyProfile || (legacyProfile.ownedTracks && legacyProfile.ownedTracks.length);
       return { legacyProfile, usedLegacy };
     }
 
@@ -4051,24 +4235,24 @@ function track(eventName, payload = {}){
       profileSyncState = { syncing: true, message: 'Syncing your profile…' };
       const localCache = window.profileStore?.readLocalProfileCache?.() || {};
       const { legacyProfile, usedLegacy } = getLegacyProfileForMigration(uid);
+      const { ownedTracks: legacyOwnedTracks = [], ...legacyProfileFields } = legacyProfile || {};
       const localProfile = {
         ...localCache,
-        ...legacyProfile,
+        ...legacyProfileFields,
         uid,
         email: email || localCache.email || '',
         djName: localCache.djName || currentUser?.djName || ''
       };
-      ownedTracks = normalizeOwnedList(localProfile.ownedTracks || []);
       setlist = normalizeSetlistIds(localProfile.setlist || []);
       genreOverrides = localProfile.genreOverrides || {};
       bandMembers = localProfile.bandMembers || [];
       render(); setupEventListeners();
+      await restoreOwnedLibrary(uid, { legacyOwnedTracks });
       const cloudProfile = await window.profileStore.readCloudProfile(uid);
       const plan = window.profileStore.buildSyncPlan({ cloud: cloudProfile, local: localProfile });
       const defaultProfile = {
         uid,
         email: email || '',
-        ownedTracks: [],
         setlist: [],
         genreOverrides: {},
         bandMembers: []
@@ -4212,6 +4396,9 @@ function track(eventName, payload = {}){
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
       currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
+      ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
+      ownedLibraryRestoring = false;
+      ownedLibraryPendingWrite = null;
       localStorage.removeItem('currentUser');
     }
 
@@ -4600,17 +4787,18 @@ function track(eventName, payload = {}){
       updateStickyCTA();
     }
 
-    function applyQuickStartPreset(preset){
+    async function applyQuickStartPreset(preset){
+      let nextOwned = [];
       if(preset === 'completionist'){
         const confirmed = confirm('⚠️ This will mark every track as owned. This cannot be undone easily. Continue?');
         if(!confirmed) return false;
-        ownedTracks = songs.map(s=>s.id);
+        nextOwned = songs.map(s=>s.id);
       } else {
         const config = QUICK_START_PRESETS[preset];
         if(!config) return false;
-        ownedTracks = resolveQuickStartTrackIds(config.count);
+        nextOwned = resolveQuickStartTrackIds(config.count);
       }
-      scheduleProfileCacheSync();
+      await saveOwnedTracksSafe(nextOwned, { reason: 'quickstart' });
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('quick-start-owned');
@@ -5785,20 +5973,26 @@ function render(){
   syncAdminGlobals();
   const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
   const ownedCount = displayTracks.length;
+  const ownedLibraryStatusMessage = resolveOwnedLibraryStatusMessage();
+  const ownedLibraryBadge = ownedLibraryStatusMessage
+    ? `<span class="${ownedLibraryState.phase === 'restoring' ? 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 border border-white/20 text-cyan-100' : 'text-[11px] text-cyan-100/90'}">${ownedLibraryStatusMessage}</span>`
+    : '';
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
   const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
   const cloudSyncBadge = (firebaseEnabled && firebaseAuth?.currentUser)
-    ? `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-sky-500/20 border border-sky-400/50 text-sky-100">☁️ Cloud Sync: ON</span>`
+    ? `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : 'bg-sky-500/20 border border-sky-400/50 text-sky-100'}">☁️ ${isOffline ? 'Cloud Sync unavailable offline' : 'Cloud Sync: ON'}</span>`
     : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const syncBanner = profileSyncState?.syncing
     ? `<div class="inline-banner mt-2">🔄 ${profileSyncState.message || 'Syncing your profile…'}</div>`
     : '';
-  const communityStatsRow = `
+  const communityStatsRow = FEATURE_SIGNIN_STATS
+    ? `
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2 text-xs">
-      ${renderCommunityStat('totalDjs','TOTAL DJS','🎛️', communityStats.totalDjs, 'All time sign-ins')}
-    </div>`;
+      ${renderCommunityStat('totalDjs','TOTAL DJS','🎛️', communityStats.totalDjs)}
+    </div>`
+    : '';
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
   const selectedPanel = `
     <div class="panel ${selectedSong ? 'selected-panel' : ''} space-y-3 dim-when-sticky">
@@ -5853,6 +6047,7 @@ function render(){
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
             <div class="flex items-center flex-wrap gap-2">
               <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
+              ${ownedLibraryBadge}
               ${networkBadge}
               ${trackSourceBadge}
               ${cloudSyncBadge}
@@ -6129,11 +6324,12 @@ function render(){
         const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: app });
         if(presetBtn){
           const preset = presetBtn.dataset.preset;
-          const applied = applyQuickStartPreset(preset);
-          if(applied){
-            quickStartState.preset = preset;
-            moveQuickStartStep(1);
-          }
+          void applyQuickStartPreset(preset).then((applied)=>{
+            if(applied){
+              quickStartState.preset = preset;
+              moveQuickStartStep(1);
+            }
+          });
           return;
         }
         const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: app });
@@ -6313,11 +6509,12 @@ function render(){
         const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: modal });
         if(presetBtn){
           const preset = presetBtn.dataset.preset;
-          const applied = applyQuickStartPreset(preset);
-          if(applied){
-            quickStartState.preset = preset;
-            moveQuickStartStep(1);
-          }
+          void applyQuickStartPreset(preset).then((applied)=>{
+            if(applied){
+              quickStartState.preset = preset;
+              moveQuickStartStep(1);
+            }
+          });
           return;
         }
         const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: modal });
@@ -6717,8 +6914,8 @@ function render(){
 
     window.toggleOwned = async (id) => {
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
-      if(ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t=>t!==id); else ownedTracks.push(id);
-      scheduleProfileCacheSync();
+      const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
+      await saveOwnedTracksSafe(nextOwned, { reason: 'toggle' });
       updateOwnedCount();
       updateSongCardOwnedState(id);
       updateStickyCTA();
@@ -6815,8 +7012,7 @@ function render(){
       if(viewingProfile) return;
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
-      ownedTracks = [];
-      scheduleProfileCacheSync();
+      await saveOwnedTracksSafe([], { reason: 'explicit_clear', allowEmpty: true });
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('clear-all-owned');
