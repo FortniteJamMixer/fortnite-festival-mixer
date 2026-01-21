@@ -203,6 +203,9 @@
     .profile-avatar-action { cursor: pointer; }
     .profile-avatar-action:focus-visible { outline: 2px solid var(--profile-accent, #ff6b9d); outline-offset: 4px; }
     .profile-avatar-overlay { pointer-events: none; }
+    #profileView { position: relative; z-index: 10; }
+    .profile-hit-target { min-height: 44px; }
+    .profile-decor-layer { pointer-events: none; }
     .persona-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
     .persona-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); transform: scale(1.04); }
     .persona-option:hover { box-shadow: 0 0 16px rgba(255,255,255,0.2); transform: translateY(-1px) scale(1.02); }
@@ -547,7 +550,7 @@ const BRAND = Object.freeze({
   EXPORT_PREFIX: 'fortnite-jam-mixer',
   BROWSER_TITLE: 'Fortnite Jam Mixer – Cross-Browser Edition'
 });
-const DEBUG_UI = false;
+const DEBUG_UI = true;
 const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).get('debug') === '1');
 let profileScriptError = null;
 document.title = BRAND.BROWSER_TITLE;
@@ -1511,7 +1514,11 @@ function track(eventName, payload = {}){
     let helpOpenTarget = 'none';
     let helpOpenSource = 'other';
     let helpTabTracked = false;
-    let profileEditMode = true;
+    const profileUiState = {
+      isEditMode: true,
+      isSaving: false,
+      lastError: null
+    };
     let profileHandlersBound = false;
     let debugUiBound = false;
     let headerMoreOpen = false;
@@ -1580,10 +1587,10 @@ function track(eventName, payload = {}){
       if(Number.isFinite(prefs.maxSemitoneRange)){ maxSemitoneRange = Math.min(6, Math.max(1, Number(prefs.maxSemitoneRange))); }
       if(typeof prefs.includeOppositeMode === 'boolean'){ includeOppositeMode = prefs.includeOppositeMode; }
       if(['low','medium','high'].includes(prefs.priorityStrength)){ priorityStrength = prefs.priorityStrength; }
-      const wasPersisting = isPersistingProfile;
-      isPersistingProfile = true;
+      const wasPersisting = profileUiState.isSaving;
+      profileUiState.isSaving = true;
       persistKeyMatchSettings();
-      isPersistingProfile = wasPersisting;
+      profileUiState.isSaving = wasPersisting;
     }
     function syncPreferencesIntoProfile(){
       if(!currentUser) return;
@@ -1592,7 +1599,6 @@ function track(eventName, payload = {}){
       if(draftProfile) draftProfile.preferences = prefs;
     }
     let preferenceSaveTimeout = null;
-    let isPersistingProfile = false;
     function schedulePreferencePersist(){
       if(!currentUser) return;
       clearTimeout(preferenceSaveTimeout);
@@ -2305,7 +2311,7 @@ function track(eventName, payload = {}){
         const tourData = { done: true, version: TOUR_VERSION, completedAt: new Date().toISOString() };
         currentUser = { ...currentUser, tour: tourData };
         if(draftProfile) draftProfile.tour = tourData;
-        if(!isPersistingProfile){
+        if(!profileUiState.isSaving){
           persistCurrentUserProfile().catch(err=>console.warn('[tour] profile persist failed', err));
         }
       }
@@ -2527,7 +2533,7 @@ function track(eventName, payload = {}){
       const adminApplied = applyAdminFlag(currentUser);
       await persistAdminFlagIfNeeded(currentUser, adminApplied);
       currentUser = adminApplied;
-      isPersistingProfile = true;
+      setProfileSaving(true, 'persistCurrentUserProfile');
       try{
         syncPreferencesIntoProfile();
         const normalizedStreamUrl = normalizeStreamUrlInput(currentUser.streamUrl || '');
@@ -2610,7 +2616,7 @@ function track(eventName, payload = {}){
         console.debug('[profile] save verified', { verifyProfile });
         return { backendOk, verifyProfile };
       } finally {
-        isPersistingProfile = false;
+        setProfileSaving(false, 'persistCurrentUserProfile');
       }
     }
     async function loadUserProfile(username){
@@ -2954,7 +2960,8 @@ function track(eventName, payload = {}){
       debugUiBound = true;
       document.addEventListener('click', safeOn('click', (e)=>{
         const target = getEventElement(e) || e.target;
-        console.log('[debug][ui] CLICK', target);
+        const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+        console.log('[debug][ui] CLICK', target, { path });
         const probe = document.elementFromPoint(e.clientX, e.clientY);
         if(probe){
           const style = getComputedStyle(probe);
@@ -2963,6 +2970,14 @@ function track(eventName, payload = {}){
             zIndex: style.zIndex,
             position: style.position
           });
+          if(path && path.length && !path.includes(probe)){
+            console.warn('[debug][ui] INTERCEPTED BY OVERLAY', {
+              target,
+              probe,
+              probeClass: probe.className,
+              probeId: probe.id
+            });
+          }
           let node = probe;
           while(node && node !== document.body){
             const nodeStyle = getComputedStyle(node);
@@ -2980,6 +2995,22 @@ function track(eventName, payload = {}){
       }, { action: 'ui-debug-click' }), true);
     }
 
+    function setEditMode(next){
+      const normalized = !!next;
+      if(profileUiState.isEditMode === normalized) return;
+      profileUiState.isEditMode = normalized;
+      debugProfileLog('edit mode set', { isEditMode: profileUiState.isEditMode });
+    }
+
+    function setProfileSaving(next, context = ''){
+      profileUiState.isSaving = !!next;
+      if(next){
+        debugProfileLog('profile saving start', { context });
+      } else {
+        debugProfileLog('profile saving end', { context });
+      }
+    }
+
     function openProfileEditor(){
       if(viewingProfile){
         view = 'profile';
@@ -2989,7 +3020,7 @@ function track(eventName, payload = {}){
         debugProfileLog('profile editor open blocked (view-only)');
         return;
       }
-      profileEditMode = true;
+      setEditMode(true);
       view = 'profile';
       render();
       setupEventListeners();
@@ -3000,34 +3031,10 @@ function track(eventName, payload = {}){
 
     function bindProfileHandlers(){
       if(profileHandlersBound || window.__profileEventsBound) return;
-      const app = document.getElementById('app');
-      if(!app) return;
       if(DEBUG_UI) console.log('[debug][profile] bindProfileHandlers');
       window.__profileEventsBound = true;
-      app.addEventListener('click', safeOn('click', (e)=>{
-        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: app });
-        if(toggle){
-          if(viewingProfile) return;
-          profileEditMode = !profileEditMode;
-          renderProfile();
-          setupEventListeners();
-          return;
-        }
-        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
-        if(editTrigger){
-          debugProfileLog('persona edit click detected');
-          openProfileEditor();
-        }
-      }, { action: 'profile-click' }));
-      app.addEventListener('keydown', safeOn('keydown', (e)=>{
-        if(e.key !== 'Enter' && e.key !== ' ') return;
-        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
-        if(!trigger) return;
-        e.preventDefault();
-        debugProfileLog('persona edit keydown detected', { key: e.key });
-        openProfileEditor();
-      }, { action: 'profile-keydown' }));
       profileHandlersBound = true;
+      runDelegationSelfTest();
     }
 
     window.setPersonaTheme = (themeId)=>{
@@ -4965,7 +4972,7 @@ function track(eventName, payload = {}){
       if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
         refreshDraftProfileFromCurrentUser();
       }
-      const profileEditable = !viewOnly && profileEditMode;
+      const profileEditable = !viewOnly && profileUiState.isEditMode;
       const profileOwner = viewingProfile || currentUser || {};
       const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
       const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
@@ -5019,7 +5026,7 @@ function track(eventName, payload = {}){
       const friendError = friendLookupError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-500/40 rounded px-3 py-2">${friendLookupError}</div>` : '';
       const friendList = friendLookupResults.length ? `<div class="space-y-2">
         <div class="text-xs text-gray-300">Multiple matches found. Pick one:</div>
-        ${friendLookupResults.map(p=>`<button onclick="selectFriendProfile('${p.username || p.uid || ''}')" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
+        ${friendLookupResults.map(p=>`<button data-action="profile.selectFriendProfile" data-username="${p.username || p.uid || ''}" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between profile-hit-target"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
       </div>` : '';
       const ownedFiltered = songs
         .filter(s=>ownedIds.includes(s.id))
@@ -5082,12 +5089,12 @@ function track(eventName, payload = {}){
             ${currentUser ? `
               <div id="ratingStarRow" class="flex items-center gap-2">
                 ${[1,2,3,4,5].map(star=>`
-                  <button type="button" data-star="${star}" onclick="setRatingStar(${star})" class="rating-star text-2xl ${ratingDraft.stars >= star ? 'active' : ''}" aria-label="${star} star">${star <= ratingDraft.stars ? '★' : '☆'}</button>
+                  <button type="button" data-action="profile.setRatingStar" data-star="${star}" class="rating-star text-2xl ${ratingDraft.stars >= star ? 'active' : ''}" aria-label="${star} star" aria-pressed="${ratingDraft.stars >= star}">${star <= ratingDraft.stars ? '★' : '☆'}</button>
                 `).join('')}
               </div>
               <div id="ratingTagRow" class="flex flex-wrap gap-2">
                 ${RATING_TAGS.map(tag=>`
-                  <button type="button" data-tag="${tag}" onclick="toggleRatingTag('${tag}')" class="px-3 py-1 rounded-full border text-xs font-semibold ${ratingDraft.tags.includes(tag) ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-white/10 bg-white/5 text-gray-200'}">${tag}</button>
+                  <button type="button" data-action="profile.toggleRatingTag" data-tag="${tag}" class="px-3 py-1 rounded-full border text-xs font-semibold profile-hit-target ${ratingDraft.tags.includes(tag) ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-white/10 bg-white/5 text-gray-200'}" aria-pressed="${ratingDraft.tags.includes(tag)}">${tag}</button>
                 `).join('')}
               </div>
               <div>
@@ -5095,7 +5102,7 @@ function track(eventName, payload = {}){
                 <div class="text-xs text-gray-400 text-right mt-1" id="ratingCommentCount">${(ratingDraft.comment || '').length}/${RATING_MAX_COMMENT}</div>
               </div>
               <div class="flex items-center gap-3 flex-wrap">
-                <button type="button" onclick="submitRating()" class="px-4 py-2 rounded-lg font-semibold ${ratingSubmitting ? 'bg-gray-600/40 text-gray-200 cursor-not-allowed' : 'bg-amber-500/30 border border-amber-400/50 text-amber-100'}" ${ratingSubmitting ? 'disabled' : ''}>${ratingDraft.hasExisting ? 'Update Rating' : 'Submit Rating'}</button>
+                <button type="button" data-action="profile.submitRating" class="px-4 py-2 rounded-lg font-semibold profile-hit-target ${ratingSubmitting ? 'bg-gray-600/40 text-gray-200 cursor-not-allowed' : 'bg-amber-500/30 border border-amber-400/50 text-amber-100'}" ${ratingSubmitting ? 'disabled' : ''}>${ratingDraft.hasExisting ? 'Update Rating' : 'Submit Rating'}</button>
                 ${ratingStatusMessage ? `<div class="text-sm px-3 py-2 rounded-lg border ${ratingStatusClass}">${ratingStatusMessage}</div>` : ''}
               </div>
             ` : `<div class="text-sm text-gray-300">Sign in to rate this DJ.</div>`}
@@ -5106,7 +5113,7 @@ function track(eventName, payload = {}){
         const djName = profile?.djName || username || 'DJ';
         const platform = getStreamPlatformInfo(profile.streamUrl);
         const rating = getProfileRatingDisplay(profile);
-        return `<div onclick="viewLiveProfile('${username}')" class="min-w-[240px] cursor-pointer bg-black/40 border border-white/10 rounded-xl p-4 hover:border-emerald-400/60 transition">
+        return `<button type="button" data-action="profile.viewLiveProfile" data-username="${username}" class="min-w-[240px] text-left cursor-pointer bg-black/40 border border-white/10 rounded-xl p-4 hover:border-emerald-400/60 transition profile-hit-target">
           <div class="flex items-center gap-3">
             ${renderPersonaBadge(profile, 48)}
             <div class="flex-1">
@@ -5119,8 +5126,8 @@ function track(eventName, payload = {}){
             <span class="px-2 py-1 rounded-full border border-white/10 bg-white/5">${platform.icon} ${platform.label}</span>
             <span class="text-amber-200 font-semibold">${rating.avgRating ? rating.avgRating.toFixed(1) : '0.0'}★ (${rating.ratingCount})</span>
           </div>
-          <button type="button" onclick="viewLiveProfile('${username}')" class="mt-3 w-full px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold">View Profile</button>
-        </div>`;
+          <span class="mt-3 w-full px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold inline-flex justify-center">View Profile</span>
+        </button>`;
       }).join('');
       const liveNowPanel = !viewOnly ? `
           <div class="panel space-y-3">
@@ -5129,7 +5136,7 @@ function track(eventName, payload = {}){
                 <div class="text-lg font-bold text-white">🔴 Live Now</div>
                 <span class="px-2 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">(${liveNowUsers.length})</span>
               </div>
-              <button type="button" onclick="refreshLiveNowUsers()" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs">Refresh</button>
+              <button type="button" data-action="profile.refreshLiveNow" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs profile-hit-target">Refresh</button>
             </div>
             ${liveNowLoading ? `<div class="text-sm text-gray-300">Loading live profiles…</div>` : ''}
             ${liveNowError ? `<div class="text-sm text-red-200">${liveNowError}</div>` : ''}
@@ -5150,31 +5157,31 @@ function track(eventName, payload = {}){
         ? `<p class="text-sm text-gray-200">${escapeHtml(bio)}</p>`
         : `<p class="text-sm text-gray-400">Add a short bio to show your vibe.</p>`;
       const personaThemeButtons = PERSONA_THEMES.map(item=>`
-        <button type="button" onclick="setPersonaTheme('${item.id}')" data-persona-theme="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${persona.personaTheme === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+        <button type="button" data-action="profile.setPersonaTheme" data-persona-theme="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold profile-hit-target ${persona.personaTheme === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${persona.personaTheme === item.id}">
           ${item.label}
         </button>
       `).join('');
       const personaButtons = PERSONA_LIST.map(item=>`
-        <button type="button" onclick="setPersonaId('${item.id}')" data-persona-id="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option persona-card w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-semibold ${persona.personaId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+        <button type="button" data-action="profile.setPersonaId" data-persona-id="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option persona-card w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-semibold ${persona.personaId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${persona.personaId === item.id}">
           ${renderPersonaSVG({ personaId: item.id, themeId: persona.personaTheme, seed: persona.personaSeed, size: 48 })}
           <span>${item.name}</span>
         </button>
       `).join('');
       const themeButtons = THEME_ACCENTS.map(item=>`
-        <button type="button" onclick="setThemeAccent('${item.id}')" data-theme-accent="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${themeAccentId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+        <button type="button" data-action="profile.setThemeAccent" data-theme-accent="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold profile-hit-target ${themeAccentId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${themeAccentId === item.id}">
           ${item.label}
         </button>
       `).join('');
       const profileHero = `
           <div class="flex flex-col md:flex-row gap-4 items-start md:items-center bg-black/40 border rounded-xl p-4 profile-accent-border profile-accent-glow">
             <div class="flex items-center gap-4">
-              <div class="profile-avatar-action flex flex-col items-center gap-2" role="button" tabindex="0" data-action="open-profile-editor" aria-label="Edit Profile">
+              <button type="button" class="profile-avatar-action flex flex-col items-center gap-2 profile-hit-target bg-transparent border-0" data-action="profile.openEditor" aria-label="Edit Profile">
                 <div id="profilePersonaPreview" class="persona-badge w-24 h-24">
                   ${renderPersonaSVG({ personaId: persona.personaId, themeId: persona.personaTheme, seed: persona.personaSeed, size: 96 })}
                   <span class="persona-energy">${(PERSONAS[persona.personaId] || PERSONAS.turntablist).energy || '⚡'}</span>
                 </div>
                 <span class="profile-accent-pill px-4 py-1.5 rounded-full text-xs font-semibold shadow-sm">Edit Profile</span>
-              </div>
+              </button>
             </div>
             <div class="flex-1 space-y-2">
               <div>
@@ -5204,7 +5211,7 @@ function track(eventName, payload = {}){
                     <div class="text-xs text-gray-400">Seed: <span id="personaSeedLabel" class="text-white font-semibold">${escapeHtml(persona.personaSeed)}</span></div>
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <button type="button" onclick="randomizePersonaSeed()" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${editDisabledClass}">Randomize Seed</button>
+                    <button type="button" data-action="profile.randomizePersonaSeed" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold profile-hit-target ${editDisabledClass}">Randomize Seed</button>
                   </div>
                 </div>
                 <div class="space-y-2">
@@ -5257,17 +5264,17 @@ function track(eventName, payload = {}){
         } else if(status === 'outgoing_pending'){
           actionMarkup = `<div class="flex gap-2 items-center">
             <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Request sent</span>
-            ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
+            ${outgoingReq ? `<button data-action="profile.cancelFriendRequest" data-request-id="${outgoingReq.id}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold profile-hit-target">Cancel</button>` : ''}
           </div>`;
         } else if(status === 'incoming_pending'){
           actionMarkup = `<div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${incomingReq?.id || ''}','${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${incomingReq?.id || ''}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button data-action="profile.acceptFriendRequest" data-request-id="${incomingReq?.id || ''}" data-from-uid="${incomingReq?.fromUid || ''}" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold profile-hit-target">Accept</button>
+            <button data-action="profile.rejectFriendRequest" data-request-id="${incomingReq?.id || ''}" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold profile-hit-target">Decline</button>
           </div>`;
         } else if(profile.allowFriendRequests === false){
           actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
         } else {
-          actionMarkup = `<button onclick="sendFriendRequest('${uid}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Add</button>`;
+          actionMarkup = `<button data-action="profile.sendFriendRequest" data-uid="${uid}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold profile-hit-target">Add</button>`;
         }
         return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
           <div class="flex items-center gap-3">
@@ -5294,8 +5301,8 @@ function track(eventName, payload = {}){
             </div>
           </div>
           <div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${req.id}','${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button data-action="profile.acceptFriendRequest" data-request-id="${req.id}" data-from-uid="${req.fromUid}" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold profile-hit-target">Accept</button>
+            <button data-action="profile.rejectFriendRequest" data-request-id="${req.id}" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold profile-hit-target">Decline</button>
           </div>
         </div>`;
       }).join('');
@@ -5311,14 +5318,14 @@ function track(eventName, payload = {}){
           </div>
           <div class="flex gap-2">
             <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-500/20 border border-purple-400/40 text-purple-100">Pending</span>
-            <button onclick="cancelFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
+            <button data-action="profile.cancelFriendRequest" data-request-id="${req.id}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold profile-hit-target">Cancel</button>
           </div>
         </div>`;
       }).join('');
       const friendsListHtml = friendsList.map(item=>{
         const profile = item.profile || { username: item.friendUid, djName: item.friendUid };
         const liveBadge = profile.isLive ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>` : '';
-        const watchBtn = profile.streamUrl && profile.isLive ? `<button onclick="viewLiveProfile('${profile.username || profile.uid || ''}')" class="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs font-semibold">Watch</button>` : '';
+        const watchBtn = profile.streamUrl && profile.isLive ? `<button data-action="profile.viewLiveProfile" data-username="${profile.username || profile.uid || ''}" class="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs font-semibold profile-hit-target">Watch</button>` : '';
         return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
           <div class="flex items-center gap-3">
             ${renderPersonaBadge(profile, 40)}
@@ -5330,8 +5337,8 @@ function track(eventName, payload = {}){
           <div class="flex items-center gap-2">
             ${liveBadge}
             ${watchBtn}
-            <button onclick="viewLiveProfile('${profile.username || profile.uid || item.friendUid || ''}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold">View Profile</button>
-            <button onclick="removeFriend('${item.friendUid}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Remove</button>
+            <button data-action="profile.viewLiveProfile" data-username="${profile.username || profile.uid || item.friendUid || ''}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold profile-hit-target">View Profile</button>
+            <button data-action="profile.removeFriend" data-uid="${item.friendUid}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold profile-hit-target">Remove</button>
           </div>
         </div>`;
       }).join('');
@@ -5354,14 +5361,14 @@ function track(eventName, payload = {}){
             ${friendsGateMessage ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendsGateClass}">${friendsGateMessage}</div>` : ''}
             <form id="socialFriendSearchForm" class="flex flex-col sm:flex-row gap-2" onsubmit="handleFriendSearch(event)">
               <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
-              <button id="socialFriendSearchButton" type="submit" onclick="logFriendSearchClick()" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
+              <button id="socialFriendSearchButton" type="submit" data-action="profile.logFriendSearchClick" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
             </form>
             ${socialFriendSearchNotice ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendNoticeClass}">${socialFriendSearchNotice}</div>` : ''}
             ${socialFriendSearchError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-400/40 rounded-lg px-3 py-2">${socialFriendSearchError}</div>` : ''}
             ${friendSearchResultsHtml ? `<div class="space-y-2 max-h-64 overflow-y-auto pr-1">${friendSearchResultsHtml}</div>` : (socialFriendSearchQuery && !socialFriendSearchLoading ? `<div class="text-sm text-gray-400">No DJs found for ‘${escapeHtml(socialFriendSearchQuery)}’.</div>` : '')}
             <div class="flex items-center gap-2 text-xs">
-              <button onclick="setFriendPanelTab('friends')" class="px-3 py-1 rounded-full border ${friendPanelTab==='friends'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Friends (${friendsList.length})</button>
-              <button onclick="setFriendPanelTab('requests')" class="px-3 py-1 rounded-full border ${friendPanelTab==='requests'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Requests (${friendRequestsIncoming.length + friendRequestsOutgoing.length})</button>
+              <button data-action="profile.setFriendPanelTab" data-tab="friends" class="px-3 py-1 rounded-full border profile-hit-target ${friendPanelTab==='friends'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Friends (${friendsList.length})</button>
+              <button data-action="profile.setFriendPanelTab" data-tab="requests" class="px-3 py-1 rounded-full border profile-hit-target ${friendPanelTab==='requests'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Requests (${friendRequestsIncoming.length + friendRequestsOutgoing.length})</button>
             </div>
             ${friendPanelTab === 'requests' ? `
               <div class="grid md:grid-cols-2 gap-3">
@@ -5400,7 +5407,7 @@ function track(eventName, payload = {}){
               </div>
               ${viewOnly
                 ? `<div class="text-sm px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100">View only</div>`
-                : `<button id="profileEditToggle" data-profile-action="toggle-edit" class="text-sm px-3 py-1 rounded-full ${editBadgeClass} hover:brightness-110 transition">Edit Mode: ${editBadgeLabel}</button>`
+                : `<button id="profileEditToggle" data-action="profile.toggleEditMode" class="text-sm px-3 py-1 rounded-full ${editBadgeClass} hover:brightness-110 transition profile-hit-target" aria-pressed="${profileEditable}">Edit Mode: ${editBadgeLabel}</button>`
               }
             </div>
             ${viewOnly ? `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Viewing ${djVal || usernameVal}'s public profile. Editing is disabled.</div>` : ''}
@@ -5429,10 +5436,10 @@ function track(eventName, payload = {}){
               <div class="md:col-span-2">
                 <div class="flex items-center gap-2">
                   <label class="text-sm text-gray-300">Live Status</label>
-                  <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'live_icon', target: 'live' })" aria-label="Open help: Live streaming" title="How Live status works">?</button>
+                  <button type="button" class="helpIconBtn profile-hit-target" data-action="profile.openHelpModal" data-source="live_icon" data-target="live" aria-label="Open help: Live streaming" title="How Live status works">?</button>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
-                  <button id="liveToggleBtn" onclick="toggleLiveStatus()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" ${!profileEditable || !streamUrlValid ? 'disabled' : ''}>${liveToggleLabel}</button>
+                  <button id="liveToggleBtn" data-action="profile.toggleLiveStatus" class="px-4 py-2 rounded-lg font-semibold profile-hit-target ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${liveActive}" ${!profileEditable || !streamUrlValid ? 'disabled' : ''}>${liveToggleLabel}</button>
                   <a id="watchStreamBtn" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-lg bg-blue-500/20 border border-blue-400/40 text-blue-100 text-sm font-semibold" style="display:${streamUrlValid ? 'inline-flex' : 'none'};">Watch Stream</a>
                   ${livePill}
                   ${liveSinceLabel && liveActive ? `<span class="text-xs text-gray-400">Live since ${liveSinceLabel}</span>` : ''}
@@ -5440,9 +5447,9 @@ function track(eventName, payload = {}){
               </div>
             </div>
             <div class="flex gap-3 flex-wrap">
-              ${viewOnly ? '' : `<button onclick="saveProfileSettings()" ${profileEditable ? '' : 'disabled'} class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold profile-accent-glow ${editDisabledClass}">Save Profile</button>`}
-              <button onclick="switchView('browser')" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
-              ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Back to My Profile</button>` : ''}
+              ${viewOnly ? '' : `<button data-action="profile.saveProfile" ${profileEditable ? '' : 'disabled'} class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold profile-accent-glow profile-hit-target ${editDisabledClass}">Save Profile</button>`}
+              <button data-action="switchView" data-view="browser" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg profile-hit-target">Back to Mixer</button>
+              ${viewOnly ? `<button data-action="profile.exitViewMode" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg profile-hit-target">Back to My Profile</button>` : ''}
             </div>
             <div id="profileStatus" class="text-sm text-cyan-200"></div>
           </div>
@@ -5470,7 +5477,7 @@ function track(eventName, payload = {}){
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-xs font-semibold px-2 py-1 rounded-full ${epicLinked ? 'bg-emerald-500/20 text-emerald-100 border border-emerald-400/40' : 'bg-white/10 text-gray-200 border border-white/20'}">${epicLinked ? 'Linked' : 'Not linked'}</span>
-                ${epicLinked ? `<button onclick="unlinkOAuth('epic')" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-sm">Unlink</button>` : `<button onclick="startOAuth('epic')" class="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg text-sm font-semibold">Link Epic</button>`}
+                ${epicLinked ? `<button data-action="profile.unlinkOAuth" data-provider="epic" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-sm profile-hit-target">Unlink</button>` : `<button data-action="profile.startOAuth" data-provider="epic" class="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg text-sm font-semibold profile-hit-target">Link Epic</button>`}
               </div>
             </div>
             <p class="text-xs text-gray-400">Redirects through Epic, then returns here to store a link in your profile. Firebase email/password stays your primary sign-in.</p>
@@ -5489,7 +5496,7 @@ function track(eventName, payload = {}){
               <div class="flex-1 flex flex-col gap-2">
                 <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                   <input id="friendSearchInput" value="${friendSearchTerm || ''}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search DJ name…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
-                  <button onclick="viewFriendProfile()" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 bg-purple-500/40 hover:bg-purple-500/50 border border-purple-400/50 rounded-lg font-semibold ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">View</button>
+                  <button data-action="profile.viewFriendProfile" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 bg-purple-500/40 hover:bg-purple-500/50 border border-purple-400/50 rounded-lg font-semibold profile-hit-target ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">View</button>
                 </div>
                 <div class="text-xs text-gray-400">${friendsEnabled ? 'Shows their owned songs (read-only)' : (friendsGateMessage || 'Friends require Online mode.')}</div>
                 ${friendError}
@@ -5500,7 +5507,7 @@ function track(eventName, payload = {}){
                   <input id="ownedSearchInput" value="${profileOwnedSearch || ''}" placeholder="Search owned songs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
                   <div class="text-xs text-gray-400 sm:w-40">Live filter by title or artist</div>
                 </div>
-                ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to My Profile</button>` : ''}
+                ${viewOnly ? `<button data-action="profile.exitViewMode" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg profile-hit-target">Back to My Profile</button>` : ''}
               </div>
             </div>
             <div id="profileOwnedList" class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -5544,7 +5551,7 @@ function track(eventName, payload = {}){
       }
       const toggleBtn = document.getElementById('liveToggleBtn');
       if(toggleBtn){
-        if(viewingProfile || !profileEditMode){
+        if(viewingProfile || !profileUiState.isEditMode){
           toggleBtn.disabled = true;
           toggleBtn.style.opacity = '0.6';
           toggleBtn.style.cursor = 'not-allowed';
@@ -5580,7 +5587,12 @@ function track(eventName, payload = {}){
     window.toggleLiveStatus = async () => {
       if(viewingProfile) return;
       if(!currentUser) return;
-      if(!profileEditMode) return;
+      if(!profileUiState.isEditMode) return;
+      if(profileUiState.isSaving){
+        debugProfileLog('live toggle ignored (already saving)');
+        return;
+      }
+      profileUiState.lastError = null;
       const status = document.getElementById('profileStatus');
       const input = document.getElementById('profileStreamUrl');
       const normalizedStreamUrl = normalizeStreamUrlInput(input?.value || currentUser.streamUrl || '');
@@ -5607,6 +5619,7 @@ function track(eventName, payload = {}){
         setupEventListeners();
         if(status) status.textContent = nextIsLive ? 'Live ✅' : 'Offline ✅';
       }catch(err){
+        profileUiState.lastError = err?.message || String(err);
         if(status) status.textContent = 'Live toggle failed ❌: ' + (err.message || err);
         console.error('[profile] live toggle failed', err);
       }
@@ -5695,7 +5708,12 @@ function track(eventName, payload = {}){
     async function saveProfileSettings(){
       if(viewingProfile){ const status = document.getElementById('profileStatus'); if(status) status.textContent = 'View-only mode: cannot save this profile.'; return; }
       if(!currentUser) return;
-      if(!profileEditMode) return;
+      if(!profileUiState.isEditMode) return;
+      if(profileUiState.isSaving){
+        debugProfileLog('save ignored (already saving)');
+        return;
+      }
+      profileUiState.lastError = null;
       const status = document.getElementById('profileStatus');
       const newUsername = (document.getElementById('profileUsername')?.value || '').trim();
       const newDjName = (document.getElementById('profileDjName')?.value || '').trim() || newUsername;
@@ -5732,7 +5750,12 @@ function track(eventName, payload = {}){
         render(); setupEventListeners();
         const statusEl = document.getElementById('profileStatus');
         if(statusEl) statusEl.textContent = 'Saved ✅';
-      }catch(e){ const statusEl = document.getElementById('profileStatus'); if(statusEl) statusEl.textContent = 'Save failed ❌: ' + (e.message||e); console.error('[profile] save failed', e); }
+      }catch(e){
+        profileUiState.lastError = e?.message || String(e);
+        const statusEl = document.getElementById('profileStatus');
+        if(statusEl) statusEl.textContent = 'Save failed ❌: ' + (e.message||e);
+        console.error('[profile] save failed', e);
+      }
     }
 
 
@@ -6393,10 +6416,157 @@ function render(){
     }
 
     let dataActionDelegatesBound = false;
+    function isActionDisabled(el){
+      if(!el) return true;
+      return el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true';
+    }
+
+    function shouldHandleKeyActivation(el){
+      if(!el) return false;
+      const tag = el.tagName ? el.tagName.toLowerCase() : '';
+      const role = el.getAttribute ? el.getAttribute('role') : '';
+      return tag === 'button' || role === 'button';
+    }
+
+    function handleProfileAction(action, el, event){
+      if(!action) return;
+      if(isActionDisabled(el)) return;
+      const dataset = el.dataset || {};
+      debugProfileLog('profile action', { action, dataset });
+      if(action === 'profile.toggleEditMode'){
+        if(viewingProfile || profileUiState.isSaving) return;
+        setEditMode(!profileUiState.isEditMode);
+        renderProfile();
+        setupEventListeners();
+        return;
+      }
+      if(action === 'profile.openEditor'){
+        openProfileEditor();
+        return;
+      }
+      if(action === 'profile.saveProfile'){
+        saveProfileSettings();
+        return;
+      }
+      if(action === 'profile.exitViewMode'){
+        exitProfileViewMode();
+        return;
+      }
+      if(action === 'profile.viewFriendProfile'){
+        viewFriendProfile();
+        return;
+      }
+      if(action === 'profile.selectFriendProfile'){
+        const username = dataset.username || '';
+        if(username && window.selectFriendProfile) window.selectFriendProfile(username);
+        return;
+      }
+      if(action === 'profile.viewLiveProfile'){
+        const username = dataset.username || '';
+        if(username && window.viewLiveProfile) window.viewLiveProfile(username);
+        return;
+      }
+      if(action === 'profile.refreshLiveNow'){
+        refreshLiveNowUsers();
+        return;
+      }
+      if(action === 'profile.setRatingStar'){
+        const value = Number(dataset.star);
+        if(value && window.setRatingStar) window.setRatingStar(value);
+        return;
+      }
+      if(action === 'profile.toggleRatingTag'){
+        const tag = dataset.tag;
+        if(tag && window.toggleRatingTag) window.toggleRatingTag(tag);
+        return;
+      }
+      if(action === 'profile.submitRating'){
+        if(window.submitRating) window.submitRating();
+        return;
+      }
+      if(action === 'profile.setPersonaTheme'){
+        const themeId = dataset.personaTheme;
+        if(themeId && window.setPersonaTheme) window.setPersonaTheme(themeId);
+        return;
+      }
+      if(action === 'profile.setPersonaId'){
+        const personaId = dataset.personaId;
+        if(personaId && window.setPersonaId) window.setPersonaId(personaId);
+        return;
+      }
+      if(action === 'profile.randomizePersonaSeed'){
+        if(window.randomizePersonaSeed) window.randomizePersonaSeed();
+        return;
+      }
+      if(action === 'profile.setThemeAccent'){
+        const accentId = dataset.themeAccent;
+        if(accentId && window.setThemeAccent) window.setThemeAccent(accentId);
+        return;
+      }
+      if(action === 'profile.toggleLiveStatus'){
+        if(window.toggleLiveStatus) window.toggleLiveStatus();
+        return;
+      }
+      if(action === 'profile.openHelpModal'){
+        openHelpModal({ source: dataset.source || 'profile', target: dataset.target || 'profile' });
+        return;
+      }
+      if(action === 'profile.startOAuth'){
+        const provider = dataset.provider;
+        if(provider && window.startOAuth) window.startOAuth(provider);
+        return;
+      }
+      if(action === 'profile.unlinkOAuth'){
+        const provider = dataset.provider;
+        if(provider && window.unlinkOAuth) window.unlinkOAuth(provider);
+        return;
+      }
+      if(action === 'profile.setFriendPanelTab'){
+        const tab = dataset.tab;
+        if(tab && window.setFriendPanelTab) window.setFriendPanelTab(tab);
+        return;
+      }
+      if(action === 'profile.logFriendSearchClick'){
+        if(window.logFriendSearchClick) window.logFriendSearchClick();
+        handleFriendSearch(null, { explicit: true });
+        return;
+      }
+      if(action === 'profile.sendFriendRequest'){
+        const uid = dataset.uid;
+        if(uid && window.sendFriendRequest) window.sendFriendRequest(uid);
+        return;
+      }
+      if(action === 'profile.acceptFriendRequest'){
+        const requestId = dataset.requestId;
+        const fromUid = dataset.fromUid;
+        if(requestId && fromUid && window.acceptFriendRequest) window.acceptFriendRequest(requestId, fromUid);
+        return;
+      }
+      if(action === 'profile.rejectFriendRequest'){
+        const requestId = dataset.requestId;
+        if(requestId && window.rejectFriendRequest) window.rejectFriendRequest(requestId);
+        return;
+      }
+      if(action === 'profile.cancelFriendRequest'){
+        const requestId = dataset.requestId;
+        if(requestId && window.cancelFriendRequest) window.cancelFriendRequest(requestId);
+        return;
+      }
+      if(action === 'profile.removeFriend'){
+        const uid = dataset.uid;
+        if(uid && window.removeFriend) window.removeFriend(uid);
+      }
+    }
+
     function handleDataAction(el, event){
       if(!el) return;
       const action = el.dataset?.action;
       if(!action) return;
+      if(action.startsWith('profile.')){
+        event?.preventDefault();
+        handleProfileAction(action, el, event);
+        return;
+      }
       if(action === 'addSet'){
         const id = el.dataset?.id;
         if(!id) return;
@@ -6422,6 +6592,7 @@ function render(){
     document.addEventListener('click', safeOn('click', (e) => {
       const el = closestFromEvent(e, '[data-action]');
       if (!el) return;
+      if(isActionDisabled(el)) return;
       handleDataAction(el, e);
     }, { action: 'data-action-click' }));
 
@@ -6429,6 +6600,7 @@ function render(){
       if(e.key !== 'Enter' && e.key !== ' ') return;
       const el = closestFromEvent(e, '[data-action]');
       if (!el) return;
+      if(!shouldHandleKeyActivation(el) || isActionDisabled(el)) return;
       e.preventDefault();
       handleDataAction(el, e);
     }, { action: 'data-action-keydown' }));
@@ -6448,7 +6620,7 @@ function render(){
       localStorage.setItem('jamMixer.includeOppositeMode', includeOppositeMode ? 'true' : 'false');
       localStorage.setItem('jamMixer.priorityStrength', priorityStrength);
       syncPreferencesIntoProfile();
-      if(!isPersistingProfile) schedulePreferencePersist();
+      if(!profileUiState.isSaving) schedulePreferencePersist();
     }
     window.setKeyMatchMode = (mode) => {
       keyMatchMode = mode === 'semitone' ? 'semitone' : 'camelot';
