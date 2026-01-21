@@ -1668,6 +1668,9 @@ function track(eventName, payload = {}){
         uid: currentUser?.uid || ensureLocalDeviceId(),
         email: currentUser?.email || '',
         djName: currentUser?.djName || currentUser?.username || '',
+        streamUrl: currentUser?.streamUrl || '',
+        isLive: currentUser?.isLive === true,
+        liveStartedAt: currentUser?.liveStartedAt || currentUser?.liveSince || null,
         ownedTracks,
         setlist,
         genreOverrides,
@@ -1697,6 +1700,9 @@ function track(eventName, payload = {}){
               uid,
               email: firebaseAuth?.currentUser?.email || currentUser?.email || '',
               djName: currentUser?.djName || currentUser?.username || '',
+              streamUrl: currentUser?.streamUrl || '',
+              isLive: currentUser?.isLive === true,
+              liveStartedAt: currentUser?.liveStartedAt || currentUser?.liveSince || null,
               ownedTracks,
               setlist,
               genreOverrides,
@@ -5720,6 +5726,7 @@ function track(eventName, payload = {}){
         currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, username:newUsername, djName:newDjName });
         await persistAdminFlagIfNeeded(previousProfile, currentUser);
         if(usernameChanged || djChanged) updateBandReferencesLocal(previousUsername, newUsername, newDjName);
+        console.log('[profile-save] streamUrl=', currentUser.streamUrl);
         await persistCurrentUserProfile();
         refreshLiveNowUsers();
         render(); setupEventListeners();

@@ -6,11 +6,20 @@ const normalizeArray = (value) => {
 };
 
 const normalizeObject = (value) => (value && typeof value === 'object' ? value : {});
+const normalizeBoolean = (value) => value === true;
+const normalizeStreamUrl = (value) => {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+};
+const resolveLiveStartedAt = (profile) => profile.liveStartedAt || profile.liveSince || null;
 
 const normalizeProfile = (profile = {}) => ({
   uid: profile.uid || '',
   email: profile.email || '',
   djName: profile.djName || '',
+  streamUrl: normalizeStreamUrl(profile.streamUrl || ''),
+  isLive: normalizeBoolean(profile.isLive),
+  liveStartedAt: resolveLiveStartedAt(profile),
   ownedTracks: normalizeArray(profile.ownedTracks),
   setlist: normalizeArray(profile.setlist),
   genreOverrides: normalizeObject(profile.genreOverrides),
@@ -103,12 +112,38 @@ const mergeBandMembers = (cloud = [], local = []) => {
 
 const hasMeaningfulProfileData = (profile = {}) => {
   if (!profile) return false;
+  const streamUrl = normalizeStreamUrl(profile.streamUrl || '');
   return Boolean(
+    streamUrl ||
     (profile.ownedTracks && profile.ownedTracks.length) ||
     (profile.setlist && profile.setlist.length) ||
     (profile.genreOverrides && Object.keys(profile.genreOverrides).length) ||
     (profile.bandMembers && profile.bandMembers.length)
   );
+};
+
+const resolveLiveFields = ({ cloud, local }) => {
+  const cloudStream = normalizeStreamUrl(cloud?.streamUrl || '');
+  const localStream = normalizeStreamUrl(local?.streamUrl || '');
+  if (cloudStream) {
+    return {
+      streamUrl: cloudStream,
+      isLive: normalizeBoolean(cloud?.isLive),
+      liveStartedAt: resolveLiveStartedAt(cloud)
+    };
+  }
+  if (localStream) {
+    return {
+      streamUrl: localStream,
+      isLive: normalizeBoolean(local?.isLive),
+      liveStartedAt: resolveLiveStartedAt(local)
+    };
+  }
+  return {
+    streamUrl: '',
+    isLive: false,
+    liveStartedAt: null
+  };
 };
 
 const buildSyncPlan = ({ cloud = null, local = {} } = {}) => {
@@ -132,6 +167,13 @@ const buildSyncPlan = ({ cloud = null, local = {} } = {}) => {
       bandMembers: mergeBandMembers(normalizedCloud.bandMembers, normalizedLocal.bandMembers)
     };
     shouldWriteCloud = true;
+  }
+
+  if (normalizedCloud || normalizedLocal) {
+    merged = {
+      ...merged,
+      ...resolveLiveFields({ cloud: normalizedCloud, local: normalizedLocal })
+    };
   }
 
   return {
