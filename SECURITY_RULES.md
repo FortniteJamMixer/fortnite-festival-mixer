@@ -28,9 +28,8 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow write: if false;
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
     // Profiles + ratings (client-owned docs).
