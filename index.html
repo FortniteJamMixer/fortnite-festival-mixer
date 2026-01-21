@@ -21,6 +21,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <script src="/constants/appMeta.js"></script>
   <script src="/services/configService.js"></script>
+  <script type="module" src="/services/profileStore.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -652,8 +653,8 @@ function safeOn(type, handler, meta = {}){
 }
 
 const firebaseConfig = window.firebaseConfig || {};
-const firebaseConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId);
-const firebaseEnabled = firebaseConfig.firebaseEnabled === true && firebaseConfigValid && !!window.firebase?.auth;
+const firebaseConfigValid = !!firebaseConfig?.apiKey;
+let firebaseEnabled = false;
 
     const ADMIN_USERS = ['BattleNeBody'];
     function applyAdminFlag(profile){
@@ -730,11 +731,14 @@ let authSettledUser = null;
 let authProcessing = false;
 let authInFlight = false;
 let appConfigLoaded = false;
-if (firebaseEnabled) {
+if (firebaseConfigValid && window.firebase?.initializeApp && window.firebase?.auth && window.firebase?.firestore) {
   try {
     firebaseApp = firebase.initializeApp(firebaseConfig);
     firebaseAuth = firebase.auth();
     firestore = firebase.firestore();
+    firebaseEnabled = true;
+    if(window.profileStore?.setFirestore) window.profileStore.setFirestore(firestore);
+    if(window.profileStore?.setFirebase) window.profileStore.setFirebase(firebase);
     firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
       console.warn('Firebase persistence failed', err);
       logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
@@ -747,6 +751,7 @@ if (firebaseEnabled) {
     firebaseApp = null;
     firebaseAuth = null;
     firestore = null;
+    firebaseEnabled = false;
   }
 } else {
   logEvent('firebase_disabled', { reason: 'missing config or sdk', firebaseConfigValid });
@@ -863,8 +868,8 @@ function track(eventName, payload = {}){
       };
     }
 
-    const PROFILE_COLLECTION = 'profiles';
-    const LEGACY_PROFILE_COLLECTION = 'users';
+    const PROFILE_COLLECTION = 'users';
+    const LEGACY_PROFILE_COLLECTION = 'profiles';
     const PROFILE_BIO_MAX = 160;
     const PERSONA_STORAGE_KEYS = Object.freeze({
       id: 'profilePersonaId',
@@ -1161,7 +1166,7 @@ function track(eventName, payload = {}){
       const email = profile.email || profile.mail || '';
       const oauth = profile.oauth || {};
       const isAdmin = profile.isAdmin === true;
-      const normalizedSetlist = normalizeSetlistIds(profile.setlistIds || profile.setlist || profile.setlists);
+      const normalizedSetlist = normalizeSetlistIds(profile.setlist || profile.setlistIds || profile.setlists);
       const liveDefaults = normalizeLiveProfileFields(profile);
       const ratingDefaults = normalizeRatingFields(profile);
       const persona = ensurePersona(profile);
@@ -1175,17 +1180,16 @@ function track(eventName, payload = {}){
       const djNameLower = profile.djNameLower || normalizeUsernameLower(djName);
       const searchNameLower = profile.searchNameLower || usernameLower;
       const searchTokens = Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower);
+      const { setlists, setlistIds, ...profileRest } = profile;
       return {
-        ...profile,
+        ...profileRest,
         ...liveDefaults,
         ...ratingDefaults,
         username,
         djName,
         email,
         ownedTracks: ownedArray,
-        setlistIds: normalizedSetlist,
         setlist: normalizedSetlist,
-        setlists: normalizedSetlist,
         oauth,
         isAdmin,
         bio,
@@ -1211,15 +1215,17 @@ function track(eventName, payload = {}){
     async function saveUserProfileToBackend(profile) {
       if (!profile) return;
       const firebaseUser = firebaseAuth?.currentUser;
-      const profileKey = profile.uid || firebaseUser?.uid || profile.username;
+      const profileKey = profile.uid || firebaseUser?.uid;
       const ownedIds = profile.ownedTracks || [];
+      const setlistItems = profile.setlist || [];
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
       const usernameLower = normalizeUsernameLower(profile.username || profileKey);
       const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
       const searchNameLower = profile.searchNameLower || usernameLower;
       const persona = ensurePersona(profile);
+      const { setlists, setlistIds, ...profileRest } = profile;
       const payload = {
-        ...profile,
+        ...profileRest,
         uid: profileKey,
         username: profile.username || profileKey,
         djName: profile.djName || profile.username || profileKey,
@@ -1238,6 +1244,7 @@ function track(eventName, payload = {}){
         rulesAcceptedAt: profile.rulesAcceptedAt || null,
         email: profile.email || firebaseUser?.email || '',
         ownedTracks: ownedIds,
+        setlist: setlistItems,
         ownedMap: buildOwnedMap(ownedIds),
         updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
       };
@@ -1263,36 +1270,29 @@ function track(eventName, payload = {}){
       if (!identifier && !firebaseAuth?.currentUser) return null;
       const firebaseUser = firebaseAuth?.currentUser;
       const lookupKey = identifier || firebaseUser?.uid;
+      const isLikelyUid = typeof lookupKey === 'string' && (lookupKey.startsWith('local:') || lookupKey.length >= 20);
       if (firestore && lookupKey) {
         try {
           const primaryCollection = getProfileCollection();
           const legacyCollection = getLegacyProfileCollection();
-          if(primaryCollection){
+          if(primaryCollection && isLikelyUid){
             const doc = await primaryCollection.doc(lookupKey).get();
             if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
           }
-          if(legacyCollection){
+          if(legacyCollection && isLikelyUid){
             const legacyDoc = await legacyCollection.doc(lookupKey).get();
             if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), lookupKey);
           }
-          if (firebaseUser?.email) {
-            const emailKey = firebaseUser.email.split('@')[0];
-            if (emailKey && emailKey !== lookupKey) {
-              if(legacyCollection){
-                const legacyDoc = await legacyCollection.doc(emailKey).get();
-                if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), emailKey);
-              }
-            }
+          if(identifier && primaryCollection){
+            const query = await primaryCollection.where('usernameLower','==', normalizeUsernameLower(identifier)).limit(1).get();
+            const match = query.docs[0];
+            if(match?.exists) return normalizeProfileShape({ ...match.data(), uid: match.id }, match.id);
           }
         } catch (e) { console.warn('Firestore load failed', e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
       if (lookupKey && profiles[lookupKey]) return normalizeProfileShape(profiles[lookupKey], lookupKey);
       if (firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
-      if (firebaseUser?.email) {
-        const fallbackName = firebaseUser.email.split('@')[0];
-        if (profiles[fallbackName]) return normalizeProfileShape(profiles[fallbackName], fallbackName);
-      }
       return identifier ? normalizeProfileShape(profiles[identifier], identifier) || null : null;
     }
 
@@ -1341,18 +1341,18 @@ function track(eventName, payload = {}){
       localStorage.setItem('ratings', JSON.stringify(ratings));
     }
 
-    async function getExistingRating(streamerUsername, raterUsername){
-      if(!streamerUsername || !raterUsername) return null;
+    async function getExistingRating(streamerUid, raterUid){
+      if(!streamerUid || !raterUid) return null;
       if(firestore){
         try{
           const collection = getProfileCollection();
           if(!collection) return null;
-          const doc = await collection.doc(streamerUsername).collection('ratings').doc(raterUsername).get();
+          const doc = await collection.doc(streamerUid).collection('ratings').doc(raterUid).get();
           return doc.exists ? doc.data() : null;
         }catch(err){ console.warn('rating load failed', err); }
       }
       const ratings = getLocalRatings();
-      return ratings?.[streamerUsername]?.[raterUsername] || null;
+      return ratings?.[streamerUid]?.[raterUid] || null;
     }
 
     function updateAggregatesWithRating(profile, previousStars, nextStars){
@@ -1371,11 +1371,11 @@ function track(eventName, payload = {}){
       return { avgRating: computed.avgRating, ratingCount, ratingBreakdown };
     }
 
-    function checkRatingUpdateLimit(streamerUsername, raterUsername){
+    function checkRatingUpdateLimit(streamerUid, raterUid){
       const now = Date.now();
       const logs = JSON.parse(localStorage.getItem('ratingUpdateLog') || '{}');
-      const streamerLog = logs[streamerUsername] || {};
-      const updates = (streamerLog[raterUsername] || []).filter(ts => now - ts < RATING_WINDOW_MS);
+      const streamerLog = logs[streamerUid] || {};
+      const updates = (streamerLog[raterUid] || []).filter(ts => now - ts < RATING_WINDOW_MS);
       if(updates.length >= RATING_UPDATE_LIMIT){
         const oldest = updates[0];
         return { allowed: false, retryAt: oldest + RATING_WINDOW_MS };
@@ -1383,12 +1383,12 @@ function track(eventName, payload = {}){
       return { allowed: true, updates, logs };
     }
 
-    function recordRatingUpdate(streamerUsername, raterUsername, updates, logs){
+    function recordRatingUpdate(streamerUid, raterUid, updates, logs){
       const now = Date.now();
       const nextUpdates = [...updates, now];
-      const streamerLog = logs[streamerUsername] || {};
-      streamerLog[raterUsername] = nextUpdates;
-      logs[streamerUsername] = streamerLog;
+      const streamerLog = logs[streamerUid] || {};
+      streamerLog[raterUid] = nextUpdates;
+      logs[streamerUid] = streamerLog;
       localStorage.setItem('ratingUpdateLog', JSON.stringify(logs));
     }
 
@@ -1465,14 +1465,7 @@ function track(eventName, payload = {}){
     let selectedSong = null;
     let sortMode = 'bpm';
     let previewSong = null;
-    let setlistIds = JSON.parse(localStorage.getItem('setlistIds') || '[]');
-    const legacySetlist = JSON.parse(localStorage.getItem('setlist') || 'null');
-    if (Array.isArray(legacySetlist) && legacySetlist.length && !localStorage.getItem('setlistIds')) {
-      setlistIds = legacySetlist.map(x => x?.id).filter(Boolean);
-      localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
-      localStorage.removeItem('setlist');
-    }
-    setlistIds = normalizeSetlistIds(setlistIds);
+    let setlist = [];
     let searchTerm = '';
     let view = 'browser';
     let showOwnedOnly = false;
@@ -1575,6 +1568,8 @@ function track(eventName, payload = {}){
     let mainPager = null;
     let profileOwnedPager = null;
     let priorityStrength = 'medium';
+    let profileSyncState = { syncing: false, message: '' };
+    let profileSyncTimeout = null;
     let keyMatchMode = (localStorage.getItem('jamMixer.keyMatchMode') || 'camelot') === 'semitone' ? 'semitone' : 'camelot';
     let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
     let includeOppositeMode = localStorage.getItem('jamMixer.includeOppositeMode');
@@ -1644,7 +1639,6 @@ function track(eventName, payload = {}){
       const firebaseUser = firebaseAuth?.currentUser;
       if(firebaseUser?.uid) return firebaseUser.uid;
       if(currentUser?.uid) return currentUser.uid;
-      if(currentUser?.username) return currentUser.username;
       return ensureLocalDeviceId();
     }
     function getNamespacedKey(base){
@@ -1652,42 +1646,67 @@ function track(eventName, payload = {}){
       userKey = key;
       return `${base}_${key}`;
     }
-    function migrateLegacyStorage(){
-      const bases = ['ownedTracks','setlist','setlistIds','genreOverrides','sandboxTrackIds'];
-      bases.forEach(base=>{
-        const legacy = localStorage.getItem(base);
-        const namespacedKey = getNamespacedKey(base);
-        const existing = localStorage.getItem(namespacedKey);
-        if(legacy && !existing){
-          localStorage.setItem(namespacedKey, legacy);
-        }
-      });
+    const PROFILE_MIGRATION_KEY = 'ffjm_migrated_uid';
+    function readLegacyLocalProfile(){
+      const legacyOwned = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
+      const legacySetlist = JSON.parse(localStorage.getItem('setlist') || '[]');
+      const legacySetlistIds = JSON.parse(localStorage.getItem('setlistIds') || '[]');
+      const legacyGenre = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
+      const setlistSource = legacySetlistIds.length ? legacySetlistIds : legacySetlist;
+      return {
+        ownedTracks: normalizeOwnedList(legacyOwned),
+        setlist: normalizeSetlistIds(setlistSource),
+        genreOverrides: legacyGenre
+      };
     }
-    function loadNamespacedState(){
-      migrateLegacyStorage();
-      ownedTracks = JSON.parse(localStorage.getItem(getNamespacedKey('ownedTracks')) || '[]');
-      const namespacedSetlistIdsKey = getNamespacedKey('setlistIds');
-      const namespacedLegacySetlist = JSON.parse(localStorage.getItem(getNamespacedKey('setlist')) || 'null');
-      const namespacedSetlistIds = JSON.parse(localStorage.getItem(namespacedSetlistIdsKey) || 'null');
-      if(!localStorage.getItem('setlistIds')){
-        if(Array.isArray(namespacedSetlistIds) && namespacedSetlistIds.length){
-          localStorage.setItem('setlistIds', JSON.stringify(normalizeSetlistIds(namespacedSetlistIds)));
-        } else if(Array.isArray(namespacedLegacySetlist) && namespacedLegacySetlist.length){
-          setlistIds = normalizeSetlistIds(namespacedLegacySetlist);
-          localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
-          localStorage.removeItem(getNamespacedKey('setlist'));
-        }
-      }
-      setlistIds = normalizeSetlistIds(JSON.parse(localStorage.getItem('setlistIds') || '[]'));
-      genreOverrides = JSON.parse(localStorage.getItem(getNamespacedKey('genreOverrides')) || '{}');
+    function loadSandboxState(){
       sandboxIds = JSON.parse(localStorage.getItem(getNamespacedKey('sandboxTrackIds')) || '[]');
     }
-    function persistNamespacedState(){
-      localStorage.setItem(getNamespacedKey('ownedTracks'), JSON.stringify(ownedTracks));
-      localStorage.setItem(getNamespacedKey('setlistIds'), JSON.stringify(setlistIds));
-      localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
-      localStorage.setItem(getNamespacedKey('genreOverrides'), JSON.stringify(genreOverrides));
-      localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds));
+    function persistProfileCache(){
+      if(!window.profileStore?.writeLocalProfileCache) return;
+      window.profileStore.writeLocalProfileCache({
+        uid: currentUser?.uid || ensureLocalDeviceId(),
+        email: currentUser?.email || '',
+        djName: currentUser?.djName || currentUser?.username || '',
+        ownedTracks,
+        setlist,
+        genreOverrides,
+        bandMembers
+      });
+    }
+    function scheduleProfileCacheSync(){
+      clearTimeout(profileSyncTimeout);
+      profileSyncTimeout = setTimeout(async ()=>{
+        if(currentUser){
+          currentUser.ownedTracks = ownedTracks;
+          currentUser.setlist = setlist;
+          currentUser.genreOverrides = genreOverrides;
+          currentUser.bandMembers = bandMembers;
+        }
+        if(draftProfile){
+          draftProfile.ownedTracks = ownedTracks;
+          draftProfile.setlist = setlist;
+          draftProfile.genreOverrides = genreOverrides;
+          draftProfile.bandMembers = bandMembers;
+        }
+        persistProfileCache();
+        const uid = firebaseAuth?.currentUser?.uid;
+        if(uid && firebaseEnabled && firestore && navigator.onLine){
+          try{
+            await window.profileStore.writeCloudProfile(uid, {
+              uid,
+              email: firebaseAuth?.currentUser?.email || currentUser?.email || '',
+              djName: currentUser?.djName || currentUser?.username || '',
+              ownedTracks,
+              setlist,
+              genreOverrides,
+              bandMembers
+            });
+          }catch(err){
+            console.warn('[profile] cloud sync failed', err);
+          }
+        }
+      }, 350);
     }
     function createPaginationState({ pageIndex = 0, pageSize = DEFAULT_PAGE_SIZE } = {}){
       return { pageIndex, pageSize, pageSizeOptions: PAGE_SIZE_OPTIONS };
@@ -2539,8 +2558,7 @@ function track(eventName, payload = {}){
           rulesAccepted,
           rulesAcceptedAt,
           ownedTracks,
-          setlists: setlistIds || [],
-          setlist: setlistIds || [],
+          setlist: setlist || [],
           bandMembers,
           genreOverrides,
           streamUrl: normalizedStreamUrl,
@@ -2559,9 +2577,10 @@ function track(eventName, payload = {}){
         currentUser = mergedProfile;
         console.debug('[profile] currentUser after merge', currentUser);
         refreshDraftProfileFromCurrentUser();
-        persistNamespacedState();
+        persistProfileCache();
         persistKeyMatchSettings();
-        localStorage.setItem('currentUser', currentUser.username);
+        const profileKey = currentUser.uid || currentUser.username;
+        if(profileKey) localStorage.setItem('currentUser', profileKey);
         const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
         if (currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...mergedProfile };
         if (currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...mergedProfile };
@@ -2569,7 +2588,7 @@ function track(eventName, payload = {}){
         console.debug('[profile] local save ok');
         const backendOk = await saveUserProfileToBackend(mergedProfile);
         console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
-        const verifyProfile = await loadUserProfile(currentUser.username);
+        const verifyProfile = await loadUserProfile(currentUser.uid || currentUser.username);
         const ownedMatch = JSON.stringify(normalizeOwnedList(verifyProfile?.ownedTracks)) === JSON.stringify(normalizeOwnedList(mergedProfile.ownedTracks));
         const prefMatch = JSON.stringify(verifyProfile?.preferences || {}) === JSON.stringify(mergedProfile.preferences || {});
         const genreMatch = JSON.stringify(verifyProfile?.genreOverrides || {}) === JSON.stringify(mergedProfile.genreOverrides || {});
@@ -2595,13 +2614,21 @@ function track(eventName, payload = {}){
         try{
           const collection = getProfileCollection();
           const legacyCollection = getLegacyProfileCollection();
-          if(collection){
-            const doc = await collection.doc(firebaseUser?.uid || username).get();
-            if(doc.exists) return normalizeProfileShape(doc.data(), firebaseUser?.uid || username);
+          const lookupId = firebaseUser?.uid || username;
+          const isLikelyUid = typeof lookupId === 'string' && (lookupId.startsWith('local:') || lookupId.length >= 20);
+          if(collection && isLikelyUid){
+            const doc = await collection.doc(lookupId).get();
+            if(doc.exists) return normalizeProfileShape(doc.data(), lookupId);
           }
-          if(legacyCollection){
-            const legacyDoc = await legacyCollection.doc(firebaseUser?.uid || username).get();
-            if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), firebaseUser?.uid || username);
+          if(legacyCollection && isLikelyUid){
+            const legacyId = firebaseUser?.uid || username;
+            const legacyDoc = await legacyCollection.doc(legacyId).get();
+            if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), legacyId);
+          }
+          if(username && collection){
+            const query = await collection.where('usernameLower','==', normalizeUsernameLower(username)).limit(1).get();
+            const match = query.docs[0];
+            if(match?.exists) return normalizeProfileShape({ ...match.data(), uid: match.id }, match.id);
           }
         }catch(e){ console.warn('Firestore load failed',e); }
       }
@@ -3170,9 +3197,9 @@ function track(eventName, payload = {}){
       }
     }
 
-    async function ensureRatingLoaded(streamerUsername){
-      if(!streamerUsername || ratingLoadedFor === streamerUsername || ratingLoading) return;
-      ratingLoadedFor = streamerUsername;
+    async function ensureRatingLoaded(streamerUid){
+      if(!streamerUid || ratingLoadedFor === streamerUid || ratingLoading) return;
+      ratingLoadedFor = streamerUid;
       ratingLoading = true;
       ratingDraft = { stars: 0, tags: [], comment: '', hasExisting: false };
       if(!currentUser){
@@ -3180,7 +3207,7 @@ function track(eventName, payload = {}){
         return;
       }
       try{
-        const existing = await getExistingRating(streamerUsername, currentUser.username);
+        const existing = await getExistingRating(streamerUid, currentUser.uid || currentUser.username);
         if(existing){
           ratingDraft = {
             stars: Number(existing.stars) || 0,
@@ -3328,12 +3355,13 @@ function track(eventName, payload = {}){
         ratingStatusTone = 'error';
         renderProfile(); setupEventListeners(); return;
       }
-      const streamerUsername = viewingProfile.username || viewingProfile.uid;
-      if(!streamerUsername){
+      const streamerUid = viewingProfile.uid || viewingProfile.username;
+      if(!streamerUid){
         ratingStatusMessage = 'Missing streamer profile.';
         ratingStatusTone = 'error';
         renderProfile(); setupEventListeners(); return;
       }
+      const raterUid = currentUser.uid || currentUser.username;
       const stars = Number(ratingDraft.stars) || 0;
       if(stars < 1 || stars > 5){
         ratingStatusMessage = 'Select a 1–5 star rating.';
@@ -3352,7 +3380,7 @@ function track(eventName, payload = {}){
         ratingStatusTone = 'error';
         renderProfile(); setupEventListeners(); return;
       }
-      const rateCheck = checkRatingUpdateLimit(streamerUsername, currentUser.username);
+      const rateCheck = checkRatingUpdateLimit(streamerUid, raterUid);
       if(!rateCheck.allowed){
         const minutes = Math.ceil((rateCheck.retryAt - Date.now()) / 60000);
         ratingStatusMessage = `Too many updates. Try again in ${minutes} min.`;
@@ -3362,38 +3390,38 @@ function track(eventName, payload = {}){
       ratingSubmitting = true;
       renderProfile(); setupEventListeners();
       try{
-        const previousRating = await getExistingRating(streamerUsername, currentUser.username);
+        const previousRating = await getExistingRating(streamerUid, raterUid);
         const updatedAt = new Date().toISOString();
         const ratingPayload = { stars, tags, comment, updatedAt };
         if(firestore){
           const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
           const collection = getProfileCollection();
           if(!collection) throw new Error('Profile collection unavailable');
-          await collection.doc(streamerUsername).collection('ratings').doc(currentUser.username)
+          await collection.doc(streamerUid).collection('ratings').doc(raterUid)
             .set({ ...ratingPayload, updatedAt: serverTimestamp ? serverTimestamp() : updatedAt }, { merge: true });
-          const profileDoc = await collection.doc(streamerUsername).get();
-          const baseProfile = profileDoc.exists ? normalizeProfileShape(profileDoc.data(), streamerUsername) : viewingProfile;
+          const profileDoc = await collection.doc(streamerUid).get();
+          const baseProfile = profileDoc.exists ? normalizeProfileShape(profileDoc.data(), streamerUid) : viewingProfile;
           const aggregates = updateAggregatesWithRating(baseProfile || {}, previousRating?.stars, stars);
-          await collection.doc(streamerUsername).set(aggregates, { merge: true });
-          viewingProfile = viewingProfile && (viewingProfile.username === streamerUsername || viewingProfile.uid === streamerUsername)
+          await collection.doc(streamerUid).set(aggregates, { merge: true });
+          viewingProfile = viewingProfile && (viewingProfile.username === streamerUid || viewingProfile.uid === streamerUid)
             ? { ...viewingProfile, ...aggregates }
             : viewingProfile;
         } else {
           const ratings = getLocalRatings();
-          ratings[streamerUsername] = ratings[streamerUsername] || {};
-          ratings[streamerUsername][currentUser.username] = ratingPayload;
+          ratings[streamerUid] = ratings[streamerUid] || {};
+          ratings[streamerUid][raterUid] = ratingPayload;
           saveLocalRatings(ratings);
           const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-          const existingProfile = normalizeProfileShape(profiles[streamerUsername] || viewingProfile || { username: streamerUsername }, streamerUsername);
+          const existingProfile = normalizeProfileShape(profiles[streamerUid] || viewingProfile || { username: streamerUid }, streamerUid);
           const aggregates = updateAggregatesWithRating(existingProfile || {}, previousRating?.stars, stars);
-          const mergedProfile = { ...(profiles[streamerUsername] || {}), ...existingProfile, ...aggregates };
-          profiles[streamerUsername] = mergedProfile;
+          const mergedProfile = { ...(profiles[streamerUid] || {}), ...existingProfile, ...aggregates };
+          profiles[streamerUid] = mergedProfile;
           localStorage.setItem('userProfiles', JSON.stringify(profiles));
-          if(viewingProfile && (viewingProfile.username === streamerUsername || viewingProfile.uid === streamerUsername)){
+          if(viewingProfile && (viewingProfile.username === streamerUid || viewingProfile.uid === streamerUid)){
             viewingProfile = { ...viewingProfile, ...aggregates };
           }
         }
-        recordRatingUpdate(streamerUsername, currentUser.username, rateCheck.updates || [], rateCheck.logs || {});
+        recordRatingUpdate(streamerUid, raterUid, rateCheck.updates || [], rateCheck.logs || {});
         ratingDraft.hasExisting = true;
         ratingStatusMessage = 'Rating saved!';
         ratingStatusTone = 'success';
@@ -3608,6 +3636,16 @@ function track(eventName, payload = {}){
     function getActiveProfile(){
       if(currentUser) return currentUser;
       const activeUid = localStorage.getItem('activeProfileUid');
+      const cachedProfile = window.profileStore?.readLocalProfileCache?.() || null;
+      if(cachedProfile && window.profileStore?.hasMeaningfulProfileData?.(cachedProfile)){
+        const fallbackUid = cachedProfile.uid || activeUid || getLocalDeviceId();
+        return normalizeProfileShape({
+          ...cachedProfile,
+          uid: fallbackUid,
+          username: cachedProfile.username || cachedProfile.djName || 'Guest',
+          djName: cachedProfile.djName || cachedProfile.username || 'Guest'
+        }, fallbackUid);
+      }
       const localProfileRaw = localStorage.getItem('localProfile');
       if(localProfileRaw){
         try{
@@ -3625,19 +3663,19 @@ function track(eventName, payload = {}){
       return null;
     }
 
-    async function enterAppWithProfile(profile, { loadEpic = false, loadOverrides = false } = {}){
+    async function enterAppWithProfile(profile, { loadEpic = false, loadOverrides = false, skipPersist = false } = {}){
       if(!profile) return;
       currentUser = applyAdminFlag(profile);
       justEnteredProfile = true;
       await persistAdminFlagIfNeeded(profile, currentUser);
       applyPreferencesFromProfile(currentUser);
-      loadNamespacedState();
+      loadSandboxState();
       loadOverridesFromStorage();
       if(loadOverrides){
         await loadUserOverridesFromBackend();
       }
       ownedTracks = currentUser.ownedTracks || [];
-      setlistIds = normalizeSetlistIds(currentUser.setlistIds || currentUser.setlist || currentUser.setlists || []);
+      setlist = normalizeSetlistIds(currentUser.setlist || currentUser.setlistIds || currentUser.setlists || []);
       bandMembers = currentUser.bandMembers || [];
       genreOverrides = currentUser.genreOverrides || {};
       refreshDraftProfileFromCurrentUser();
@@ -3658,7 +3696,9 @@ function track(eventName, payload = {}){
       if(currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...currentUser };
       localStorage.setItem('userProfiles', JSON.stringify(profiles));
       view = 'browser';
-      await persistCurrentUserProfile();
+      if(!skipPersist){
+        await persistCurrentUserProfile();
+      }
       await maybeLoadSharedProfile();
       loadSongs();
       await loadRemoteConfig();
@@ -3719,8 +3759,6 @@ function track(eventName, payload = {}){
         const existingProfile = await loadUserProfile(username);
         const baseProfile = existingProfile || {
           ownedTracks: [],
-          setlistIds: [],
-          setlists: [],
           setlist: [],
           bandMembers: [],
           genreOverrides: {},
@@ -3774,13 +3812,11 @@ function track(eventName, payload = {}){
         return;
       }
       const username = getLocalDeviceId();
-      const offlineProfile = {
-        username,
-        djName: username,
-        ownedTracks: ownedTracks || [],
-        setlistIds: [],
-        setlists: [],
-        setlist: [],
+        const offlineProfile = {
+          username,
+          djName: username,
+          ownedTracks: ownedTracks || [],
+          setlist: [],
         bandMembers: bandMembers || [],
         genreOverrides: genreOverrides || {},
         streamUrl: '',
@@ -3916,9 +3952,7 @@ function track(eventName, payload = {}){
     function hasMeaningfulData(profile){
       if(!profile) return false;
       return (profile.ownedTracks && profile.ownedTracks.length) ||
-        (profile.setlistIds && profile.setlistIds.length) ||
         (profile.setlist && profile.setlist.length) ||
-        (profile.setlists && profile.setlists.length) ||
         (profile.genreOverrides && Object.keys(profile.genreOverrides).length) ||
         (profile.bandMembers && profile.bandMembers.length);
     }
@@ -3966,9 +4000,7 @@ function track(eventName, payload = {}){
           if(deviceDataAvailable){
             return resolve({
               ownedTracks: localOwned,
-              setlistIds: localSet,
               setlist: localSet,
-              setlists: localSet,
               genreOverrides: localGenre
             });
           }
@@ -3977,64 +4009,132 @@ function track(eventName, payload = {}){
       });
     }
 
-    async function resolveAuthSuccess(firebaseUser) {
-      if (!firebaseUser?.uid) return;
-      if (authSettledUser === firebaseUser.uid) return;
-      authSettledUser = firebaseUser.uid;
-      if (authProcessing) return;
-      authProcessing = true;
-      try {
-        const defaultUsername = firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : `user_${firebaseUser.uid.slice(0,6)}`);
-        const existingProfile = await loadUserProfileFromBackend(firebaseUser.uid);
-        const shouldOfferImport = !hasMeaningfulData(existingProfile);
-        let importedProfile = null;
-        if (shouldOfferImport) {
-          importedProfile = await promptLocalImport(defaultUsername);
-        }
+    async function hydrateFromLocalCacheOnly(){
+      const cached = window.profileStore?.readLocalProfileCache?.() || {};
+      const fallbackUid = cached.uid || getLocalDeviceId();
+      const fallbackName = cached.djName || cached.email || 'Guest';
+      const hydrated = normalizeProfileShape({
+        ...cached,
+        uid: fallbackUid,
+        username: cached.username || fallbackName,
+        djName: cached.djName || fallbackName
+      }, fallbackUid);
+      if(window.profileStore?.hasMeaningfulProfileData?.(hydrated)) return hydrated;
+      return null;
+    }
 
-        const profile = existingProfile || {};
-        const liveDefaults = normalizeLiveProfileFields({ ...profile, ...importedProfile });
-        const mergedProfile = {
-          ...profile,
-          uid: firebaseUser.uid,
-          username: profile.username || defaultUsername,
-          djName: profile.djName || defaultUsername,
-          ownedTracks: importedProfile?.ownedTracks || profile.ownedTracks || ownedTracks || [],
-          setlistIds: importedProfile?.setlistIds || profile.setlistIds || importedProfile?.setlist || profile.setlist || profile.setlists || setlistIds || [],
-          setlists: importedProfile?.setlists || profile.setlists || setlistIds || [],
-          setlist: importedProfile?.setlist || profile.setlist || profile.setlists || setlistIds || [],
-          bandMembers: importedProfile?.bandMembers || profile.bandMembers || bandMembers || [],
-          genreOverrides: importedProfile?.genreOverrides || profile.genreOverrides || genreOverrides || {},
-          streamUrl: liveDefaults.streamUrl,
-          isLive: liveDefaults.isLive,
-          liveStartedAt: liveDefaults.liveStartedAt,
-          avgRating: profile.avgRating || 0,
-          ratingCount: profile.ratingCount || 0,
-          ratingBreakdown: normalizeRatingBreakdown(profile.ratingBreakdown),
-          oauth: profile.oauth || {},
-          tour: profile.tour || {},
-          isAdmin: profile.isAdmin === true
-        };
-        await enterAppWithProfile(mergedProfile, { loadEpic: true, loadOverrides: true });
-        logEvent('auth_success', { uid: firebaseUser.uid });
-      } finally {
-        authProcessing = false;
+    function getLegacyProfileForMigration(uid){
+      if(localStorage.getItem(PROFILE_MIGRATION_KEY) === uid){
+        return { legacyProfile: {}, usedLegacy: false };
       }
+      const legacyProfile = readLegacyLocalProfile();
+      const usedLegacy = window.profileStore?.hasMeaningfulProfileData
+        ? window.profileStore.hasMeaningfulProfileData(legacyProfile)
+        : hasMeaningfulData(legacyProfile);
+      return { legacyProfile, usedLegacy };
+    }
+
+    async function hydrateProfileFromCloudThenMergeLocal(uid, email){
+      profileSyncState = { syncing: true, message: 'Syncing your profile…' };
+      const localCache = window.profileStore?.readLocalProfileCache?.() || {};
+      const { legacyProfile, usedLegacy } = getLegacyProfileForMigration(uid);
+      const localProfile = {
+        ...localCache,
+        ...legacyProfile,
+        uid,
+        email: email || localCache.email || '',
+        djName: localCache.djName || currentUser?.djName || ''
+      };
+      ownedTracks = normalizeOwnedList(localProfile.ownedTracks || []);
+      setlist = normalizeSetlistIds(localProfile.setlist || []);
+      genreOverrides = localProfile.genreOverrides || {};
+      bandMembers = localProfile.bandMembers || [];
+      render(); setupEventListeners();
+      const cloudProfile = await window.profileStore.readCloudProfile(uid);
+      const plan = window.profileStore.buildSyncPlan({ cloud: cloudProfile, local: localProfile });
+      const defaultProfile = {
+        uid,
+        email: email || '',
+        ownedTracks: [],
+        setlist: [],
+        genreOverrides: {},
+        bandMembers: []
+      };
+      let merged = { ...defaultProfile, ...(plan.merged || {}) };
+      merged.uid = uid;
+      merged.email = email || merged.email || '';
+      if(plan.shouldWriteCloud){
+        const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
+        const migrating = plan.cloudEmpty && plan.localHasData;
+        const patch = {
+          ...merged,
+          migratedFromLocalAt: migrating
+            ? (serverTimestamp ? serverTimestamp() : new Date().toISOString())
+            : merged.migratedFromLocalAt ?? null
+        };
+        await window.profileStore.writeCloudProfile(uid, patch);
+      }
+      window.profileStore.writeLocalProfileCache(merged);
+      if(usedLegacy){
+        localStorage.setItem(PROFILE_MIGRATION_KEY, uid);
+        ['ownedTracks','setlist','setlistIds','genreOverrides'].forEach((key)=>localStorage.removeItem(key));
+      }
+      return merged;
+    }
+
+    function renderSignedOutState(){
+      if(currentUser){
+        render();
+        setupEventListeners();
+        return;
+      }
+      showLoginScreen();
+    }
+
+    function renderSignedInState(){
+      render();
+      setupEventListeners();
     }
 
     function setupFirebaseAuthListener() {
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
-        if (user) {
-          await resolveAuthSuccess(user);
-        } else {
+        if (!user) {
           authSettledUser = null;
-          currentUser = null;
           if(userProfileUnsub){
             userProfileUnsub();
             userProfileUnsub = null;
           }
-          showLoginScreen();
+          const localProfile = await hydrateFromLocalCacheOnly();
+          if(localProfile){
+            await enterAppWithProfile(localProfile, { loadOverrides: false, skipPersist: true });
+          } else {
+            currentUser = null;
+          }
+          profileSyncState = { syncing: false, message: '' };
+          renderSignedOutState();
+          return;
+        }
+        if (authSettledUser === user.uid) return;
+        authSettledUser = user.uid;
+        profileSyncState = { syncing: true, message: 'Syncing your profile…' };
+        render(); setupEventListeners();
+        try {
+          const mergedProfile = await hydrateProfileFromCloudThenMergeLocal(user.uid, user.email || '');
+          const defaultUsername = user.displayName || (user.email ? user.email.split('@')[0] : `user_${user.uid.slice(0,6)}`);
+          const profile = normalizeProfileShape({
+            ...mergedProfile,
+            uid: user.uid,
+            email: user.email || mergedProfile.email || '',
+            username: mergedProfile.username || defaultUsername,
+            djName: mergedProfile.djName || defaultUsername
+          }, user.uid);
+          await enterAppWithProfile(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
+          logEvent('auth_success', { uid: user.uid });
+          renderSignedInState();
+        } finally {
+          profileSyncState = { syncing: false, message: '' };
+          render(); setupEventListeners();
         }
       });
     }
@@ -4080,7 +4180,6 @@ function track(eventName, payload = {}){
         }
 
         setupFirebaseAuthListener();
-        await resolveAuthSuccess(firebaseAuth.currentUser);
 
       } catch(err){
         console.error(err);
@@ -4099,9 +4198,8 @@ function track(eventName, payload = {}){
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
-      currentUser = null; draftProfile = null; ownedTracks = []; setlistIds = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
+      currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
       localStorage.removeItem('currentUser');
-      showLoginScreen();
     }
 
     // -------------------- Songs loading -----------------------
@@ -4304,7 +4402,7 @@ function track(eventName, payload = {}){
     function updateSongCardSetlistState(songId){
       const card = document.querySelector(`.song-card[data-song-id="${songId}"]`);
       if(!card) return;
-      const isInSetlist = setlistIds.includes(songId);
+      const isInSetlist = setlist.includes(songId);
       const button = card.querySelector('[data-song-action="toggle-setlist"]');
       if(button){
         button.textContent = isInSetlist ? '✓ In Setlist' : '+ Set';
@@ -4499,8 +4597,7 @@ function track(eventName, payload = {}){
         if(!config) return false;
         ownedTracks = resolveQuickStartTrackIds(config.count);
       }
-      persistNamespacedState();
-      persistCurrentUserProfile().catch(err=>console.error('[profile] quick start save failed', err));
+      scheduleProfileCacheSync();
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('quick-start-owned');
@@ -4662,7 +4759,7 @@ function track(eventName, payload = {}){
         const song = entry.song;
         const isSelected = selectedSong && song.id === selectedSong.id;
         const isOwned = displayTracks.includes(song.id);
-        const isInSetlist = setlistIds.includes(song.id);
+        const isInSetlist = setlist.includes(song.id);
         const comp = entry.comp;
         const pct = comp ? Math.min(100, Math.max(0, Math.round(comp.total))) : null;
         const hasOverride = genreOverrides[song.id];
@@ -4814,7 +4911,7 @@ function track(eventName, payload = {}){
 
     function renderSetlist(){
       const setlistEl = document.getElementById('setlistContent'); if(!setlistEl) return;
-      if(setlistIds.length===0){
+      if(setlist.length===0){
         setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button data-action="switchView" data-view="browser" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
         return;
       }
@@ -4826,13 +4923,13 @@ function track(eventName, payload = {}){
         </div>`;
         return;
       }
-      const setlistRows = setlistIds.map((id, i)=>{
+      const setlistRows = setlist.map((id, i)=>{
         const song = songsById[id];
         if(!song){
           return `<div class="bg-black/40 backdrop-blur-sm border border-red-500/40 rounded-xl p-4 flex items-center gap-4 hover:border-red-400 transition">
             <div class="text-2xl font-bold text-pink-400">${i+1}</div>
             <div class="flex-1">
-              <div class="font-bold text-lg text-white">Missing track</div>
+              <div class="font-bold text-lg text-white">Missing track (unavailable)</div>
               <div class="text-gray-300 text-sm">Track ID: <span class="font-mono text-orange-300">${id}</span></div>
             </div>
             <button data-action="removeSet" data-id="${id}" class="p-2 hover:bg-red-500/20 rounded text-red-400 text-xl">✕</button>
@@ -4900,7 +4997,7 @@ function track(eventName, payload = {}){
         ensureLiveNowLoaded();
         if(friendsEnabled) refreshFriendsData();
       }
-      const profileOwnerKey = profileOwner?.username || profileOwner?.uid || '';
+      const profileOwnerKey = profileOwner?.uid || profileOwner?.username || '';
       if(profileOwnerKey && profileOwnedPagerOwnerKey !== profileOwnerKey){
         profileOwnedPagerOwnerKey = profileOwnerKey;
         resetPage(profileOwnedPager);
@@ -5589,61 +5686,6 @@ function track(eventName, payload = {}){
       currentUser.bandMembers = bandMembers;
     }
 
-    async function migrateUsername(oldUsername,newUsername,newDjName){
-      const status = document.getElementById('profileStatus');
-      const merged = applyAdminFlag({ ...currentUser, username:newUsername, djName:newDjName, ownedTracks, setlistIds, setlist:setlistIds, setlists:setlistIds, bandMembers, genreOverrides, preferences: currentUser.preferences || { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength } });
-      await persistAdminFlagIfNeeded(currentUser, merged);
-      if(firestore){
-        try{
-          const collection = getProfileCollection();
-          if(!collection) throw new Error('Profile collection unavailable');
-          const oldRef = collection.doc(oldUsername);
-          const newRef = collection.doc(newUsername);
-          const snap = await oldRef.get();
-          const payload = snap.exists
-            ? {
-              ...snap.data(),
-              username: newUsername,
-              djName: newDjName,
-              usernameLower: normalizeUsernameLower(newUsername),
-              djNameLower: normalizeUsernameLower(newDjName),
-              searchNameLower: normalizeUsernameLower(newUsername),
-              searchTokens: buildSearchTokens(newUsername)
-            }
-            : merged;
-          await newRef.set(payload, { merge:true });
-          try{
-            const snapshot = await collection.get();
-            const batch = firestore.batch();
-            let needsCommit = false;
-            snapshot.forEach(doc=>{
-              const data = doc.data()||{};
-              const members = data.bandMembers || [];
-              const updated = members.map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDjName } : m);
-              const changed = JSON.stringify(updated)!==JSON.stringify(members);
-              if(changed){ batch.set(doc.ref,{ bandMembers: updated },{merge:true}); needsCommit=true; }
-            });
-            if(needsCommit) await batch.commit();
-          }catch(err){ console.warn('band member update failed', err); }
-          await oldRef.delete().catch(()=>{});
-        }catch(e){ if(status) status.textContent = 'Error migrating in Firestore: ' + (e.message||e); throw e; }
-      }
-
-      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      if(profiles[oldUsername]){
-        profiles[newUsername] = { ...profiles[oldUsername], ...merged, username:newUsername, djName:newDjName };
-        delete profiles[oldUsername];
-      } else {
-        profiles[newUsername] = merged;
-      }
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      updateBandReferencesLocal(oldUsername,newUsername,newDjName);
-      currentUser = merged;
-      refreshDraftProfileFromCurrentUser();
-      localStorage.setItem('currentUser', newUsername);
-      await persistCurrentUserProfile();
-    }
-
     async function saveProfileSettings(){
       if(viewingProfile){ const status = document.getElementById('profileStatus'); if(status) status.textContent = 'View-only mode: cannot save this profile.'; return; }
       if(!currentUser) return;
@@ -5669,20 +5711,16 @@ function track(eventName, payload = {}){
       draftProfile.isLive = nextIsLive;
       draftProfile.liveStartedAt = nextLiveStartedAt;
       currentUser = { ...currentUser, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt };
+      const previousUsername = currentUser.username;
       const usernameChanged = newUsername !== currentUser.username;
       const djChanged = newDjName !== currentUser.djName;
       try{
-        if(usernameChanged){
-          if(status) status.textContent = 'Migrating profile...';
-          await migrateUsername(currentUser.username,newUsername,newDjName);
-        } else {
-          if(status) status.textContent = 'Saving profile...';
-          const previousProfile = currentUser;
-          currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, username:newUsername, djName:newDjName });
-          await persistAdminFlagIfNeeded(previousProfile, currentUser);
-          if(djChanged) updateBandReferencesLocal(currentUser.username,currentUser.username,newDjName);
-          await persistCurrentUserProfile();
-        }
+        if(status) status.textContent = 'Saving profile...';
+        const previousProfile = currentUser;
+        currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, username:newUsername, djName:newDjName });
+        await persistAdminFlagIfNeeded(previousProfile, currentUser);
+        if(usernameChanged || djChanged) updateBandReferencesLocal(previousUsername, newUsername, newDjName);
+        await persistCurrentUserProfile();
         refreshLiveNowUsers();
         render(); setupEventListeners();
         const statusEl = document.getElementById('profileStatus');
@@ -5720,7 +5758,13 @@ function render(){
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
   const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
+  const cloudSyncBadge = (firebaseEnabled && firebaseAuth?.currentUser)
+    ? `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-sky-500/20 border border-sky-400/50 text-sky-100">☁️ Cloud Sync: ON</span>`
+    : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
+  const syncBanner = profileSyncState?.syncing
+    ? `<div class="inline-banner mt-2">🔄 ${profileSyncState.message || 'Syncing your profile…'}</div>`
+    : '';
   const communityStatsRow = `
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2 text-xs">
       ${renderCommunityStat('totalDjs','TOTAL DJS','🎛️', communityStats.totalDjs, 'All time sign-ins')}
@@ -5781,6 +5825,7 @@ function render(){
               <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
               ${networkBadge}
               ${trackSourceBadge}
+              ${cloudSyncBadge}
               <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
             </div>
             ${communityStatsRow}
@@ -5793,7 +5838,7 @@ function render(){
           <div class="flex gap-2 flex-wrap">
             <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
             <div class="flex items-center gap-1">
-              <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlistIds.length}</span>)</button>
+              <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
               <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
             <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
@@ -5803,9 +5848,11 @@ function render(){
         <div class="flex items-center gap-2 flex-wrap text-sm text-cyan-100">
           ${networkBadge}
           ${trackSourceBadge}
+          ${cloudSyncBadge}
           <span class="text-xs text-gray-300">Offline browsing pulls your last cached tracks.</span>
         </div>
 
+        ${syncBanner}
         ${regressionBanner}
         <div id="browserView" style="display:${view==='browser'?'block':'none'}">
           <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
@@ -5992,8 +6039,7 @@ function render(){
         song.genre = newGenre;
         refreshSongOverrides(song);
       }
-      persistNamespacedState();
-      await persistCurrentUserProfile();
+      scheduleProfileCacheSync();
       refreshRegressionWarnings();
       renderAuditView();
       renderSongList();
@@ -6495,8 +6541,7 @@ function render(){
     window.toggleOwned = async (id) => {
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
       if(ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t=>t!==id); else ownedTracks.push(id);
-      persistNamespacedState();
-      try { await persistCurrentUserProfile(); } catch(err){ console.error('[profile] save failed after toggleOwned', err); const status=document.getElementById('profileStatus'); if(status) status.textContent='Save failed ❌: '+(err.message||err); }
+      scheduleProfileCacheSync();
       updateOwnedCount();
       updateSongCardOwnedState(id);
       updateStickyCTA();
@@ -6515,26 +6560,26 @@ function render(){
 
     function updateSetlistCountUI(){
       const el = document.getElementById('setlistCount');
-      if(el) el.textContent = setlistIds.length;
+      if(el) el.textContent = setlist.length;
     }
 
     window.addToSetlist = (id) => {
       if(!id) return;
-      const exists = setlistIds.includes(id);
+      const exists = setlist.includes(id);
       if(exists){
-        setlistIds = setlistIds.filter(x => x !== id);
+        setlist = setlist.filter(x => x !== id);
       } else {
-        setlistIds.push(id);
+        setlist.push(id);
       }
-      localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
+      scheduleProfileCacheSync();
       updateSetlistCountUI();
       updateSongCardSetlistState(id);
       if(view === 'setlist') renderSetlist();
     };
 
     window.removeFromSetlist = (id) => {
-      setlistIds = setlistIds.filter(x => x !== id);
-      localStorage.setItem('setlistIds', JSON.stringify(setlistIds));
+      setlist = setlist.filter(x => x !== id);
+      scheduleProfileCacheSync();
       updateSetlistCountUI();
       updateSongCardSetlistState(id);
       renderSetlist();
@@ -6593,8 +6638,7 @@ function render(){
       if(viewingProfile) return;
       if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
       ownedTracks = songs.map(s=>s.id);
-      persistNamespacedState();
-      try { await persistCurrentUserProfile(); } catch(err){ console.error('[profile] markAllOwned save failed', err); }
+      scheduleProfileCacheSync();
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('mark-all-owned');
@@ -6607,8 +6651,7 @@ function render(){
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
       ownedTracks = [];
-      persistNamespacedState();
-      try { await persistCurrentUserProfile(); } catch(err){ console.error('[profile] clearAllOwned save failed', err); }
+      scheduleProfileCacheSync();
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('clear-all-owned');
@@ -7597,14 +7640,12 @@ function render(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();
         const fbUser = firebaseAuth.currentUser;
-        if (fbUser) {
-          await resolveAuthSuccess(fbUser);
-          return;
-        }
+        if (fbUser) return;
       }
-      const activeProfile = getActiveProfile();
-      if(activeProfile){
-        await enterAppWithProfile(activeProfile, { loadOverrides: !!firebaseAuth?.currentUser });
+      const cachedProfile = await hydrateFromLocalCacheOnly();
+      if(cachedProfile){
+        await enterAppWithProfile(cachedProfile, { loadOverrides: false, skipPersist: true });
+        renderSignedOutState();
         return;
       }
       await loadRemoteConfig();
