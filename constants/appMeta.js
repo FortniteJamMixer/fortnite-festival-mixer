@@ -4,49 +4,55 @@ const APP_VERSION = '1.0.0';
 
 const FEATURE_FLAGS = {
   setlist: true,
-  liveProfile: true,
+  liveProfile: false,
   offlineMode: true,
   statsTiles: true,
   ownedToggle: true
 };
 
 const HELP_CONTENT = {
-  version: 2,
+  version: 3,
   basic: {
     quickStart: [
-      'Browse → search tracks and mark what you own.',
-      'Use + Set to build a Setlist.',
-      'Open Profile → set DJ Name and Customize your look.',
-      'Add a Stream URL + tap Go Live when you’re streaming.',
-      'Open Friends / Bandmates (Online mode) to add friends.'
+      'Browse tracks, search, and mark Owned.',
+      'Use Owned-only to focus your library.',
+      'Add tracks to Setlist and manage them in Setlist view.',
+      'Select a track to unlock Mixable-only matches.',
+      'Open Profile to check owned counts and bandmates.'
     ],
     sections: [
       {
-        id: 'what_this_app_does',
-        title: 'What this app does',
+        id: 'mixer_basics',
+        title: 'Mixer Basics',
         bullets: [
-          'Helps you browse Fortnite Festival tracks and plan mixes.',
-          'Lets you mark Owned tracks and build a Setlist.',
-          'Gives you a DJ Profile with Live Status and friends.'
-        ]
-      },
-      {
-        id: 'browse_tracks',
-        title: 'Browse tracks',
-        bullets: [
-          'Use Browse to search by title or artist.',
-          'Tap a track card to see details and mix hints.',
-          'Use filters to narrow down the list.'
+          'Browse the full Fortnite Festival catalog in the Browse view.',
+          'Select a track to see mix hints and compatibility chips.',
+          'Use Setlist to collect ideas for a session.'
         ]
       },
       {
         id: 'owned',
-        title: 'Owned tracks',
+        title: 'Mark Owned',
         bullets: [
-          'Owned X/Y shows how many tracks you marked as owned.',
-          'Tap Mark Owned to add it, or ✓ Owned to remove it.',
-          'Use Show All or ✓ Owned Only to switch views.',
-          'Your Owned list also appears in Profile.'
+          'Click the Owned toggle on any track card to save it.',
+          'Owned tracks are stored locally and sync to cloud when signed in.',
+          'Epic doesn’t share ownership, so you must mark tracks manually.'
+        ]
+      },
+      {
+        id: 'owned_filter',
+        title: 'Owned-only filter',
+        bullets: [
+          'Use Owned-only in Browse to show just your saved library.',
+          'Owned-only works with Search and Sort to narrow your list.'
+        ]
+      },
+      {
+        id: 'search',
+        title: 'Search',
+        bullets: [
+          'Search by title or artist from the Browse view.',
+          'Clear Search to reset filters quickly.'
         ]
       },
       {
@@ -54,188 +60,100 @@ const HELP_CONTENT = {
         title: 'Setlist',
         bullets: [
           'Click + Set on a track to add it.',
-          'Open the Setlist tab to see everything you picked.',
-          'Remove a song with the ✕ button in Setlist.',
-          'The count in Setlist (X) shows how many tracks are in your list.'
+          'Remove a track from Setlist with the ✕ button.',
+          'The Setlist tab shows your current picks.'
         ]
       },
       {
-        id: 'profile_basics',
-        title: 'Profile basics',
+        id: 'camelot_bpm',
+        title: 'Camelot & BPM',
         bullets: [
-          'Open Profile to edit Username and DJ Name.',
-          'Profile shows your persona icon, bio, and Owned tracks.',
-          'Click Save Profile to keep changes.'
+          'Camelot is the harmonic key wheel; same key or adjacent numbers mix best.',
+          'Compatible keys usually match the same number or ±1 on the wheel.',
+          'BPM tips: keep tempos close, or use half/double-time for big jumps.'
         ]
       },
       {
-        id: 'persona_icons',
-        title: 'Persona Icons',
+        id: 'mixable',
+        title: 'Mixable Filter',
         bullets: [
-          'Personas are stylized DJ icons that work offline.',
-          'Pick a persona, theme, and seed for subtle variations.',
-          'Changes save locally and sync online when enabled.'
+          'Mixable filter requires a selected track first.',
+          'It highlights the safest tempo + key matches for smooth transitions.'
+        ]
+      },
+      {
+        id: 'bandmates',
+        title: 'Bandmates',
+        bullets: [
+          'Add a bandmate by username from Profile.',
+          'Bandmates are read-only; you can view their collections.'
         ]
       },
       {
         id: 'offline',
-        title: 'Offline vs Online mode',
+        title: 'Offline mode',
         bullets: [
-          'Online mode syncs your Profile to Firestore.',
-          'Offline mode uses cached tracks and local storage.',
-          'Friends / Bandmates and search are disabled offline.',
-          'Persona icons work offline.'
+          'Your owned tracks save locally; cloud sync depends on sign-in.',
+          'If the track API fails, the app uses a fallback list.'
         ]
       }
     ],
     faq: [
       {
-        id: 'go_live_disabled',
-        q: 'Why is Go Live disabled?',
-        a: ['Add a valid Stream URL first.']
+        id: 'owned_count_wrong',
+        q: 'Why does my Owned count look off?',
+        a: [
+          'Owned counts are based on the current track list. If tracks change, re-check your Owned selections.'
+        ]
       },
       {
-        id: 'cant_see_setlist',
-        q: 'Why can’t I see my Setlist?',
-        a: ['Click the Setlist tab and check the count.']
+        id: 'mixable_needs_track',
+        q: 'Why is Mixable empty?',
+        a: ['Select a track first, then enable Mixable to see compatible matches.']
       },
       {
         id: 'offline_mode',
-        q: 'Why am I in Offline mode?',
-        a: ['No connection; the app uses cached tracks.']
-      },
-      {
-        id: 'owned_count_wrong',
-        q: 'My Owned count looks wrong',
-        a: ['Re-check owned selections or refresh the page.']
+        q: 'Does my library save offline?',
+        a: ['Yes. Owned tracks save on this device; cloud sync is available when signed in.']
       }
     ]
   },
   advanced: {
     sections: [
       {
-        id: 'profile_customization',
-        title: 'Profile Customization (Myspace vibe)',
+        id: 'camelot_compat',
+        title: 'Camelot compatibility basics',
         bullets: [
-          'Customize gives your profile a Myspace vibe with colors, bio, and persona.',
-          'Changes save offline to local storage, and online to Firestore too.'
-        ],
-        steps: [
-          'Go to Profile.',
-          'Expand Customize.',
-          'Set Bio (160 characters max).',
-          'Pick a Theme Accent to change highlights.',
-          'Choose your Persona: pick an icon, theme, and Randomize Seed for subtle variations.',
-          'Click Save Profile.'
+          'Same number + same letter is a safe harmonic blend.',
+          'Move +1 or -1 on the Camelot number for a smooth shift.',
+          'Swap A/B on the same number for relative major/minor.'
         ]
       },
       {
-        id: 'persona',
-        title: 'Persona Icons',
+        id: 'bpm_tips',
+        title: 'BPM tips',
         bullets: [
-          'Personas are stylized DJ icons with neon gradients and glow.',
-          'Pick a theme for the energy ring and background.',
-          'Randomize the seed to tweak sparkles and highlights.'
-        ]
-      },
-      {
-        id: 'friends',
-        title: 'Friends / Bandmates',
-        bullets: [
-          'Find the Friends / Bandmates panel inside Profile.',
-          'Search by DJ Name or username (prefix matches work).',
-          'Add Friend sends a request; check Requests to Accept or Decline.',
-          'Friends list lets you view profiles, see LIVE pills, and watch if live.',
-          'Friends and search require Online mode; Offline shows a disabled message.'
-        ]
-      },
-      {
-        id: 'privacy_controls',
-        title: 'Privacy Controls',
-        bullets: [
-          'Public Profile: turn off to hide from search.',
-          'Allow Friend Requests: turn off to block new requests.'
-        ]
-      },
-      {
-        id: 'live',
-        title: 'Live streaming + LIVE pills',
-        bullets: [
-          'Add a Stream URL (Twitch, YouTube, Kick).',
-          'Live Status shows Go Live / End Live and needs a valid URL.',
-          'The green LIVE pill appears on your profile and opens your stream.',
-          'Friends may show a LIVE pill and a Watch button when streaming.'
-        ]
-      },
-      {
-        id: 'pagination',
-        title: 'Pagination & Page Size',
-        bullets: [
-          'Use Previous / Next to flip pages in Browse and Profile owned tracks.',
-          'Change Page size to 12 / 24 / 48 / 96 tracks.',
-          '“Showing X–Y of Z tracks” tells you how much you’re viewing.',
-          'Pages replace long scrolling (no doom scroll).'
-        ],
-        steps: [
-          'If you can’t find a track, use Search and flip pages.'
-        ]
-      },
-      {
-        id: 'troubleshooting',
-        title: 'Troubleshooting',
-        bullets: [
-          'Go Live disabled? Add a valid Stream URL.',
-          'Setlist empty? Add tracks with + Set in Browse.',
-          'Friends missing? Switch to Online mode and search again.',
-          'Owned count looks wrong? Refresh or re-mark your Owned tracks.'
-        ]
-      },
-      {
-        id: 'sorting',
-        title: 'Sorting / Matching',
-        bullets: [
-          'Top Matches are sorted by overall compatibility first.',
-          'Tempo / Camelot / Genre decide how ties get nudged.',
-          'Priority Strength changes how hard the tie-break nudge is.',
-          'Mixable Only keeps just the safest key + tempo combos.'
-        ]
-      },
-      {
-        id: 'compat_hints',
-        title: 'Compatibility Hints',
-        bullets: [
-          'Look for the 🎧 icon to spot tracks that are mixable with your selected song.',
-          'The ±BPM chip shows how far the tempo gap is.',
-          'Camelot and key pills help you see harmonic neighbors fast.'
+          'Aim for small tempo gaps (±4–6 BPM) for clean transitions.',
+          'Half/double-time mixing can connect wider BPM differences.'
         ]
       }
     ]
   }
 };
 const DEFAULT_HELP_CONTENT = HELP_CONTENT;
+const HELP_LAST_UPDATED = '2026-01-24';
 
 const DEFAULT_WHATS_NEW = {
-  version: 1,
+  version: 2,
   items: [
     {
-      id: 'setlist_fixed',
-      text: 'Setlist is now functional.',
-      requires: ['setlist']
-    },
-    {
-      id: 'live_profile_stream',
-      text: 'Profile supports Stream URL + LIVE status pill.',
-      requires: ['liveProfile']
+      id: 'profile_refresh',
+      text: 'Profile now focuses on DJ name, owned tracks, and bandmates.'
     },
     {
       id: 'offline_cache',
       text: 'Offline browsing uses your last cached tracks.',
       requires: ['offlineMode']
-    },
-    {
-      id: 'stats_tiles',
-      text: 'Stats tiles explain live/all-time activity.',
-      requires: ['statsTiles']
     },
     {
       id: 'owned_toggle',
@@ -244,11 +162,7 @@ const DEFAULT_WHATS_NEW = {
     },
     {
       id: 'help_refresh',
-      text: 'Help modal got a cleanup for faster guidance.'
-    },
-    {
-      id: 'persona_icons',
-      text: 'Persona icons replace profile pics with themed DJ vibes.'
+      text: 'Help modal now documents only working features.'
     }
   ]
 };
@@ -260,4 +174,5 @@ window.WHATS_NEW = WHATS_NEW;
 window.FEATURE_FLAGS = FEATURE_FLAGS;
 window.HELP_CONTENT = HELP_CONTENT;
 window.DEFAULT_HELP_CONTENT = DEFAULT_HELP_CONTENT;
+window.HELP_LAST_UPDATED = HELP_LAST_UPDATED;
 window.DEFAULT_WHATS_NEW = DEFAULT_WHATS_NEW;
