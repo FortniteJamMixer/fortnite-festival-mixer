@@ -4633,13 +4633,27 @@ function track(eventName, payload = {}){
       if(el) el.textContent = getHeaderTrackCountLabel();
     }
 
-    function scheduleSongListRender(reason=''){
+    function scrollSongListToTop(){
+      const list = document.getElementById('songList');
+      if(!list) return;
+      if(list.scrollHeight > list.clientHeight){
+        list.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+
+    function scheduleSongListRender(reason='', options = {}){
+      const { scrollToTop = false } = options || {};
       songListRenderReason = reason;
       if(songListRenderScheduled) return;
       songListRenderScheduled = true;
       requestAnimationFrame(()=>{
         songListRenderScheduled = false;
         renderSongList();
+        if(scrollToTop){
+          requestAnimationFrame(scrollSongListToTop);
+        }
       });
     }
 
@@ -5191,7 +5205,6 @@ function track(eventName, payload = {}){
         : `<div class="panel p-6 text-center text-gray-300 space-y-3"><div>No songs match your filters yet.</div><button data-action="clearFilters" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-sm text-white">Clear filters</button></div>`);
 
       songListEl.innerHTML = priorityHeader + listContent;
-      const scrollTarget = songListEl;
       if(scored.length && !isMobile){
         const renderPagination = (targetId)=>{
           const targetEl = document.getElementById(targetId);
@@ -5199,14 +5212,12 @@ function track(eventName, payload = {}){
             onPageChange: (nextIndex)=>{
               mainPager.pageIndex = Math.max(0, nextIndex);
               persistMainPagerState();
-              scheduleSongListRender('page-change');
-              scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              scheduleSongListRender('page-change', { scrollToTop: true });
             },
             onPageSizeChange: (nextSize)=>{
               setPageSize(mainPager, nextSize);
               persistMainPagerState();
-              scheduleSongListRender('page-size');
-              scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              scheduleSongListRender('page-size', { scrollToTop: true });
             }
           }, { totalItems: scored.length, totalPages, from: showingStart, to: showingEnd });
         };
