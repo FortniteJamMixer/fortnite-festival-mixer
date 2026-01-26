@@ -7,10 +7,11 @@ const toSortedArray = (value) => {
   return Array.from(value).filter(Boolean).sort();
 };
 
-const normalizeSnapshotWithFallback = (normalizeSnapshot, trackIds, updatedAt, meta = null) => {
+const normalizeSnapshotWithFallback = (normalizeSnapshot, trackIds, updatedAt, meta = null, libraryVersion = 0) => {
   const payload = {
     trackIds: toSortedArray(trackIds),
     updatedAt: updatedAt || new Date().toISOString(),
+    libraryVersion,
     ...(meta ? { meta } : {})
   };
   if (typeof normalizeSnapshot === 'function') {
@@ -20,6 +21,7 @@ const normalizeSnapshotWithFallback = (normalizeSnapshot, trackIds, updatedAt, m
     ...payload,
     count: payload.trackIds.length,
     schemaVersion: 1,
+    libraryVersion,
     hash: payload.trackIds.join('|')
   };
 };
@@ -29,10 +31,19 @@ const createOwnedLibraryStore = ({
   writeCache,
   readCloud,
   writeCloud,
+  readBackup,
+  writeBackup,
+  cleanupBackups,
   buildPlan,
   normalizeSnapshot,
   getOnline = () => true,
   getCloudEnabled = () => false,
+  readLastGoodCount,
+  writeLastGoodCount,
+  readLastSyncAt,
+  writeLastSyncAt,
+  readLastBackupAt,
+  writeLastBackupAt,
   localDebounceMs = DEFAULT_LOCAL_DEBOUNCE_MS,
   cloudDebounceMs = DEFAULT_CLOUD_DEBOUNCE_MS,
   onSnapshot = () => {},
@@ -50,6 +61,8 @@ const createOwnedLibraryStore = ({
   let localTimer = null;
   let cloudTimer = null;
   let status = { phase: 'idle', source: 'none', message: '' };
+  let lastKnownRemoteCount = 0;
+  let libraryVersion = 0;
 
   const updateStatus = (next) => {
     status = { ...status, ...next };
@@ -76,8 +89,11 @@ const createOwnedLibraryStore = ({
 
   const persistLocal = (reason) => {
     if (!uid || typeof writeCache !== 'function') return null;
-    const snapshot = normalizeSnapshotWithFallback(normalizeSnapshot, trackIds, new Date().toISOString(), { reason });
+    const snapshot = normalizeSnapshotWithFallback(normalizeSnapshot, trackIds, new Date().toISOString(), { reason }, libraryVersion);
     writeCache(uid, snapshot);
+    if (typeof writeLastGoodCount === 'function') {
+      writeLastGoodCount(uid, snapshot.trackIds.length);
+    }
     lastSavedAt = Date.now();
     clearDirty();
     return snapshot;
@@ -93,8 +109,29 @@ const createOwnedLibraryStore = ({
       pendingCloudWrite = { reason, allowEmpty };
       return null;
     }
-    const snapshot = normalizeSnapshotWithFallback(normalizeSnapshot, ids, new Date().toISOString(), { reason });
+    if (ids.length === 0 && lastKnownRemoteCount > 0 && !allowEmpty) {
+      pendingCloudWrite = { reason, allowEmpty: false };
+      return null;
+    }
+    const snapshot = normalizeSnapshotWithFallback(normalizeSnapshot, ids, new Date().toISOString(), { reason }, libraryVersion);
     await writeCloud(uid, snapshot);
+    lastKnownRemoteCount = ids.length;
+    if (typeof writeLastSyncAt === 'function') {
+      writeLastSyncAt(uid, Date.now());
+    }
+    if (typeof writeBackup === 'function') {
+      const lastBackupAt = typeof readLastBackupAt === 'function' ? readLastBackupAt(uid) : null;
+      const now = Date.now();
+      if (!lastBackupAt || now - Number(lastBackupAt) > 24 * 60 * 60 * 1000) {
+        await writeBackup(uid, snapshot);
+        if (typeof cleanupBackups === 'function') {
+          await cleanupBackups(uid, 10);
+        }
+        if (typeof writeLastBackupAt === 'function') {
+          writeLastBackupAt(uid, now);
+        }
+      }
+    }
     pendingCloudWrite = null;
     lastSavedAt = Date.now();
     return snapshot;
@@ -104,7 +141,7 @@ const createOwnedLibraryStore = ({
     clearTimeout(localTimer);
     clearTimeout(cloudTimer);
     isSaving = true;
-    updateStatus({ phase: 'saving', source: getOnline() ? 'cloud' : 'device', message: 'Saving…' });
+    updateStatus({ phase: 'saving', source: getOnline() ? 'cloud' : 'device', message: 'Syncing library…' });
     try {
       persistLocal(reason);
       const allowEmpty = options.allowEmpty === true || reason === 'explicit_clear';
@@ -112,15 +149,15 @@ const createOwnedLibraryStore = ({
       const offline = !getOnline();
       const cloudPaused = !getCloudEnabled();
       if (offline) {
-        updateStatus({ phase: 'ready', source: 'device', message: 'Saved to device ✓' });
+        updateStatus({ phase: 'ready', source: 'device', message: 'Offline — showing last saved library' });
       } else if (cloudPaused) {
         updateStatus({ phase: 'ready', source: 'local', message: 'Sync paused' });
       } else {
-        updateStatus({ phase: 'ready', source: 'cloud', message: 'Saved ✓' });
+        updateStatus({ phase: 'ready', source: 'cloud', message: 'Synced ✅' });
       }
     } catch (err) {
       console.warn('[owned-library] save failed', err);
-      updateStatus({ phase: 'ready', source: 'device', message: 'Saved to device ✓' });
+      updateStatus({ phase: 'ready', source: 'device', message: 'Couldn’t sync — your library is safe locally' });
       pendingCloudWrite = { reason, allowEmpty: options.allowEmpty === true || reason === 'explicit_clear' };
     } finally {
       isSaving = false;
@@ -141,7 +178,7 @@ const createOwnedLibraryStore = ({
     localTimer = setTimeout(() => {
       persistLocal(reason);
       if (!isSaving && !pendingCloudWrite) {
-        updateStatus({ phase: 'ready', source: getOnline() ? 'local' : 'device', message: getOnline() ? 'Saved ✓' : 'Saved to device ✓' });
+        updateStatus({ phase: 'ready', source: getOnline() ? 'local' : 'device', message: getOnline() ? 'Synced ✅' : 'Offline — showing last saved library' });
       }
     }, localDebounceMs);
   };
@@ -158,6 +195,7 @@ const createOwnedLibraryStore = ({
     const current = toSortedArray(trackIds);
     if (JSON.stringify(next) === JSON.stringify(current)) return { skipped: true, reason: 'identical' };
     trackIds = new Set(next);
+    libraryVersion += 1;
     markDirty();
     emitSnapshot();
     scheduleLocalSave(reason);
@@ -185,22 +223,31 @@ const createOwnedLibraryStore = ({
     dirty = false;
     dirtySince = null;
     pendingCloudWrite = null;
+    lastKnownRemoteCount = 0;
+    libraryVersion = 0;
     isBooting = true;
-    updateStatus({ phase: 'restoring', source: 'none', message: 'Restoring your library…' });
+    updateStatus({ phase: 'syncing', source: 'none', message: 'Syncing library…' });
 
     const cachedSnapshot = typeof readCache === 'function' && uid ? readCache(uid) : null;
+    const cachedLastGood = typeof readLastGoodCount === 'function' && uid ? readLastGoodCount(uid) : null;
+    if (Number.isFinite(cachedLastGood)) {
+      lastKnownRemoteCount = cachedLastGood;
+    }
     const legacySnapshot = legacyOwnedTracks.length
-      ? normalizeSnapshotWithFallback(normalizeSnapshot, legacyOwnedTracks, new Date().toISOString(), { reason: 'legacy' })
+      ? normalizeSnapshotWithFallback(normalizeSnapshot, legacyOwnedTracks, new Date().toISOString(), { reason: 'legacy' }, libraryVersion)
       : null;
     const initialSnapshot = initialTrackIds.length
-      ? normalizeSnapshotWithFallback(normalizeSnapshot, initialTrackIds, new Date().toISOString(), { reason: 'initial' })
+      ? normalizeSnapshotWithFallback(normalizeSnapshot, initialTrackIds, new Date().toISOString(), { reason: 'initial' }, libraryVersion)
       : null;
     let localSnapshot = cachedSnapshot || initialSnapshot || legacySnapshot || null;
+    if (localSnapshot?.libraryVersion) {
+      libraryVersion = localSnapshot.libraryVersion;
+    }
 
     if (localSnapshot?.trackIds?.length) {
       trackIds = new Set(localSnapshot.trackIds);
       emitSnapshot();
-      updateStatus({ phase: 'restoring', source: 'cache', message: 'Restoring your library… Using cached library.' });
+      updateStatus({ phase: 'syncing', source: 'cache', message: 'Syncing library…' });
     }
 
     if (!uid || skipCloud || !getCloudEnabled() || !getOnline() || typeof readCloud !== 'function' || typeof buildPlan !== 'function') {
@@ -208,10 +255,12 @@ const createOwnedLibraryStore = ({
         writeCache(uid, localSnapshot);
       }
       isBooting = false;
+      const offline = !getOnline();
+      const cloudPaused = !getCloudEnabled();
       updateStatus({
         phase: 'ready',
         source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
-        message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        message: offline ? 'Offline — showing last saved library' : cloudPaused ? 'Sync paused' : 'Synced ✅'
       });
       return emitSnapshot();
     }
@@ -223,9 +272,24 @@ const createOwnedLibraryStore = ({
       } catch (err) {
         console.warn('[owned-library] cloud read failed', err);
       }
-      const plan = buildPlan({ cache: localSnapshot, cloud: cloudSnapshot });
+      if (cloudSnapshot) {
+        if (cloudSnapshot.trackIds?.length) {
+          lastKnownRemoteCount = cloudSnapshot.trackIds.length;
+        }
+        libraryVersion = Math.max(libraryVersion, cloudSnapshot.libraryVersion || 0);
+      }
+      let backupSnapshot = null;
+      if (!cloudSnapshot?.trackIds?.length && typeof readBackup === 'function') {
+        try {
+          backupSnapshot = await readBackup(uid);
+        } catch (err) {
+          console.warn('[owned-library] backup read failed', err);
+        }
+      }
+      const plan = buildPlan({ cache: localSnapshot, cloud: cloudSnapshot, backup: backupSnapshot });
       if (plan?.chosen?.trackIds) {
         trackIds = new Set(plan.chosen.trackIds);
+        libraryVersion = plan.chosen.libraryVersion || libraryVersion;
       }
       emitSnapshot();
       if (plan?.shouldUpdateCache && typeof writeCache === 'function') {
@@ -233,15 +297,36 @@ const createOwnedLibraryStore = ({
       }
       if ((plan?.shouldSeedCloud || plan?.shouldWriteCloud) && plan?.chosen?.trackIds?.length) {
         await writeCloud(uid, plan.chosen);
+        lastKnownRemoteCount = plan.chosen.trackIds.length;
+        if (typeof writeLastSyncAt === 'function') {
+          writeLastSyncAt(uid, Date.now());
+        }
+        if (typeof writeBackup === 'function') {
+          await writeBackup(uid, plan.chosen);
+          if (typeof cleanupBackups === 'function') {
+            await cleanupBackups(uid, 10);
+          }
+          if (typeof writeLastBackupAt === 'function') {
+            writeLastBackupAt(uid, Date.now());
+          }
+        }
       }
-      const sourceLabel = plan?.source === 'cloud' ? 'Cloud' : plan?.source === 'cache' ? 'Cached' : 'Local';
-      updateStatus({ phase: 'ready', source: plan?.source || 'local', message: `Library loaded (${sourceLabel})` });
+      const recovered = plan?.recovered;
+      if (recovered) {
+        updateStatus({ phase: 'ready', source: plan?.source || 'local', message: 'Recovered your library from backup ✅' });
+      } else {
+        updateStatus({
+          phase: 'ready',
+          source: plan?.source || 'local',
+          message: getOnline() ? 'Synced ✅' : 'Offline — showing last saved library'
+        });
+      }
     } catch (err) {
       console.warn('[owned-library] reconcile failed', err);
       updateStatus({
         phase: 'ready',
         source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
-        message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        message: 'Couldn’t sync — your library is safe locally'
       });
     } finally {
       isBooting = false;
