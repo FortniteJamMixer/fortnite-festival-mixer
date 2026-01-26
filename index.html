@@ -186,7 +186,7 @@
     }
     @media (min-width: 1024px) {
       .login-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
-      .camelot-wheel-graphic { width: 260px; height: 260px; --label-radius: 140px; }
+      .camelot-wheel-graphic { width: 260px; height: 260px; --label-radius: 90px; }
     }
     @media (prefers-reduced-motion: reduce) {
       .sticky-cta-bar { transition: none; }
@@ -276,8 +276,17 @@
       width: 220px;
       height: 220px;
       margin: 0 auto 20px;
-      --label-radius: 118px;
+      --label-radius: 72px;
     }
+    .camelot-wheel-graphic.is-mini {
+      width: 140px;
+      height: 140px;
+      --label-radius: 44px;
+    }
+    .camelot-wheel-graphic.is-mini .camelot-wheel-label { width: 36px; }
+    .camelot-wheel-graphic.is-mini .label-number { font-size: 10px; }
+    .camelot-wheel-graphic.is-mini .label-sub { font-size: 7px; }
+    .camelot-wheel-graphic.is-mini .camelot-wheel-center { font-size: 8px; }
     .camelot-wheel-ring {
       position: absolute;
       inset: 0;
@@ -313,26 +322,26 @@
       top: 50%;
       transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius) * -1));
       transform-origin: center;
+      width: 56px;
+      text-align: center;
+      pointer-events: none;
     }
     .camelot-wheel-label .label-inner {
       transform: rotate(calc(var(--i) * -30deg));
-      background: rgba(4,8,22,0.8);
-      border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 999px;
-      padding: 4px 8px;
-      min-width: 54px;
-      text-align: center;
-      font-size: 12px;
-      font-weight: 800;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
       color: #fff;
-      box-shadow: 0 0 12px rgba(0,217,255,0.16);
+      text-shadow: 0 0 8px rgba(0,217,255,0.5), 0 0 14px rgba(0,0,0,0.6);
     }
-    .camelot-wheel-label .label-inner span {
-      display: block;
-      font-size: 10px;
-      font-weight: 600;
-      color: #b7f2ff;
-      letter-spacing: 0.04em;
+    .camelot-wheel-label .label-number { font-size: 14px; font-weight: 800; line-height: 1; }
+    .camelot-wheel-label .label-sub { font-size: 9px; font-weight: 600; color: #dff7ff; letter-spacing: 0.06em; }
+    @media (max-width: 640px) {
+      .camelot-wheel-graphic { width: 200px; height: 200px; --label-radius: 62px; }
+      .camelot-wheel-label { width: 46px; }
+      .camelot-wheel-label .label-number { font-size: 12px; }
+      .camelot-wheel-label .label-sub { font-size: 8px; }
     }
     .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
@@ -1418,12 +1427,14 @@ function track(eventName, payload = {}){
       return migrateProfile({ ...mergedProfile, ownedTracks: normalizeOwnedList(currentOwnedTracks || ownedTracks || []) });
     }
 
-    async function persistProfileRobust(profile, { force = false } = {}){
+    async function persistProfileRobust(profile, { force = false, reason = 'system' } = {}){
       if(!profile) return { backendOk: false, blocked: true };
       const migrated = migrateProfile(profile);
-      const ownedCount = migrated.ownedTracks.length;
+      const safeOwnedTracks = resolveSafeOwnedTracks(migrated, { reason });
+      migrated.ownedTracks = safeOwnedTracks;
+      const ownedCount = safeOwnedTracks.length;
       const fenceActive = boot.phase !== 'ready' && boot.initialOwnedCount > 0 && ownedCount === 0;
-      const shrinkDetected = ownedCount < boot.initialOwnedCount && boot.initialOwnedCount > 0 && !userInitiatedClear;
+      const shrinkDetected = ownedCount < boot.initialOwnedCount && boot.initialOwnedCount > 0 && !userInitiatedClear && !shouldAllowEmptyOwnedWrite(reason);
       if(!force && (fenceActive || shrinkDetected)){
         writeFenceBlockedSave = true;
         maybeShowRecoveryBanner();
@@ -1445,15 +1456,26 @@ function track(eventName, payload = {}){
       if(profileKey){
         localStorage.setItem(`${PROFILE_SNAPSHOT_PREFIX}${profileKey}`, JSON.stringify(migrated));
       }
-      const backendOk = await saveUserProfileToBackend(migrated);
+      persistUserSession(migrated, { reason, skipBackend: true }).catch(()=>{});
+      const backendOk = await saveUserProfileToBackend(migrated, { reason });
       return { backendOk, profile: migrated };
     }
 
     async function applyProfileToState(profile, { loadEpic = false, loadOverrides = false, skipPersist = false } = {}){
       if(!profile) return;
-      currentUser = applyAdminFlag(profile);
+      const nextSessionKey = getUserStorageId(profile);
+      const switchingUser = activeSessionKey && nextSessionKey && activeSessionKey !== nextSessionKey;
+      if(switchingUser){
+        ownedTracks = [];
+        setlist = [];
+        bandMembers = [];
+        genreOverrides = {};
+      }
+      activeSessionKey = nextSessionKey || activeSessionKey;
+      const hydratedProfile = await hydrateUserSession(profile);
+      currentUser = applyAdminFlag(hydratedProfile);
       justEnteredProfile = true;
-      await persistAdminFlagIfNeeded(profile, currentUser);
+      await persistAdminFlagIfNeeded(hydratedProfile, currentUser);
       applyPreferencesFromProfile(currentUser);
       loadSandboxState();
       loadOverridesFromStorage();
@@ -1466,12 +1488,10 @@ function track(eventName, payload = {}){
         const storeUid = store.getMeta?.().uid;
         const targetUid = currentUser.uid || ensureLocalDeviceId();
         if(storeUid !== targetUid){
-          await initOwnedLibraryForUser(targetUid, { initialTrackIds: incomingOwned, skipCloud: !firebaseAuth?.currentUser });
+          await initOwnedLibraryForUser(targetUid, { initialTrackIds: incomingOwned.length ? incomingOwned : ownedTracks, skipCloud: !firebaseAuth?.currentUser });
         }
       } else if(incomingOwned.length){
         ownedTracks = incomingOwned;
-      } else if(!ownedTracks.length) {
-        ownedTracks = [];
       }
       setlist = normalizeSetlistIds(currentUser.setlist || currentUser.setlistIds || currentUser.setlists || []);
       bandMembers = currentUser.bandMembers || [];
@@ -1491,7 +1511,7 @@ function track(eventName, payload = {}){
       }
       view = 'browser';
       if(!skipPersist){
-        await persistProfileRobust(currentProfileFromState(), { force: false });
+        await persistProfileRobust(currentProfileFromState(), { force: false, reason: 'system' });
       }
     }
     function buildOwnedMap(ids){
@@ -1499,8 +1519,12 @@ function track(eventName, payload = {}){
       (ids||[]).forEach(id=>{ map[id] = true; });
       return map;
     }
-    async function saveUserProfileToBackend(profile) {
+    async function saveUserProfileToBackend(profile, { reason = 'system' } = {}) {
       if (!profile) return;
+      const safeOwned = resolveSafeOwnedTracks(profile, { reason });
+      if(profile.ownedTracks?.length === 0 && safeOwned.length){
+        profile = { ...profile, ownedTracks: safeOwned };
+      }
       const firebaseUser = firebaseAuth?.currentUser;
       const profileKey = profile.uid || firebaseUser?.uid;
       const setlistItems = profile.setlist || [];
@@ -1742,6 +1766,7 @@ function track(eventName, payload = {}){
     let songsById = {};
     let draftProfile = null;
     let ownedTracks = [];
+    let activeSessionKey = null;
     let ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
     let ownedStore = null;
     let logoutInProgress = false;
@@ -1957,6 +1982,123 @@ function track(eventName, payload = {}){
         genreOverrides: legacyGenre
       };
     }
+    function getUserStorageId(profile){
+      const username = profile?.username || currentUser?.username;
+      const uid = profile?.uid || currentUser?.uid;
+      const fallback = localStorage.getItem('currentUser');
+      return username || uid || fallback || null;
+    }
+    function getUserStorageKey(base, profile){
+      const id = getUserStorageId(profile);
+      return id ? `${base}:${id}` : null;
+    }
+    function readUserStorageJson(base, profile, fallback){
+      const key = getUserStorageKey(base, profile);
+      if(!key) return fallback;
+      try{
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : fallback;
+      }catch(err){
+        console.warn('[storage] read failed', err);
+        return fallback;
+      }
+    }
+    function writeUserStorageJson(base, profile, value){
+      const key = getUserStorageKey(base, profile);
+      if(!key) return;
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+    function shouldAllowEmptyOwnedWrite(reason){
+      return reason === 'clearAll';
+    }
+    function resolveSafeOwnedTracks(profile, { reason = 'system' } = {}){
+      const incoming = normalizeOwnedList(profile?.ownedTracks || []);
+      if(incoming.length || shouldAllowEmptyOwnedWrite(reason)) return incoming;
+      const storedLocal = normalizeOwnedList(readUserStorageJson('ownedTracks', profile, []));
+      if(storedLocal.length) return storedLocal;
+      const cachedOwned = profile?.uid ? readOwnedTracksCache(profile.uid) : null;
+      if(cachedOwned?.trackIds?.length) return normalizeOwnedList(cachedOwned.trackIds);
+      return incoming;
+    }
+    function shallowEqual(a = {}, b = {}){
+      const aKeys = Object.keys(a);
+      const bKeys = Object.keys(b);
+      if(aKeys.length !== bKeys.length) return false;
+      return aKeys.every(key => a[key] === b[key]);
+    }
+    function arraysEqual(a = [], b = []){
+      if(a.length !== b.length) return false;
+      return a.every((val, idx) => val === b[idx]);
+    }
+    async function persistUserSession(profile, { reason = 'system', skipBackend = false } = {}){
+      if(!profile) return;
+      const safeOwned = resolveSafeOwnedTracks(profile, { reason });
+      const safeSetlist = normalizeSetlistIds(profile.setlist || profile.setlistIds || profile.setlists || []);
+      const safeGenre = profile.genreOverrides && typeof profile.genreOverrides === 'object' ? profile.genreOverrides : {};
+      writeUserStorageJson('ownedTracks', profile, safeOwned);
+      writeUserStorageJson('setlist', profile, safeSetlist);
+      writeUserStorageJson('genreOverrides', profile, safeGenre);
+      if(!skipBackend){
+        await saveUserProfileToBackend({ ...profile, ownedTracks: safeOwned, setlist: safeSetlist, genreOverrides: safeGenre }, { reason });
+      }
+    }
+    async function hydrateUserSession(profile){
+      if(!profile) return profile;
+      const sessionId = getUserStorageId(profile);
+      if(!sessionId) return profile;
+      const localOwned = normalizeOwnedList(readUserStorageJson('ownedTracks', profile, []));
+      const localSetlist = normalizeSetlistIds(readUserStorageJson('setlist', profile, []));
+      const localGenre = readUserStorageJson('genreOverrides', profile, {});
+      const backendOwned = normalizeOwnedList(profile.ownedTracks || []);
+      const backendSetlist = normalizeSetlistIds(profile.setlist || profile.setlistIds || profile.setlists || []);
+      const backendGenre = profile.genreOverrides && typeof profile.genreOverrides === 'object' ? profile.genreOverrides : {};
+
+      let mergedOwned = backendOwned;
+      let shouldWriteBackend = false;
+      if(!backendOwned.length && localOwned.length){
+        mergedOwned = localOwned;
+        shouldWriteBackend = true;
+      } else if(backendOwned.length && localOwned.length){
+        mergedOwned = normalizeOwnedList([...backendOwned, ...localOwned]);
+        if(!arraysEqual(mergedOwned, backendOwned)) shouldWriteBackend = true;
+      }
+
+      let mergedSetlist = backendSetlist;
+      if(!backendSetlist.length && localSetlist.length){
+        mergedSetlist = localSetlist;
+        shouldWriteBackend = true;
+      } else if(backendSetlist.length && localSetlist.length){
+        mergedSetlist = normalizeSetlistIds([...backendSetlist, ...localSetlist]);
+        if(!arraysEqual(mergedSetlist, backendSetlist)) shouldWriteBackend = true;
+      }
+
+      let mergedGenre = backendGenre;
+      const hasLocalGenre = Object.keys(localGenre || {}).length > 0;
+      const hasBackendGenre = Object.keys(backendGenre || {}).length > 0;
+      if(!hasBackendGenre && hasLocalGenre){
+        mergedGenre = localGenre;
+        shouldWriteBackend = true;
+      } else if(hasBackendGenre && hasLocalGenre){
+        mergedGenre = { ...backendGenre, ...localGenre };
+        if(!shallowEqual(mergedGenre, backendGenre)) shouldWriteBackend = true;
+      }
+
+      const mergedProfile = migrateProfile({
+        ...profile,
+        ownedTracks: mergedOwned,
+        setlist: mergedSetlist,
+        genreOverrides: mergedGenre,
+        bandMembers: profile.bandMembers || []
+      });
+
+      ownedTracks = mergedOwned;
+      setlist = mergedSetlist;
+      genreOverrides = mergedGenre;
+      bandMembers = mergedProfile.bandMembers || [];
+
+      await persistUserSession(mergedProfile, { reason: 'system', skipBackend: !shouldWriteBackend });
+      return mergedProfile;
+    }
     function loadSandboxState(){
       sandboxIds = JSON.parse(localStorage.getItem(getNamespacedKey('sandboxTrackIds')) || '[]');
     }
@@ -1988,6 +2130,9 @@ function track(eventName, payload = {}){
           draftProfile.bandMembers = bandMembers;
         }
         persistProfileCache();
+        if(currentUser){
+          persistUserSession(currentProfileFromState(), { reason: 'system', skipBackend: true }).catch(()=>{});
+        }
         const uid = firebaseAuth?.currentUser?.uid;
         if(uid && firebaseEnabled && firestore && navigator.onLine){
           try{
@@ -2658,6 +2803,9 @@ function track(eventName, payload = {}){
         onSnapshot: (snapshot) => {
           ownedTracks = snapshot.trackIds || [];
           updateOwnedCount();
+          if(currentUser){
+            persistUserSession(currentProfileFromState(), { reason: 'toggleOwned', skipBackend: true }).catch(()=>{});
+          }
         },
         onStatus: (next) => {
           ownedLibraryState = next;
@@ -2917,7 +3065,7 @@ function track(eventName, payload = {}){
         startTour('auto');
       }, 300);
     }
-    async function persistCurrentUserProfile(){
+    async function persistCurrentUserProfile({ reason = 'system', force = false } = {}){
       console.debug('[profile] save clicked', { draftProfile, currentUser });
       if(viewingProfile) throw new Error('Cannot save while viewing another profile');
       if(!currentUser?.username) throw new Error('No current user to persist');
@@ -2935,7 +3083,7 @@ function track(eventName, payload = {}){
         persistKeyMatchSettings();
         const profileKey = currentUser.uid || currentUser.username;
         if(profileKey) localStorage.setItem('currentUser', profileKey);
-        const { backendOk, profile: storedProfile, blocked } = await persistProfileRobust(mergedProfile);
+        const { backendOk, profile: storedProfile, blocked } = await persistProfileRobust(mergedProfile, { force, reason });
         console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
         if(blocked){
           maybeShowRecoveryBanner();
@@ -2950,6 +3098,9 @@ function track(eventName, payload = {}){
       } finally {
         setProfileSaving(false, 'persistCurrentUserProfile');
       }
+    }
+    async function saveUserProfile({ reason = 'system', force = false } = {}){
+      return persistCurrentUserProfile({ reason, force });
     }
     async function loadUserProfile(username){
       if(!username && !firebaseAuth?.currentUser) return null;
@@ -3786,6 +3937,31 @@ function track(eventName, payload = {}){
 
     // --------------------- UI: Landing / Auth ------------------------
     function showLandingPage(){
+      const camelotOrder = Array.from({ length: 12 }, (_, i) => i + 1);
+      const camelotBStops = camelotOrder
+        .map((num, index) => {
+          const start = index * 30;
+          const end = (index + 1) * 30;
+          return `${camelotColors[`${num}B`] || '#0ea5e9'} ${start}deg ${end}deg`;
+        })
+        .join(',');
+      const camelotAStops = camelotOrder
+        .map((num, index) => {
+          const start = index * 30;
+          const end = (index + 1) * 30;
+          return `${camelotColors[`${num}A`] || '#8b5cf6'} ${start}deg ${end}deg`;
+        })
+        .join(',');
+      const camelotLabels = camelotOrder
+        .map((num, index) => `
+          <div class="camelot-wheel-label" style="--i:${index}">
+            <div class="label-inner">
+              <div class="label-number">${num}</div>
+              <div class="label-sub">${num}A / ${num}B</div>
+            </div>
+          </div>
+        `)
+        .join('');
       document.getElementById('app').innerHTML = `
         <div class="min-h-screen py-12 px-6">
           <div class="max-w-6xl mx-auto">
@@ -3802,7 +3978,12 @@ function track(eventName, payload = {}){
             <div class="bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12">
               <div class="flex flex-col lg:flex-row items-center gap-8">
                 <div class="flex-shrink-0">
-                  <div class="w-28 h-28 camelot-wheel rounded-full" style="background: conic-gradient(from 0deg,#FF6B9D 0deg 30deg,#FFA07A 30deg 60deg,#FFD700 60deg 90deg,#98D8C8 90deg 120deg,#6BCB77 120deg 150deg,#4D96FF 150deg 180deg,#9D4EDD 180deg 210deg,#E84A5F 210deg 240deg,#00D9FF 240deg 270deg,#FFA400 270deg 300deg,#FE6D73 300deg 330deg,#A8E6CF 330deg 360deg); width:140px;height:140px;border-radius:50%;box-shadow:0 0 40px rgba(0,217,255,0.2)"></div>
+                  <div class="camelot-wheel-graphic is-mini">
+                    <div class="camelot-wheel-ring" style="background: conic-gradient(${camelotBStops});"></div>
+                    <div class="camelot-wheel-ring camelot-wheel-ring-a" style="background: conic-gradient(${camelotAStops});"></div>
+                    <div class="camelot-wheel-center">Camelot Wheel</div>
+                    ${camelotLabels}
+                  </div>
                   <p class="text-center text-xs text-cyan-300 mt-4">The Camelot Wheel in Action</p>
                 </div>
                 <div class="flex-1">
@@ -3848,7 +4029,10 @@ function track(eventName, payload = {}){
       const camelotLabels = camelotOrder
         .map((num, index) => `
           <div class="camelot-wheel-label" style="--i:${index}">
-            <div class="label-inner">${num}<span>${num}A · ${num}B</span></div>
+            <div class="label-inner">
+              <div class="label-number">${num}</div>
+              <div class="label-sub">${num}A / ${num}B</div>
+            </div>
           </div>
         `)
         .join('');
@@ -4010,9 +4194,21 @@ function track(eventName, payload = {}){
       const activeUid = localStorage.getItem('activeProfileUid');
       const cachedProfile = window.profileStore?.readLocalProfileCache?.() || null;
       if(cachedProfile && window.profileStore?.hasMeaningfulProfileData?.(cachedProfile)){
+        const localOwned = readUserStorageJson('ownedTracks', cachedProfile, []);
+        const localSetlist = readUserStorageJson('setlist', cachedProfile, []);
+        const localGenre = readUserStorageJson('genreOverrides', cachedProfile, {});
         const ownedCache = cachedProfile.uid ? readOwnedTracksCache(cachedProfile.uid) : null;
         if(ownedCache?.trackIds?.length){
           cachedProfile.ownedTracks = ownedCache.trackIds;
+        }
+        if(localOwned.length){
+          cachedProfile.ownedTracks = normalizeOwnedList([...(cachedProfile.ownedTracks || []), ...localOwned]);
+        }
+        if(localSetlist.length){
+          cachedProfile.setlist = normalizeSetlistIds([...(cachedProfile.setlist || []), ...localSetlist]);
+        }
+        if(Object.keys(localGenre || {}).length){
+          cachedProfile.genreOverrides = { ...(cachedProfile.genreOverrides || {}), ...localGenre };
         }
         const fallbackUid = cachedProfile.uid || activeUid || getLocalDeviceId();
         return normalizeProfileShape({
@@ -4133,8 +4329,8 @@ function track(eventName, payload = {}){
           mode: 'local'
         };
         currentUser = profile;
-        await persistProfileRobust(profile, { force: true });
-        resetBrowseDefaults();
+        await persistProfileRobust(profile, { force: true, reason: 'system' });
+        resetUiDefaults();
         await bootstrapApp();
       }catch(err){
         console.error('[auth] enter failed', err);
@@ -4193,7 +4389,7 @@ function track(eventName, payload = {}){
         localStorage.setItem('activeProfileUid', currentUser.uid);
       }
       refreshDraftProfileFromCurrentUser();
-      try { await persistProfileRobust(currentProfileFromState(), { force: true }); } catch(err){ console.warn('offline profile save failed', err); }
+      try { await persistProfileRobust(currentProfileFromState(), { force: true, reason: 'system' }); } catch(err){ console.warn('offline profile save failed', err); }
       await bootstrapApp();
     };
 
@@ -4364,12 +4560,17 @@ function track(eventName, payload = {}){
       const fallbackUid = cached.uid || getLocalDeviceId();
       const fallbackName = cached.djName || cached.email || 'Guest';
       const ownedCache = readOwnedTracksCache(fallbackUid);
+      const localOwned = readUserStorageJson('ownedTracks', cached, []);
+      const localSetlist = readUserStorageJson('setlist', cached, []);
+      const localGenre = readUserStorageJson('genreOverrides', cached, {});
       const hydrated = normalizeProfileShape({
         ...cached,
         uid: fallbackUid,
         username: cached.username || fallbackName,
         djName: cached.djName || fallbackName,
-        ownedTracks: ownedCache?.trackIds || cached.ownedTracks || []
+        ownedTracks: normalizeOwnedList([...(ownedCache?.trackIds || []), ...(cached.ownedTracks || []), ...localOwned]),
+        setlist: normalizeSetlistIds([...(cached.setlist || []), ...localSetlist]),
+        genreOverrides: { ...(cached.genreOverrides || {}), ...(localGenre || {}) }
       }, fallbackUid);
       if(window.profileStore?.hasMeaningfulProfileData?.(hydrated)) return hydrated;
       return null;
@@ -4489,7 +4690,7 @@ function track(eventName, payload = {}){
       genreOverrides = {};
       ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
       ownedStore = null;
-      resetBrowseDefaults();
+      resetUiDefaults();
     }
 
     function resetBrowseDefaults(){
@@ -4499,6 +4700,11 @@ function track(eventName, payload = {}){
       selectedGenre = 'All';
       selectedSong = null;
       view = 'browser';
+    }
+    function resetUiDefaults(){
+      resetBrowseDefaults();
+      resetMainPagination();
+      updateMobileWindowState({ reset: true });
     }
 
     function setupFirebaseAuthListener() {
@@ -4510,14 +4716,14 @@ function track(eventName, payload = {}){
             userProfileUnsub();
             userProfileUnsub = null;
           }
-          resetBrowseDefaults();
+          resetUiDefaults();
           profileSyncState = { syncing: false, message: '' };
           showLoginScreen();
           return;
         }
         if (authSettledUser === user.uid) return;
         authSettledUser = user.uid;
-        resetBrowseDefaults();
+        resetUiDefaults();
         profileSyncState = { syncing: true, message: 'Syncing your profile…' };
         const defaultUsername = user.displayName || (user.email ? user.email.split('@')[0] : `user_${user.uid.slice(0,6)}`);
         currentUser = normalizeProfileShape({
@@ -4613,7 +4819,7 @@ function track(eventName, payload = {}){
       ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
       ownedStore = null;
       logoutInProgress = false;
-      resetBrowseDefaults();
+      resetUiDefaults();
       localStorage.removeItem('currentUser');
     }
 
@@ -5059,6 +5265,7 @@ function track(eventName, payload = {}){
         store.setOwnedList(nextOwned, 'quickstart', { allowEmpty: true });
       } else {
         ownedTracks = normalizeOwnedList(nextOwned);
+        persistUserSession(currentProfileFromState(), { reason: 'markAll', skipBackend: true }).catch(()=>{});
       }
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
@@ -5712,6 +5919,19 @@ async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache 
 
   renderBootScreen('Loading Festival Jam Tracks…');
 
+  if(loadProfile){
+    boot.phase = 'loadingProfile';
+    const profile = (firebaseEnabled && firebaseAuth?.currentUser)
+      ? await hydrateProfileFromCloudThenMergeLocal(firebaseAuth.currentUser.uid, firebaseAuth.currentUser.email)
+      : await hydrateProfileRobust();
+    resetUiDefaults();
+    await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
+    await maybeLoadSharedProfile();
+    boot.profileLoaded = true;
+  } else {
+    boot.profileLoaded = false;
+  }
+
   if(loadSongs){
     boot.phase = 'loadingSongs';
     const songResult = await loadSongsRobust({
@@ -5733,17 +5953,9 @@ async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache 
 
   await loadRemoteConfig();
 
-  if(loadProfile){
-    boot.phase = 'loadingProfile';
-    const profile = (firebaseEnabled && firebaseAuth?.currentUser)
-      ? await hydrateProfileFromCloudThenMergeLocal(firebaseAuth.currentUser.uid, firebaseAuth.currentUser.email)
-      : await hydrateProfileRobust();
-    await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
-    await maybeLoadSharedProfile();
-    boot.profileLoaded = true;
+  if(boot.profileLoaded){
     boot.initialOwnedCount = getOwnedCountInSongs(ownedTracks);
   } else {
-    boot.profileLoaded = false;
     boot.initialOwnedCount = 0;
   }
 
@@ -6638,6 +6850,7 @@ function render(){
       } else {
         const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
         ownedTracks = normalizeOwnedList(nextOwned);
+        persistUserSession(currentProfileFromState(), { reason: 'toggleOwned', skipBackend: true }).catch(()=>{});
       }
       updateOwnedCount();
       updateSongCardOwnedState(id);
@@ -6765,7 +6978,7 @@ function render(){
         } else {
           ownedTracks = [];
         }
-        await persistProfileRobust(currentProfileFromState(), { force: true });
+        await saveUserProfile({ reason: 'clearAll', force: true });
       } finally {
         userInitiatedClear = false;
       }
@@ -7791,12 +8004,12 @@ function render(){
     handleNetworkStatusChange();
     document.addEventListener('visibilitychange', () => {
       if(document.visibilityState === 'hidden' && currentUser){
-        persistProfileRobust(currentProfileFromState()).catch(()=>{});
+        persistProfileRobust(currentProfileFromState(), { reason: 'system' }).catch(()=>{});
       }
     });
     window.addEventListener('beforeunload', () => {
       if(currentUser){
-        persistProfileRobust(currentProfileFromState()).catch(()=>{});
+        persistProfileRobust(currentProfileFromState(), { reason: 'system' }).catch(()=>{});
       }
     });
     window.addEventListener('online', ()=>{ handleNetworkStatusChange(); if(!songs.length) retryTracksNow(); });
