@@ -2020,8 +2020,27 @@ function track(eventName, payload = {}){
       usedFallbackSongs: false,
       usedSnapshotProfile: false,
       initialOwnedCount: 0,
-      errors: []
+      errors: [],
+      logs: [],
+      lastError: null
     };
+    const BOOT_LOG_LIMIT = 50;
+    function recordBootStep(step){
+      const entry = { step, at: new Date().toISOString() };
+      boot.logs.push(entry);
+      if(boot.logs.length > BOOT_LOG_LIMIT){
+        boot.logs.shift();
+      }
+      window.__BOOT_LOGS__ = boot.logs;
+      return entry;
+    }
+    function recordBootError(error){
+      const message = error?.message || String(error || 'Unknown error');
+      boot.errors.push(message);
+      boot.lastError = message;
+      window.__BOOT_LAST_ERROR__ = message;
+      return message;
+    }
     let profileSyncOutcome = { cloudMissing: false, syncError: false, migrationApplied: false };
     let writeFenceBlockedSave = false;
     let userInitiatedClear = false;
@@ -4876,6 +4895,7 @@ function track(eventName, payload = {}){
       updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Loading cloud profile…', errorCode: null, errorStep: null });
       profileSyncOutcome = { cloudMissing: false, syncError: false, migrationApplied: false };
       const localCache = readProfileCache(uid) || {};
+      recordBootStep('BOOT: local cache loaded');
       const { legacyProfile, usedLegacy } = getLegacyProfileForMigration(uid, email);
       const { ownedTracks: legacyOwnedTracksFromProfile = [], ...legacyProfileFields } = legacyProfile || {};
       const combinedLegacyOwned = normalizeOwnedList([...(legacyOwnedTracksFromProfile || []), ...(legacyOwnedTracks || [])]);
@@ -4900,12 +4920,18 @@ function track(eventName, payload = {}){
       genreOverrides = localProfile.genreOverrides || {};
       bandMembers = localProfile.bandMembers || [];
       render(); setupEventListeners();
-      const ownedSnapshot = await initOwnedLibraryForUser(uid, { legacyOwnedTracks: combinedLegacyOwned, initialTrackIds: normalizeOwnedList(localProfile.ownedTracks || []) });
+      const ownedSnapshot = await withSyncTimeout(
+        initOwnedLibraryForUser(uid, { legacyOwnedTracks: combinedLegacyOwned, initialTrackIds: normalizeOwnedList(localProfile.ownedTracks || []) }),
+        { step: 'loadingRemote' }
+      );
       if((usedLegacy || combinedLegacyOwned.length) && ownedSnapshot?.trackIds?.length && firebaseEnabled && firestore && navigator.onLine){
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
         const migratedAt = serverTimestamp ? serverTimestamp() : new Date().toISOString();
         try{
-          await window.profileStore?.writeOwnedLibraryDoc?.(uid, { trackIds: ownedSnapshot.trackIds, migratedAt });
+          await withSyncTimeout(
+            window.profileStore?.writeOwnedLibraryDoc?.(uid, { trackIds: ownedSnapshot.trackIds, migratedAt }),
+            { step: 'savingRemote' }
+          );
           profileSyncOutcome.migrationApplied = true;
         }catch(err){
           console.warn('[owned-library] migration write failed', err);
@@ -4929,10 +4955,15 @@ function track(eventName, payload = {}){
           message: err?.message || 'Sync failed. Retry.'
         });
       }
+      recordBootStep('BOOT: remote doc fetched');
       if(!cloudProfile){
         profileSyncOutcome.cloudMissing = true;
       }
+      if(!window.profileStore?.buildSyncPlan){
+        throw new Error('SYNC: buildSyncPlan unavailable — profileStore failed to initialize');
+      }
       const plan = window.profileStore.buildSyncPlan({ cloud: cloudProfile, local: localProfile });
+      recordBootStep('BOOT: sync plan built');
       const defaultProfile = {
         uid,
         email: email || '',
@@ -4943,6 +4974,7 @@ function track(eventName, payload = {}){
       let merged = { ...defaultProfile, ...(plan.merged || {}) };
       merged.uid = uid;
       merged.email = email || merged.email || '';
+      recordBootStep('BOOT: merged');
       if(plan.shouldWriteCloud){
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
         const migrating = plan.cloudEmpty && plan.localHasData;
@@ -5047,9 +5079,15 @@ function track(eventName, payload = {}){
       const knownIds = Array.from(new Set((legacyIds || []).filter(Boolean)));
       if(!knownIds.length) return null;
       const legacySnapshots = await Promise.all(
-        knownIds.map((legacyId) => window.profileStore?.readLegacyOwnedLibraryDoc?.(legacyId))
+        knownIds.map((legacyId) => withSyncTimeout(
+          window.profileStore?.readLegacyOwnedLibraryDoc?.(legacyId),
+          { step: 'loadingRemote' }
+        ))
       );
-      const legacyFromSubcollection = await window.profileStore?.readLegacyOwnedLibrarySubcollection?.(uid);
+      const legacyFromSubcollection = await withSyncTimeout(
+        window.profileStore?.readLegacyOwnedLibrarySubcollection?.(uid),
+        { step: 'loadingRemote' }
+      );
       const candidates = [legacyFromSubcollection, ...legacySnapshots].filter(Boolean);
       if(!candidates.length) return null;
       const mergedIds = candidates.reduce((acc, snap) => {
@@ -5060,7 +5098,10 @@ function track(eventName, payload = {}){
       if(!mergedList.length) return null;
       const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
       const migratedAt = serverTimestamp ? serverTimestamp() : new Date().toISOString();
-      await window.profileStore?.writeOwnedLibraryDoc?.(uid, { trackIds: mergedList, migratedAt });
+      await withSyncTimeout(
+        window.profileStore?.writeOwnedLibraryDoc?.(uid, { trackIds: mergedList, migratedAt }),
+        { step: 'savingRemote' }
+      );
       localStorage.setItem(key, 'true');
       return mergedList;
     }
@@ -5074,6 +5115,7 @@ function track(eventName, payload = {}){
           authReadyResolve = null;
         }
         if (!user) {
+          recordBootStep('AUTH: resolved signedOut');
           enterSignedOutState();
           return;
         }
@@ -5084,6 +5126,7 @@ function track(eventName, payload = {}){
           enterSignedOutState();
           return;
         }
+        recordBootStep(`AUTH: resolved ${user.uid}`);
         if (authSettledUser === user.uid && appBootState === APP_BOOT_STATES.ready) return;
         authSettledUser = user.uid;
         localStorage.setItem(LAST_UID_KEY, user.uid);
@@ -5107,7 +5150,11 @@ function track(eventName, payload = {}){
         }catch(err){
           console.warn('[owned-library] legacy migration failed', err);
         }
-        await bootstrapApp({ loadSongs: !songs.length, loadProfile: true, preferCache: false, legacyOwnedTracks: migrationOwned });
+        try{
+          await bootstrapApp({ loadSongs: !songs.length, loadProfile: true, preferCache: false, legacyOwnedTracks: migrationOwned });
+        }catch(err){
+          return;
+        }
         const needsProfileSetup = profileSyncOutcome.cloudMissing;
         const syncError = profileSyncOutcome.syncError || syncState.state === SYNC_STATES.error || ownedLibraryState?.phase === 'error';
         const migrationApplied = profileSyncOutcome.migrationApplied || (migrationOwned && migrationOwned.length > 0);
@@ -6344,14 +6391,52 @@ function renderBootstrapGate(message){
   `;
 }
 
+let bootDebugOpen = false;
+function trimBootErrorMessage(message, maxLength = 180){
+  if(!message) return '';
+  const normalized = String(message);
+  if(normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength).trim()}…`;
+}
+function toggleBootstrapDebug(force){
+  bootDebugOpen = typeof force === 'boolean' ? force : !bootDebugOpen;
+  const panel = document.getElementById('bootDebugPanel');
+  const button = document.getElementById('bootDebugToggle');
+  if(panel){ panel.style.display = bootDebugOpen ? 'block' : 'none'; }
+  if(button){ button.textContent = bootDebugOpen ? 'Hide Debug' : 'Open Debug'; }
+}
+
 function renderBootstrapFatal(errorMessage){
   const message = errorMessage || 'Something went wrong while preparing the app.';
+  const trimmed = trimBootErrorMessage(message);
+  const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid || '';
+  const logRows = (boot.logs || []).slice(-8).map((entry)=>(
+    `<div class="flex items-start justify-between gap-3 text-xs text-cyan-100/90">
+      <span>${entry.step}</span>
+      <span class="text-gray-400">${entry.at}</span>
+    </div>`
+  )).join('') || '<div class="text-xs text-gray-400">No boot steps recorded.</div>';
+  const lastStep = boot.logs?.length ? boot.logs[boot.logs.length - 1].step : 'Unknown';
+  const lastError = boot.lastError ? trimBootErrorMessage(boot.lastError) : trimmed;
   document.getElementById('app').innerHTML = `
     <div class="min-h-screen flex items-center justify-center bg-black text-white">
       <div class="max-w-md text-center space-y-4 bg-black/60 border border-red-500/40 rounded-2xl p-6">
-        <div class="text-xl font-bold text-red-200">Startup failed</div>
-        <div class="text-sm text-gray-200">${message}</div>
-        <button onclick="bootApp()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
+        <div class="text-xl font-bold text-red-200">Something went wrong while loading your profile.</div>
+        <div class="text-sm text-gray-200">${trimmed}</div>
+        <div class="flex items-center justify-center gap-3">
+          <button onclick="location.reload()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
+          <button id="bootDebugToggle" onclick="toggleBootstrapDebug()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Open Debug</button>
+        </div>
+        <div id="bootDebugPanel" style="display:none;" class="text-left text-sm text-gray-200 border border-white/10 rounded-xl p-4 space-y-3 bg-black/70">
+          <div class="text-xs uppercase tracking-wide text-gray-400">Last step</div>
+          <div class="text-sm font-semibold text-cyan-100">${lastStep}</div>
+          <div class="text-xs uppercase tracking-wide text-gray-400">UID</div>
+          <div class="text-sm text-cyan-100">${uid || 'Unknown'}</div>
+          <div class="text-xs uppercase tracking-wide text-gray-400">Last error</div>
+          <div class="text-sm text-red-200">${lastError}</div>
+          <div class="text-xs uppercase tracking-wide text-gray-400">Boot log</div>
+          <div class="space-y-2">${logRows}</div>
+        </div>
       </div>
     </div>
   `;
@@ -6361,6 +6446,10 @@ function setAppBootState(state, { error } = {}){
   appBootState = state;
   bootstrapFatalError = error || null;
   if(state === APP_BOOT_STATES.fatal){
+    if(bootstrapFatalError){
+      recordBootError(bootstrapFatalError);
+    }
+    recordBootStep('BOOT: fatal');
     renderBootstrapFatal(bootstrapFatalError?.message || String(bootstrapFatalError || 'Startup failed'));
     return;
   }
@@ -6414,61 +6503,68 @@ function syncAllHeaderCountsAndButtons(){
 }
 
 async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache = false, legacyOwnedTracks = [] } = {}){
-  boot.phase = 'init';
-  boot.profileLoaded = false;
-  boot.songsLoaded = false;
-  boot.usedFallbackSongs = false;
-  boot.usedSnapshotProfile = false;
-  boot.errors = [];
-
-  renderBootScreen('Loading Festival Jam Tracks…');
-
-  if(loadProfile){
-    boot.phase = 'loadingProfile';
-    const profile = (firebaseEnabled && firebaseAuth?.currentUser)
-      ? await hydrateProfileFromCloudThenMergeLocal(firebaseAuth.currentUser.uid, firebaseAuth.currentUser.email, { legacyOwnedTracks })
-      : await hydrateProfileRobust();
-    resetUiDefaults();
-    await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
-    await maybeLoadSharedProfile();
-    boot.profileLoaded = true;
-  } else {
+  try{
+    boot.phase = 'init';
     boot.profileLoaded = false;
+    boot.songsLoaded = false;
+    boot.usedFallbackSongs = false;
+    boot.usedSnapshotProfile = false;
+    boot.errors = [];
+
+    renderBootScreen('Loading Festival Jam Tracks…');
+
+    if(loadProfile){
+      boot.phase = 'loadingProfile';
+      const profile = (firebaseEnabled && firebaseAuth?.currentUser)
+        ? await hydrateProfileFromCloudThenMergeLocal(firebaseAuth.currentUser.uid, firebaseAuth.currentUser.email, { legacyOwnedTracks })
+        : await hydrateProfileRobust();
+      resetUiDefaults();
+      await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
+      await maybeLoadSharedProfile();
+      boot.profileLoaded = true;
+    } else {
+      boot.profileLoaded = false;
+    }
+
+    if(loadSongs){
+      boot.phase = 'loadingSongs';
+      const songResult = await loadSongsRobust({
+        allowOneRetry: true,
+        preferCache,
+        onCacheApplied: () => {
+          boot.songsLoaded = true;
+          render();
+          setupEventListeners();
+          syncAllHeaderCountsAndButtons();
+        }
+      });
+      songs = songResult.songs;
+      boot.usedFallbackSongs = songResult.usedFallback;
+      boot.songsLoaded = true;
+    } else {
+      boot.songsLoaded = songs.length > 0;
+    }
+
+    await loadRemoteConfig();
+
+    if(boot.profileLoaded){
+      boot.initialOwnedCount = getOwnedCountInSongs(ownedTracks);
+    } else {
+      boot.initialOwnedCount = 0;
+    }
+
+    boot.phase = boot.usedFallbackSongs ? 'degraded' : 'ready';
+    recordBootStep('BOOT: READY');
+
+    render();
+    setupEventListeners();
+    syncAllHeaderCountsAndButtons();
+    maybeShowRecoveryBanner();
+  }catch(err){
+    console.error('[boot] fatal error', err);
+    setAppBootState(APP_BOOT_STATES.fatal, { error: err });
+    throw err;
   }
-
-  if(loadSongs){
-    boot.phase = 'loadingSongs';
-    const songResult = await loadSongsRobust({
-      allowOneRetry: true,
-      preferCache,
-      onCacheApplied: () => {
-        boot.songsLoaded = true;
-        render();
-        setupEventListeners();
-        syncAllHeaderCountsAndButtons();
-      }
-    });
-    songs = songResult.songs;
-    boot.usedFallbackSongs = songResult.usedFallback;
-    boot.songsLoaded = true;
-  } else {
-    boot.songsLoaded = songs.length > 0;
-  }
-
-  await loadRemoteConfig();
-
-  if(boot.profileLoaded){
-    boot.initialOwnedCount = getOwnedCountInSongs(ownedTracks);
-  } else {
-    boot.initialOwnedCount = 0;
-  }
-
-  boot.phase = boot.usedFallbackSongs ? 'degraded' : 'ready';
-
-  render();
-  setupEventListeners();
-  syncAllHeaderCountsAndButtons();
-  maybeShowRecoveryBanner();
 }
 
 function render(){
@@ -8576,6 +8672,7 @@ function render(){
       if (firebaseEnabled && firebaseAuth) {
         try{
           await ensureFirebasePersistence();
+          recordBootStep('BOOT: persistence set');
         }catch(err){
           setAppBootState(APP_BOOT_STATES.fatal, { error: err });
           return;
@@ -8586,14 +8683,20 @@ function render(){
       const savedUsername = getSavedUsername();
       const profile = savedUsername ? await loadUserProfile(savedUsername) : null;
       if(profile){
+        recordBootStep(`AUTH: resolved ${profile.uid || profile.username || 'local'}`);
         currentUser = profile;
         enforcePostLoginDefaults();
-        await bootstrapApp({ loadSongs: true, loadProfile: true, preferCache: false });
+        try{
+          await bootstrapApp({ loadSongs: true, loadProfile: true, preferCache: false });
+        }catch(err){
+          return;
+        }
         setAppBootState(APP_BOOT_STATES.ready);
         render();
         setupEventListeners();
         return;
       }
+      recordBootStep('AUTH: resolved signedOut');
       enterSignedOutState();
     }
 
