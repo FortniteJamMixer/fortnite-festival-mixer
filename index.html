@@ -1338,7 +1338,7 @@ function track(eventName, payload = {}){
       return currentUser?.uid
         || firebaseAuth?.currentUser?.uid
         || currentUser?.username
-        || localStorage.getItem('currentUser')
+        || getSavedUsername()
         || getLocalDeviceId();
     }
 
@@ -1991,7 +1991,7 @@ function track(eventName, payload = {}){
     function getUserStorageId(profile){
       const username = profile?.username || currentUser?.username;
       const uid = profile?.uid || currentUser?.uid;
-      const fallback = localStorage.getItem('currentUser');
+      const fallback = getSavedUsername();
       return username || uid || fallback || null;
     }
     function getUserStorageKey(base, profile){
@@ -4007,7 +4007,7 @@ function track(eventName, payload = {}){
         </div>
       `;
     }
-    window.hideLanding = () => { localStorage.setItem('hasSeenLanding','true'); checkAuth(); };
+    window.hideLanding = () => { showLoginScreen(); };
 
     // -------------------- Login / Profile handlers ---------------------
     function showLoginScreen(){
@@ -4187,6 +4187,10 @@ function track(eventName, payload = {}){
         .replace(/^[-_]+|[-_]+$/g,'');
     }
 
+    function getSavedUsername(){
+      return (localStorage.getItem('currentUser') || localStorage.getItem('activeProfileUid') || '').trim();
+    }
+
     function getActiveProfile(){
       if(currentUser) return currentUser;
       const activeUid = localStorage.getItem('activeProfileUid');
@@ -4224,7 +4228,7 @@ function track(eventName, payload = {}){
           if(normalized && (!activeUid || normalized.uid === activeUid)) return normalized;
         }catch(err){ console.warn('[auth] localProfile parse failed', err); }
       }
-      const savedId = activeUid || localStorage.getItem('currentUser');
+      const savedId = activeUid || getSavedUsername();
       if(!savedId) return null;
       try{
         const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
@@ -4328,7 +4332,7 @@ function track(eventName, payload = {}){
         };
         currentUser = profile;
         await persistProfileRobust(profile, { force: true, reason: 'system' });
-        resetUiDefaults();
+        enforcePostLoginDefaults();
         await bootstrapApp();
       }catch(err){
         console.error('[auth] enter failed', err);
@@ -4388,6 +4392,7 @@ function track(eventName, payload = {}){
       }
       refreshDraftProfileFromCurrentUser();
       try { await persistProfileRobust(currentProfileFromState(), { force: true, reason: 'system' }); } catch(err){ console.warn('offline profile save failed', err); }
+      enforcePostLoginDefaults();
       await bootstrapApp();
     };
 
@@ -4577,7 +4582,7 @@ function track(eventName, payload = {}){
     function getLegacyProfileCandidates({ email } = {}){
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
       const candidateKeys = new Set();
-      const storedKey = localStorage.getItem('currentUser');
+      const storedKey = getSavedUsername();
       if(storedKey) candidateKeys.add(storedKey);
       const emailPrefix = (email || '').split('@')[0];
       if(emailPrefix) candidateKeys.add(emailPrefix);
@@ -4705,6 +4710,11 @@ function track(eventName, payload = {}){
       updateMobileWindowState({ reset: true });
     }
 
+    function enforcePostLoginDefaults(){
+      resetBrowseDefaults();
+      resetMainPagination();
+    }
+
     function setupFirebaseAuthListener() {
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
@@ -4721,9 +4731,11 @@ function track(eventName, payload = {}){
         }
         if (authSettledUser === user.uid) return;
         authSettledUser = user.uid;
-        resetUiDefaults();
+        enforcePostLoginDefaults();
         profileSyncState = { syncing: true, message: 'Syncing your profile…' };
-        const defaultUsername = user.displayName || (user.email ? user.email.split('@')[0] : `user_${user.uid.slice(0,6)}`);
+        const savedUsername = getSavedUsername();
+        const emailPrefix = user.email ? user.email.split('@')[0] : '';
+        const defaultUsername = savedUsername || user.displayName || emailPrefix || `user_${user.uid.slice(0,6)}`;
         currentUser = normalizeProfileShape({
           uid: user.uid,
           email: user.email || '',
@@ -6031,13 +6043,15 @@ function render(){
   const signedLabel = viewingProfile
     ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}`
     : `${isGuest ? 'Guest Mode' : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}`}${adminLabel}`;
-  const authButtonLabel = firebaseAuth?.currentUser
+  const isSignedIn = firebaseEnabled ? !!firebaseAuth?.currentUser : !!currentUser;
+  const authButtonLabel = isSignedIn && firebaseEnabled
     ? (logoutInProgress ? 'Saving…' : 'Logout')
     : 'Sign In';
-  const authButtonAction = firebaseAuth?.currentUser
+  const authButtonAction = isSignedIn && firebaseEnabled
     ? (logoutInProgress ? 'void 0' : 'logoutUser()')
     : 'showLoginScreen()';
-  const authButtonDisabled = firebaseAuth?.currentUser && logoutInProgress;
+  const authButtonDisabled = isSignedIn && firebaseEnabled && logoutInProgress;
+  const showAuthButton = firebaseEnabled ? true : !isSignedIn;
   const stickyCtaActive = getStickyCtaConfig().visible;
   const setlistLabel = isGuest ? 'Setlist (Sign in)' : 'Setlist';
   const profileLabel = isGuest ? 'Profile (Sign in)' : 'Profile';
@@ -6063,7 +6077,7 @@ function render(){
                 </div>`:''}</div>`:''}
               <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
               <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
-              <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm" ${authButtonDisabled ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${authButtonLabel}</button>
+              ${showAuthButton ? `<button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm" ${authButtonDisabled ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${authButtonLabel}</button>` : ''}
             </div>
           </div>
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
@@ -8018,14 +8032,16 @@ function render(){
       });
     }
     initCommunityMetrics();
-    async function checkAuth(){
+    async function bootApp(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();
         return;
       }
-      const cachedProfile = await hydrateFromLocalCacheOnly();
-      if(cachedProfile){
-        currentUser = cachedProfile;
+      const savedUsername = getSavedUsername();
+      const profile = savedUsername ? await loadUserProfile(savedUsername) : null;
+      if(profile){
+        currentUser = profile;
+        enforcePostLoginDefaults();
         await bootstrapApp({ loadSongs: true, loadProfile: true, preferCache: true });
         return;
       }
@@ -8049,7 +8065,7 @@ function render(){
       }, { passive: true });
     }
 
-    if(!localStorage.getItem('hasSeenLanding')) showLandingPage(); else checkAuth();
+    bootApp();
 
     // ------------------ Drag/drop support ---------------------------
     document.addEventListener('dragstart', safeOn('dragstart', (e)=>{
