@@ -186,7 +186,12 @@
     }
     @media (min-width: 1024px) {
       .login-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
-      .camelot-wheel-graphic { width: 260px; height: 260px; --label-radius-number: 102px; --label-radius-sub: 76px; }
+      .camelot-wheel-graphic {
+        width: 260px;
+        height: 260px;
+        --label-radius-outer: 108px;
+        --label-radius-inner: 72px;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
       .sticky-cta-bar { transition: none; }
@@ -276,17 +281,17 @@
       width: 220px;
       height: 220px;
       margin: 0 auto 20px;
-      --label-radius-number: 86px;
-      --label-radius-sub: 62px;
+      --label-radius-outer: 92px;
+      --label-radius-inner: 62px;
     }
     .camelot-wheel-graphic.is-mini {
       width: 140px;
       height: 140px;
-      --label-radius-number: 54px;
-      --label-radius-sub: 38px;
+      --label-radius-outer: 60px;
+      --label-radius-inner: 40px;
     }
-    .camelot-wheel-graphic.is-mini .label-number { font-size: 10px; }
-    .camelot-wheel-graphic.is-mini .label-sub { font-size: 7px; }
+    .camelot-wheel-graphic.is-mini .camelot-wheel-label--outer { font-size: 10px; }
+    .camelot-wheel-graphic.is-mini .camelot-wheel-label--inner { font-size: 9px; }
     .camelot-wheel-graphic.is-mini .camelot-wheel-center { font-size: 8px; }
     .camelot-wheel-ring {
       position: absolute;
@@ -322,34 +327,27 @@
       left: 50%;
       top: 50%;
       transform-origin: center;
-      pointer-events: none;
-    }
-    .camelot-wheel-label .label-number,
-    .camelot-wheel-label .label-sub {
-      position: absolute;
-      left: 50%;
-      transform-origin: center;
       color: #fff;
       text-shadow: 0 0 8px rgba(0,217,255,0.5), 0 0 14px rgba(0,0,0,0.6);
       white-space: nowrap;
-    }
-    .camelot-wheel-label .label-number {
-      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius-number) * -1)) rotate(calc(var(--i) * -30deg)) translateX(-50%);
-      font-size: 14px;
       font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+    .camelot-wheel-label--outer {
+      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius-outer) * -1)) rotate(calc(var(--i) * -30deg)) translateX(-50%);
+      font-size: 13px;
       line-height: 1;
     }
-    .camelot-wheel-label .label-sub {
-      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius-sub) * -1)) rotate(calc(var(--i) * -30deg)) translateX(-50%);
-      font-size: 9px;
-      font-weight: 600;
+    .camelot-wheel-label--inner {
+      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius-inner) * -1)) rotate(calc(var(--i) * -30deg)) translateX(-50%);
+      font-size: 11px;
+      line-height: 1;
       color: #dff7ff;
-      letter-spacing: 0.06em;
     }
     @media (max-width: 640px) {
-      .camelot-wheel-graphic { width: 200px; height: 200px; --label-radius-number: 76px; --label-radius-sub: 56px; }
-      .camelot-wheel-label .label-number { font-size: 12px; }
-      .camelot-wheel-label .label-sub { font-size: 8px; }
+      .camelot-wheel-graphic { width: 200px; height: 200px; --label-radius-outer: 82px; --label-radius-inner: 56px; }
+      .camelot-wheel-label--outer { font-size: 12px; }
+      .camelot-wheel-label--inner { font-size: 10px; }
     }
     .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
@@ -3962,10 +3960,8 @@ function track(eventName, payload = {}){
         .join(',');
       const camelotLabels = camelotOrder
         .map((num, index) => `
-          <div class="camelot-wheel-label" style="--i:${index}">
-            <div class="label-number">${num}</div>
-            <div class="label-sub">${num}A / ${num}B</div>
-          </div>
+          <div class="camelot-wheel-label camelot-wheel-label--outer" style="--i:${index}">${num}B</div>
+          <div class="camelot-wheel-label camelot-wheel-label--inner" style="--i:${index}">${num}A</div>
         `)
         .join('');
       document.getElementById('app').innerHTML = `
@@ -4034,10 +4030,8 @@ function track(eventName, payload = {}){
         .join(',');
       const camelotLabels = camelotOrder
         .map((num, index) => `
-          <div class="camelot-wheel-label" style="--i:${index}">
-            <div class="label-number">${num}</div>
-            <div class="label-sub">${num}A / ${num}B</div>
-          </div>
+          <div class="camelot-wheel-label camelot-wheel-label--outer" style="--i:${index}">${num}B</div>
+          <div class="camelot-wheel-label camelot-wheel-label--inner" style="--i:${index}">${num}A</div>
         `)
         .join('');
 
