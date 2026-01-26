@@ -2,6 +2,7 @@ const PROFILE_CACHE_KEY = 'ffjm_profile_cache_v1';
 const OWNED_TRACKS_CACHE_VERSION = 'v1';
 const OWNED_TRACKS_CACHE_KEY_PREFIX = 'ownedTracksCache';
 const OWNED_TRACKS_META_KEY_PREFIX = 'ownedTracksMeta';
+const OWNED_TRACKS_LOCAL_BACKUP_KEY_PREFIX = 'ownedTracksBackup';
 const OWNED_LIBRARY_SCHEMA_VERSION = 1;
 
 const normalizeArray = (value) => {
@@ -88,6 +89,7 @@ const parseUpdatedAt = (value) => {
 const getOwnedTracksCacheKey = (uid) => `${OWNED_TRACKS_CACHE_KEY_PREFIX}:${uid || 'anonymous'}`;
 const getLegacyOwnedTracksCacheKey = (uid) => `ownedTracks:${OWNED_TRACKS_CACHE_VERSION}:${uid || 'anonymous'}`;
 const getOwnedTracksMetaKey = (uid, field) => `${OWNED_TRACKS_META_KEY_PREFIX}:${field}:${uid || 'anonymous'}`;
+const getOwnedTracksBackupKey = (uid) => `${OWNED_TRACKS_LOCAL_BACKUP_KEY_PREFIX}:${uid || 'anonymous'}`;
 
 const readLocalProfileCache = () => {
   if (typeof localStorage === 'undefined') return {};
@@ -149,8 +151,32 @@ const readLastGoodOwnedCount = (uid) => readOwnedTracksMetaField(uid, 'lastGoodO
 const writeLastGoodOwnedCount = (uid, value) => writeOwnedTracksMetaField(uid, 'lastGoodOwnedCount', value);
 const readLastSyncAt = (uid) => readOwnedTracksMetaField(uid, 'lastSyncAt');
 const writeLastSyncAt = (uid, value) => writeOwnedTracksMetaField(uid, 'lastSyncAt', value);
+const readLastSyncHash = (uid) => readOwnedTracksMetaField(uid, 'lastSyncHash');
+const writeLastSyncHash = (uid, value) => writeOwnedTracksMetaField(uid, 'lastSyncHash', value);
 const readLastBackupAt = (uid) => readOwnedTracksMetaField(uid, 'lastBackupAt');
 const writeLastBackupAt = (uid, value) => writeOwnedTracksMetaField(uid, 'lastBackupAt', value);
+const readLastLocalBackupAt = (uid) => readOwnedTracksMetaField(uid, 'lastLocalBackupAt');
+const writeLastLocalBackupAt = (uid, value) => writeOwnedTracksMetaField(uid, 'lastLocalBackupAt', value);
+
+const readOwnedTracksBackup = (uid) => {
+  if (typeof localStorage === 'undefined' || !uid) return null;
+  const raw = localStorage.getItem(getOwnedTracksBackupKey(uid));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeOwnedLibrarySnapshot(parsed);
+  } catch (err) {
+    console.warn('[profileStore] Failed to parse owned tracks backup', err);
+    return null;
+  }
+};
+
+const writeOwnedTracksBackup = (uid, snapshot) => {
+  if (typeof localStorage === 'undefined' || !uid) return null;
+  const normalized = normalizeOwnedLibrarySnapshot(snapshot);
+  localStorage.setItem(getOwnedTracksBackupKey(uid), JSON.stringify(normalized));
+  return normalized;
+};
 
 let firestoreRef = null;
 let firebaseRef = null;
@@ -438,8 +464,14 @@ export {
   writeLastGoodOwnedCount,
   readLastSyncAt,
   writeLastSyncAt,
+  readLastSyncHash,
+  writeLastSyncHash,
   readLastBackupAt,
-  writeLastBackupAt
+  writeLastBackupAt,
+  readLastLocalBackupAt,
+  writeLastLocalBackupAt,
+  readOwnedTracksBackup,
+  writeOwnedTracksBackup
 };
 
 if (typeof window !== 'undefined') {
@@ -479,6 +511,12 @@ if (typeof window !== 'undefined') {
     readLastSyncAt,
     writeLastSyncAt,
     readLastBackupAt,
-    writeLastBackupAt
+    writeLastBackupAt,
+    readLastSyncHash,
+    writeLastSyncHash,
+    readLastLocalBackupAt,
+    writeLastLocalBackupAt,
+    readOwnedTracksBackup,
+    writeOwnedTracksBackup
   };
 }

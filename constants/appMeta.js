@@ -5,7 +5,7 @@ const APP_VERSION = '1.0.0';
 const FEATURE_FLAGS = {
   setlist: true,
   liveProfile: false,
-  offlineMode: true,
+  offlineMode: false,
   statsTiles: true,
   ownedToggle: true
 };
@@ -88,14 +88,6 @@ const HELP_CONTENT = {
           'Add a bandmate by username from Profile.',
           'Bandmates are read-only; you can view their collections.'
         ]
-      },
-      {
-        id: 'offline',
-        title: 'Offline mode',
-        bullets: [
-          'Your owned tracks save locally; cloud sync depends on sign-in.',
-          'If the track API fails, the app uses a fallback list.'
-        ]
       }
     ],
     faq: [
@@ -110,11 +102,6 @@ const HELP_CONTENT = {
         id: 'mixable_needs_track',
         q: 'Why is Mixable empty?',
         a: ['Select a track first, then enable Mixable to see compatible matches.']
-      },
-      {
-        id: 'offline_mode',
-        q: 'Does my library save offline?',
-        a: ['Yes. Owned tracks save on this device; cloud sync is available when signed in.']
       }
     ]
   },
@@ -149,11 +136,6 @@ const DEFAULT_WHATS_NEW = {
     {
       id: 'profile_refresh',
       text: 'Profile now focuses on DJ name, owned tracks, and bandmates.'
-    },
-    {
-      id: 'offline_cache',
-      text: 'Offline browsing uses your last cached tracks.',
-      requires: ['offlineMode']
     },
     {
       id: 'owned_toggle',
