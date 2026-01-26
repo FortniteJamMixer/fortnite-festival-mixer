@@ -5299,6 +5299,10 @@ function track(eventName, payload = {}){
       const ownedEmptyState = ownedCount === 0 && !isGuest
         ? '<div class="text-xs text-gray-300">Start marking tracks as Owned in Browse.</div>'
         : '';
+      const dangerDisabled = viewOnly ? 'disabled aria-disabled="true" style="opacity:0.5;cursor:not-allowed;"' : '';
+      const dangerDisabledNote = viewOnly
+        ? '<div class="text-xs text-red-200/80">Danger Zone actions are disabled while viewing a bandmate profile.</div>'
+        : '';
       const fallbackBanner = boot.usedFallbackSongs
         ? '<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Track list failed to load — using fallback list</div>'
         : '';
@@ -5358,6 +5362,33 @@ function track(eventName, payload = {}){
               ${isGuest ? '<button type="button" data-action="signInPrompt" class="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 font-semibold profile-hit-target">Sign in to manage Owned</button>' : '<button type="button" data-action="profile.viewOwned" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target">View Owned</button>'}
             </div>
             ${ownedEmptyState}
+          </div>
+          <div class="panel space-y-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-lg font-bold text-white">Library Management</div>
+                <p class="text-sm text-gray-300">Quick tools for your collection and profile backups.</p>
+              </div>
+              <div class="text-2xl font-bold text-white">${ownedCount} <span class="text-base text-gray-400">/ ${ownedTotal} owned</span></div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" data-action="profile.exportLibrary" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target">Export Library</button>
+              <button type="button" data-action="profile.importLibrary" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target">Import Library</button>
+            </div>
+          </div>
+          <div class="panel space-y-4 border border-red-500/50 bg-red-500/10">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <div class="text-lg font-bold text-red-200">Danger Zone</div>
+                <p class="text-sm text-red-100/80">This wipes your Owned selection for this account.</p>
+              </div>
+              <div class="text-xs uppercase tracking-wide text-red-200 font-semibold border border-red-400/60 px-2 py-1 rounded">Proceed with care</div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="profileClearOwnedBtn" type="button" data-action="profile.clearOwned" class="px-4 py-2 rounded-lg bg-red-500/30 hover:bg-red-500/40 border border-red-500/60 font-semibold text-red-100 profile-hit-target" ${dangerDisabled}>Clear Owned Tracks</button>
+              <button type="button" data-action="profile.resetFilters" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target" ${dangerDisabled}>Reset Filters</button>
+            </div>
+            ${dangerDisabledNote}
           </div>
           <div class="panel space-y-4">
             <div>
@@ -5718,8 +5749,7 @@ function render(){
                   <button id="ownedFilterBtn" class="w-full min-h-[44px] px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}" ${isGuest && !viewingProfile ? 'disabled style="opacity:0.55;cursor:not-allowed;" title="Sign in to filter by owned"' : ''}>${isGuest && !viewingProfile ? 'Sign in for Owned' : (showOwnedOnly ? '✓ Owned Only' : 'Show All')}</button>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                  <button id="controlClearSelectionBtn" onclick="clearSelection()" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100 ${viewingProfile ? 'col-span-2' : ''}" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
-                  ${!viewingProfile?`<button id="clearAllBtn" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-semibold text-cyan-100">${isGuest ? 'Clear Filters' : 'Clear All'}</button>`:''}
+                  <button id="controlClearSelectionBtn" onclick="clearSelection()" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100 col-span-2" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
                 <div class="bg-black/40 border border-white/10 rounded-lg p-3 space-y-3">
@@ -5997,7 +6027,6 @@ function render(){
             return;
           }
         }
-        if(closestFromEvent(e, '#clearAllBtn', { within: app }) && !viewingProfile){ clearAllOwned(); return; }
         const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: app });
         if(genreBtn && isAdmin()){
           showGenreMenu(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), e);
@@ -6239,6 +6268,23 @@ function render(){
       if(action === 'profile.viewBandmate'){
         const username = dataset.username || '';
         if(username) viewBandMember(username);
+        return;
+      }
+      if(action === 'profile.clearOwned'){
+        clearAllOwned();
+        return;
+      }
+      if(action === 'profile.resetFilters'){
+        clearFilters();
+        return;
+      }
+      if(action === 'profile.exportLibrary'){
+        alert('Library exports are handled automatically via local cache/cloud sync.');
+        return;
+      }
+      if(action === 'profile.importLibrary'){
+        alert('Library imports are handled automatically when you sign in.');
+        return;
       }
     }
 
@@ -6539,8 +6585,16 @@ function render(){
         clearFilters();
         return;
       }
-      if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
+      const label = count === 1 ? 'track' : 'tracks';
+      const stepOne = confirm(`⚠️ You are about to clear ${count} owned ${label}.\n\nThis wipes your Owned selection for this account.`);
+      if(!stepOne) return;
+      const typed = prompt('Type CLEAR or CLEAR OWNED to confirm:', '');
+      const normalized = (typed || '').trim().toUpperCase();
+      if(normalized !== 'CLEAR' && normalized !== 'CLEAR OWNED'){
+        alert('Confirmation did not match. No changes were made.');
+        return;
+      }
       const store = ensureOwnedLibraryStore();
       userInitiatedClear = true;
       try{
