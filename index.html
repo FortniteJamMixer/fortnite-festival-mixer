@@ -186,7 +186,7 @@
     }
     @media (min-width: 1024px) {
       .login-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
-      .camelot-wheel-graphic { width: 260px; height: 260px; --label-radius: 90px; }
+      .camelot-wheel-graphic { width: 260px; height: 260px; --label-radius-number: 102px; --label-radius-sub: 76px; }
     }
     @media (prefers-reduced-motion: reduce) {
       .sticky-cta-bar { transition: none; }
@@ -276,14 +276,15 @@
       width: 220px;
       height: 220px;
       margin: 0 auto 20px;
-      --label-radius: 72px;
+      --label-radius-number: 86px;
+      --label-radius-sub: 62px;
     }
     .camelot-wheel-graphic.is-mini {
       width: 140px;
       height: 140px;
-      --label-radius: 44px;
+      --label-radius-number: 54px;
+      --label-radius-sub: 38px;
     }
-    .camelot-wheel-graphic.is-mini .camelot-wheel-label { width: 36px; }
     .camelot-wheel-graphic.is-mini .label-number { font-size: 10px; }
     .camelot-wheel-graphic.is-mini .label-sub { font-size: 7px; }
     .camelot-wheel-graphic.is-mini .camelot-wheel-center { font-size: 8px; }
@@ -320,26 +321,33 @@
       position: absolute;
       left: 50%;
       top: 50%;
-      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius) * -1));
       transform-origin: center;
-      width: 56px;
-      text-align: center;
       pointer-events: none;
     }
-    .camelot-wheel-label .label-inner {
-      transform: rotate(calc(var(--i) * -30deg));
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
+    .camelot-wheel-label .label-number,
+    .camelot-wheel-label .label-sub {
+      position: absolute;
+      left: 50%;
+      transform-origin: center;
       color: #fff;
       text-shadow: 0 0 8px rgba(0,217,255,0.5), 0 0 14px rgba(0,0,0,0.6);
+      white-space: nowrap;
     }
-    .camelot-wheel-label .label-number { font-size: 14px; font-weight: 800; line-height: 1; }
-    .camelot-wheel-label .label-sub { font-size: 9px; font-weight: 600; color: #dff7ff; letter-spacing: 0.06em; }
+    .camelot-wheel-label .label-number {
+      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius-number) * -1)) rotate(calc(var(--i) * -30deg)) translateX(-50%);
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .camelot-wheel-label .label-sub {
+      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius-sub) * -1)) rotate(calc(var(--i) * -30deg)) translateX(-50%);
+      font-size: 9px;
+      font-weight: 600;
+      color: #dff7ff;
+      letter-spacing: 0.06em;
+    }
     @media (max-width: 640px) {
-      .camelot-wheel-graphic { width: 200px; height: 200px; --label-radius: 62px; }
-      .camelot-wheel-label { width: 46px; }
+      .camelot-wheel-graphic { width: 200px; height: 200px; --label-radius-number: 76px; --label-radius-sub: 56px; }
       .camelot-wheel-label .label-number { font-size: 12px; }
       .camelot-wheel-label .label-sub { font-size: 8px; }
     }
@@ -3955,10 +3963,8 @@ function track(eventName, payload = {}){
       const camelotLabels = camelotOrder
         .map((num, index) => `
           <div class="camelot-wheel-label" style="--i:${index}">
-            <div class="label-inner">
-              <div class="label-number">${num}</div>
-              <div class="label-sub">${num}A / ${num}B</div>
-            </div>
+            <div class="label-number">${num}</div>
+            <div class="label-sub">${num}A / ${num}B</div>
           </div>
         `)
         .join('');
@@ -4029,10 +4035,8 @@ function track(eventName, payload = {}){
       const camelotLabels = camelotOrder
         .map((num, index) => `
           <div class="camelot-wheel-label" style="--i:${index}">
-            <div class="label-inner">
-              <div class="label-number">${num}</div>
-              <div class="label-sub">${num}A / ${num}B</div>
-            </div>
+            <div class="label-number">${num}</div>
+            <div class="label-sub">${num}A / ${num}B</div>
           </div>
         `)
         .join('');
