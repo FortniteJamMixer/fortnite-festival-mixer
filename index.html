@@ -4510,11 +4510,9 @@ function track(eventName, payload = {}){
             userProfileUnsub();
             userProfileUnsub = null;
           }
-          enterGuestMode();
+          resetBrowseDefaults();
           profileSyncState = { syncing: false, message: '' };
-          render();
-          setupEventListeners();
-          syncAllHeaderCountsAndButtons();
+          showLoginScreen();
           return;
         }
         if (authSettledUser === user.uid) return;
@@ -7812,7 +7810,6 @@ function render(){
     async function checkAuth(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();
-        await bootstrapApp({ loadSongs: true, loadProfile: false, preferCache: true });
         return;
       }
       const cachedProfile = await hydrateFromLocalCacheOnly();
