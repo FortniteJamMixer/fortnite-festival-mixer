@@ -184,6 +184,10 @@
       .header-actions { gap: 10px; }
       .content-wrapper { padding: 8px; }
     }
+    @media (min-width: 1024px) {
+      .login-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+      .camelot-wheel-graphic { width: 260px; height: 260px; --label-radius: 140px; }
+    }
     @media (prefers-reduced-motion: reduce) {
       .sticky-cta-bar { transition: none; }
     }
@@ -260,6 +264,76 @@
     .camelot-wheel { width: 100%; max-width: 520px; margin: 10px auto; display: flex; justify-content: center; }
     .camelot-wheel svg { width: 100%; height: auto; }
     .camelot-caption { text-align: center; color: #e6f7ff; font-size: 13px; margin-top: 6px; }
+    .login-grid { width: min(1100px, 100%); display: grid; gap: 24px; }
+    .camelot-panel {
+      background: linear-gradient(180deg, rgba(8,13,30,0.9), rgba(12,10,30,0.85));
+      border-radius: 18px;
+      border: 1px solid rgba(255,107,157,0.25);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.45), 0 0 24px rgba(255,107,157,0.15);
+    }
+    .camelot-wheel-graphic {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      margin: 0 auto 20px;
+      --label-radius: 118px;
+    }
+    .camelot-wheel-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      box-shadow: 0 0 30px rgba(0,217,255,0.18), 0 0 12px rgba(255,107,157,0.2);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .camelot-wheel-ring-a {
+      inset: 18%;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .camelot-wheel-center {
+      position: absolute;
+      inset: 36%;
+      border-radius: 50%;
+      background: rgba(5,8,20,0.9);
+      border: 1px solid rgba(0,217,255,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: #dff7ff;
+      text-transform: uppercase;
+      box-shadow: 0 0 18px rgba(0,217,255,0.25);
+      padding: 6px;
+    }
+    .camelot-wheel-label {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: rotate(calc(var(--i) * 30deg)) translateY(calc(var(--label-radius) * -1));
+      transform-origin: center;
+    }
+    .camelot-wheel-label .label-inner {
+      transform: rotate(calc(var(--i) * -30deg));
+      background: rgba(4,8,22,0.8);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 999px;
+      padding: 4px 8px;
+      min-width: 54px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 800;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(0,217,255,0.16);
+    }
+    .camelot-wheel-label .label-inner span {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: #b7f2ff;
+      letter-spacing: 0.04em;
+    }
     .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
     .helpFooter { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -3756,75 +3830,122 @@ function track(eventName, payload = {}){
     function showLoginScreen(){
       // default auth mode
       setTimeout(()=>{ try{ if(window.setAuthMode) window.setAuthMode('signin'); }catch(e){} }, 50);
+      const camelotOrder = Array.from({ length: 12 }, (_, i) => i + 1);
+      const camelotBStops = camelotOrder
+        .map((num, index) => {
+          const start = index * 30;
+          const end = (index + 1) * 30;
+          return `${camelotColors[`${num}B`] || '#0ea5e9'} ${start}deg ${end}deg`;
+        })
+        .join(',');
+      const camelotAStops = camelotOrder
+        .map((num, index) => {
+          const start = index * 30;
+          const end = (index + 1) * 30;
+          return `${camelotColors[`${num}A`] || '#8b5cf6'} ${start}deg ${end}deg`;
+        })
+        .join(',');
+      const camelotLabels = camelotOrder
+        .map((num, index) => `
+          <div class="camelot-wheel-label" style="--i:${index}">
+            <div class="label-inner">${num}<span>${num}A · ${num}B</span></div>
+          </div>
+        `)
+        .join('');
 
       document.getElementById('app').innerHTML = `
         <div class="min-h-screen flex items-center justify-center p-6">
-          <div class="max-w-md w-full">
-            <div class="text-center mb-8">
+          <div class="w-full max-w-6xl">
+            <div class="text-center mb-10">
               <div class="w-24 h-24 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 vinyl-spin">🎧</div>
               <h1 class="text-4xl font-bold text-white graffiti-text mb-2">${BRAND.APP_NAME.toUpperCase()}</h1>
               <p class="text-cyan-300">Your Personal DJ Profile</p>
             </div>
 
-            <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
-              <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
-              ${!firebaseEnabled ? `<div class="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/50 text-yellow-100 text-sm text-center">Firebase not configured — using local profiles.</div>` : ''}
+            <div class="login-grid mx-auto">
+              <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl h-full flex flex-col">
+                <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
+                ${!firebaseEnabled ? `<div class="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/50 text-yellow-100 text-sm text-center">Firebase not configured — using local profiles.</div>` : ''}
 
-              ${firebaseEnabled ? `
-                <div class="mb-5">
-                  <div class="flex gap-2 bg-black/30 p-1 rounded-xl border border-cyan-500/20">
-                    <button type="button" id="tabSignIn" onclick="setAuthMode('signin')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
-                    <button type="button" id="tabSignUp" onclick="setAuthMode('signup')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
+                ${firebaseEnabled ? `
+                  <div class="mb-5">
+                    <div class="flex gap-2 bg-black/30 p-1 rounded-xl border border-cyan-500/20">
+                      <button type="button" id="tabSignIn" onclick="setAuthMode('signin')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
+                      <button type="button" id="tabSignUp" onclick="setAuthMode('signup')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
+                    </div>
+                    <p class="text-xs text-gray-300 mt-3 text-center">
+                      Cloud sync works after you create an account once. Sign in to access your profile and owned songs.
+                    </p>
                   </div>
-                  <p class="text-xs text-gray-300 mt-3 text-center">
-                    Cloud sync works after you create an account once. Sign in to access your profile and owned songs.
-                  </p>
+
+                  <form onsubmit="handleFirebaseAuth(event)" class="space-y-4" autocomplete="on">
+                    <input type="hidden" id="authMode" value="signin" />
+
+                    <div>
+                      <label class="block text-sm text-gray-300 mb-2">Email</label>
+                      <input id="email" type="email" required placeholder="you@example.com"
+                        class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                    </div>
+
+                    <div>
+                      <label class="block text-sm text-gray-300 mb-2">Password</label>
+                      <input id="password" type="password" required minlength="6" placeholder="password"
+                        class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                    </div>
+
+                    <div id="confirmWrap" style="display:none">
+                      <label class="block text-sm text-gray-300 mb-2">Confirm Password</label>
+                      <input id="passwordConfirm" type="password" placeholder="confirm password"
+                        class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                      <p class="text-xs text-gray-400 mt-2">Tip: use at least 6 characters.</p>
+                    </div>
+
+                    <div>
+                      <button type="submit" id="authSubmit"
+                        class="w-full px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-bold text-white">
+                        Sign In
+                      </button>
+                    </div>
+
+                    <div class="text-center">
+                      <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
+                    </div>
+                    <div id="authError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
+                  </form>
+                ` : `
+                  <form id="localAuthForm" class="space-y-4" autocomplete="off">
+                    <div><label class="block text-sm text-gray-300 mb-2">Username</label><input id="username" type="text" required minlength="2" maxlength="24" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                    <div><label class="block text-sm text-gray-300 mb-2">DJ Name (optional)</label><input id="djName" type="text" maxlength="32" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                    <button type="submit" id="enterMixBtn" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter the Mix</button>
+                    <div id="localAuthError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
+                  </form>
+                `}
+                <div class="mt-6 pt-6 border-t border-gray-700">
+                  <p class="text-xs text-gray-400 text-center">⚠️ Epic Games doesn't share inventory; mark songs you own manually.</p>
+                </div>
+              </div>
+
+              <div class="camelot-panel backdrop-blur-xl border border-pink-500/30 rounded-2xl p-8 h-full flex flex-col justify-between gap-6">
+                <div>
+                  <div class="camelot-wheel-graphic">
+                    <div class="camelot-wheel-ring" style="background: conic-gradient(${camelotBStops});"></div>
+                    <div class="camelot-wheel-ring camelot-wheel-ring-a" style="background: conic-gradient(${camelotAStops});"></div>
+                    <div class="camelot-wheel-center">Camelot Wheel</div>
+                    ${camelotLabels}
+                  </div>
+                  <h2 class="text-2xl font-bold text-white mb-2 text-center">Welcome to Festival Jam Mixer</h2>
+                  <p class="text-sm text-cyan-200 text-center">Create smoother mashups using Camelot key &amp; BPM</p>
                 </div>
 
-                <form onsubmit="handleFirebaseAuth(event)" class="space-y-4" autocomplete="on">
-                  <input type="hidden" id="authMode" value="signin" />
+                <div class="space-y-3 text-sm text-gray-200">
+                  <div class="flex items-start gap-3"><span class="text-lg">✨</span><div><strong class="text-cyan-300">Same Number → Perfect Match</strong><div class="text-xs text-gray-300">8B → 8B</div></div></div>
+                  <div class="flex items-start gap-3"><span class="text-lg">⚡</span><div><strong class="text-cyan-300">A/B Switch → Energy Shift</strong><div class="text-xs text-gray-300">8B → 8A</div></div></div>
+                  <div class="flex items-start gap-3"><span class="text-lg">🔁</span><div><strong class="text-cyan-300">±1 Number → Smooth Blend</strong><div class="text-xs text-gray-300">8B → 9B / 7B</div></div></div>
+                </div>
 
-                  <div>
-                    <label class="block text-sm text-gray-300 mb-2">Email</label>
-                    <input id="email" type="email" required placeholder="you@example.com"
-                      class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
-                  </div>
-
-                  <div>
-                    <label class="block text-sm text-gray-300 mb-2">Password</label>
-                    <input id="password" type="password" required minlength="6" placeholder="password"
-                      class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
-                  </div>
-
-                  <div id="confirmWrap" style="display:none">
-                    <label class="block text-sm text-gray-300 mb-2">Confirm Password</label>
-                    <input id="passwordConfirm" type="password" placeholder="confirm password"
-                      class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
-                    <p class="text-xs text-gray-400 mt-2">Tip: use at least 6 characters.</p>
-                  </div>
-
-                  <div>
-                    <button type="submit" id="authSubmit"
-                      class="w-full px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-bold text-white">
-                      Sign In
-                    </button>
-                  </div>
-
-                  <div class="text-center">
-                    <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
-                  </div>
-                  <div id="authError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
-                </form>
-              ` : `
-                <form id="localAuthForm" class="space-y-4" autocomplete="off">
-                  <div><label class="block text-sm text-gray-300 mb-2">Username</label><input id="username" type="text" required minlength="2" maxlength="24" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
-                  <div><label class="block text-sm text-gray-300 mb-2">DJ Name (optional)</label><input id="djName" type="text" maxlength="32" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
-                  <button type="submit" id="enterMixBtn" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter the Mix</button>
-                  <div id="localAuthError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
-                </form>
-              `}
-              <div class="mt-6 pt-6 border-t border-gray-700">
-                <p class="text-xs text-gray-400 text-center">⚠️ Epic Games doesn't share inventory; mark songs you own manually.</p>
+                <div class="pt-4 border-t border-white/10 text-xs text-gray-300 text-center">
+                  Sign in to sync your owned tracks across devices.
+                </div>
               </div>
             </div>
           </div>
@@ -4013,6 +4134,7 @@ function track(eventName, payload = {}){
         };
         currentUser = profile;
         await persistProfileRobust(profile, { force: true });
+        resetBrowseDefaults();
         await bootstrapApp();
       }catch(err){
         console.error('[auth] enter failed', err);
@@ -4367,7 +4489,16 @@ function track(eventName, payload = {}){
       genreOverrides = {};
       ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
       ownedStore = null;
+      resetBrowseDefaults();
+    }
+
+    function resetBrowseDefaults(){
       showOwnedOnly = false;
+      showMixableOnly = false;
+      searchTerm = '';
+      selectedGenre = 'All';
+      selectedSong = null;
+      view = 'browser';
     }
 
     function setupFirebaseAuthListener() {
@@ -4379,15 +4510,14 @@ function track(eventName, payload = {}){
             userProfileUnsub();
             userProfileUnsub = null;
           }
-          enterGuestMode();
+          resetBrowseDefaults();
           profileSyncState = { syncing: false, message: '' };
-          render();
-          setupEventListeners();
-          syncAllHeaderCountsAndButtons();
+          showLoginScreen();
           return;
         }
         if (authSettledUser === user.uid) return;
         authSettledUser = user.uid;
+        resetBrowseDefaults();
         profileSyncState = { syncing: true, message: 'Syncing your profile…' };
         const defaultUsername = user.displayName || (user.email ? user.email.split('@')[0] : `user_${user.uid.slice(0,6)}`);
         currentUser = normalizeProfileShape({
@@ -4483,6 +4613,7 @@ function track(eventName, payload = {}){
       ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
       ownedStore = null;
       logoutInProgress = false;
+      resetBrowseDefaults();
       localStorage.removeItem('currentUser');
     }
 
@@ -7679,7 +7810,6 @@ function render(){
     async function checkAuth(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();
-        await bootstrapApp({ loadSongs: true, loadProfile: false, preferCache: true });
         return;
       }
       const cachedProfile = await hydrateFromLocalCacheOnly();
