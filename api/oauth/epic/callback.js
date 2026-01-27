@@ -20,7 +20,7 @@ function buildProfileRedirect(req) {
   const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
   const host = req.headers.host;
   const origin = process.env.APP_ORIGIN || `${proto}://${host}`;
-  return `${origin.replace(/\/$/, "")}/?view=profile`;
+  return `${origin.replace(/\/$/, "")}/`;
 }
 
 function parseCookies(cookieHeader = "") {
