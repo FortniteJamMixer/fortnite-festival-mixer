@@ -3,6 +3,12 @@ const DEFAULT_CLOUD_DEBOUNCE_MS = 400;
 const DEFAULT_SYNC_TIMEOUT_MS = 10000;
 const DEFAULT_LOCAL_BACKUP_INTERVAL_MS = 60000;
 
+const isPermissionDeniedError = (err) => {
+  const code = String(err?.code || err?.errorCode || '').toLowerCase();
+  const message = String(err?.message || '').toLowerCase();
+  return code.includes('permission') || message.includes('insufficient permissions') || message.includes('permission denied');
+};
+
 const toSortedArray = (value) => {
   if (!value) return [];
   if (Array.isArray(value)) return [...new Set(value)].filter(Boolean).sort();
@@ -98,7 +104,9 @@ const createOwnedLibraryStore = ({
 
   const recordSyncError = (err, step, message) => {
     const code = err?.code || err?.errorCode || 'sync_error';
-    const resolvedMessage = message || err?.message || 'Sync failed — Retry.';
+    const resolvedMessage = message
+      || (isPermissionDeniedError(err) ? 'Cloud sync paused (permissions).' : err?.message)
+      || 'Sync failed — Retry.';
     updateStatus({
       phase: 'error',
       source: getOnline() ? 'cloud' : 'device',
@@ -219,7 +227,9 @@ const createOwnedLibraryStore = ({
     } catch (err) {
       console.warn('[owned-library] save failed', err);
       recordSyncError(err, err?.step || 'savingRemote', 'Sync failed — Retry.');
-      pendingCloudWrite = { reason, allowEmpty: options.allowEmpty === true || reason === 'explicit_clear' };
+      pendingCloudWrite = isPermissionDeniedError(err)
+        ? null
+        : { reason, allowEmpty: options.allowEmpty === true || reason === 'explicit_clear' };
     } finally {
       isSaving = false;
     }
@@ -338,12 +348,17 @@ const createOwnedLibraryStore = ({
       return emitSnapshot();
     }
 
+    let cloudBlocked = false;
     try {
       let cloudSnapshot = null;
       try {
         cloudSnapshot = await withTimeout(Promise.resolve(readCloud(uid)), { step: 'loadingRemote' });
       } catch (err) {
         console.warn('[owned-library] cloud read failed', err);
+        if (isPermissionDeniedError(err)) {
+          cloudBlocked = true;
+          recordSyncError(err, 'loadingRemote', 'Cloud sync paused (permissions).');
+        }
       }
       if (cloudSnapshot) {
         if (cloudSnapshot.trackIds?.length) {
@@ -371,24 +386,35 @@ const createOwnedLibraryStore = ({
       if (plan?.shouldUpdateCache && typeof writeCache === 'function') {
         writeCache(uid, plan.chosen);
       }
-      if ((plan?.shouldSeedCloud || plan?.shouldWriteCloud) && plan?.chosen?.trackIds?.length) {
-        await withTimeout(Promise.resolve(writeCloud(uid, plan.chosen)), { step: 'savingRemote' });
-        lastKnownRemoteCount = plan.chosen.trackIds.length;
-        lastKnownRemoteIds = new Set(plan.chosen.trackIds);
-        if (typeof writeLastSyncAt === 'function') {
-          writeLastSyncAt(uid, Date.now());
-        }
-        if (typeof writeLastSyncHash === 'function' && plan.chosen?.hash) {
-          writeLastSyncHash(uid, plan.chosen.hash);
-        }
+      if (!cloudBlocked && (plan?.shouldSeedCloud || plan?.shouldWriteCloud) && plan?.chosen?.trackIds?.length) {
+        void withTimeout(Promise.resolve(writeCloud(uid, plan.chosen)), { step: 'savingRemote' })
+          .then(() => {
+            lastKnownRemoteCount = plan.chosen.trackIds.length;
+            lastKnownRemoteIds = new Set(plan.chosen.trackIds);
+            if (typeof writeLastSyncAt === 'function') {
+              writeLastSyncAt(uid, Date.now());
+            }
+            if (typeof writeLastSyncHash === 'function' && plan.chosen?.hash) {
+              writeLastSyncHash(uid, plan.chosen.hash);
+            }
+          })
+          .catch((err) => {
+            console.warn('[owned-library] seed cloud failed', err);
+            recordSyncError(err, err?.step || 'savingRemote', 'Sync failed — Retry.');
+          });
         if (typeof writeBackup === 'function') {
-          await withTimeout(Promise.resolve(writeBackup(uid, plan.chosen)), { step: 'savingBackup' });
-          if (typeof cleanupBackups === 'function') {
-            await withTimeout(Promise.resolve(cleanupBackups(uid, 10)), { step: 'cleanupBackup' });
-          }
-          if (typeof writeLastBackupAt === 'function') {
-            writeLastBackupAt(uid, Date.now());
-          }
+          void withTimeout(Promise.resolve(writeBackup(uid, plan.chosen)), { step: 'savingBackup' })
+            .then(async () => {
+              if (typeof cleanupBackups === 'function') {
+                await withTimeout(Promise.resolve(cleanupBackups(uid, 10)), { step: 'cleanupBackup' });
+              }
+              if (typeof writeLastBackupAt === 'function') {
+                writeLastBackupAt(uid, Date.now());
+              }
+            })
+            .catch((err) => {
+              console.warn('[owned-library] backup write failed', err);
+            });
         }
       }
       const recovered = plan?.recovered;
