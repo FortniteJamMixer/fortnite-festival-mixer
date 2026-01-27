@@ -599,12 +599,72 @@
   </div>
 
   <script>
+    window.__BOOT__ = window.__BOOT__ || { startedAt: Date.now(), steps: [], lastError: null };
+    function pushBootStep(step){
+      const entry = { step, at: new Date().toISOString() };
+      if(!window.__BOOT__){
+        window.__BOOT__ = { startedAt: Date.now(), steps: [], lastError: null };
+      }
+      window.__BOOT__.steps = window.__BOOT__.steps || [];
+      window.__BOOT__.steps.push(entry);
+      if(window.__BOOT__.steps.length > 50){
+        window.__BOOT__.steps.shift();
+      }
+      return entry;
+    }
+    function storeBootError(err){
+      const message = err?.message || String(err || 'Unknown error');
+      if(!window.__BOOT__){
+        window.__BOOT__ = { startedAt: Date.now(), steps: [], lastError: null };
+      }
+      window.__BOOT__.lastError = message;
+      try{
+        localStorage.setItem('ffjm:lastBootError', message);
+      }catch(e){
+        // ignore storage failures
+      }
+      return message;
+    }
+    function showFatalBootError(err){
+      const message = storeBootError(err);
+      if(typeof setAppBootState === 'function' && typeof APP_BOOT_STATES !== 'undefined'){
+        setAppBootState(APP_BOOT_STATES.fatal, { error: err instanceof Error ? err : new Error(message) });
+        return;
+      }
+      const steps = window.__BOOT__?.steps || [];
+      const lastSteps = steps.slice(-5).map((entry) => `<div class="text-xs text-cyan-100/90">${entry.step} <span class="text-gray-400">${entry.at}</span></div>`).join('') || '<div class="text-xs text-gray-400">No boot steps recorded.</div>';
+      document.getElementById('app').innerHTML = `
+        <div class="min-h-screen flex items-center justify-center bg-black text-white">
+          <div class="max-w-md text-center space-y-4 bg-black/60 border border-red-500/40 rounded-2xl p-6">
+            <div class="text-xl font-bold text-red-200">Something went wrong while loading.</div>
+            <div class="text-sm text-gray-200">${message}</div>
+            <div class="space-y-2 text-left">${lastSteps}</div>
+            <div class="flex items-center justify-center gap-3">
+              <button onclick="location.reload()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
+              <button onclick="copyBootDebug()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Copy Debug</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    window.onerror = function(message, source, lineno, colno, error){
+      showFatalBootError(error || message);
+    };
+    window.onunhandledrejection = function(event){
+      showFatalBootError(event?.reason || event);
+    };
+
     /**************************************************************************
      * Final merged app
      * - All fixes applied (setlist rendering, show-all toggle, mixable toggle, band member)
      * - Optional Firebase (see firebaseEnabled & firebaseConfig)
      * - Help modal integrated (manual open via header button)
      **************************************************************************/
+
+const DEFAULT_VIEW = 'browse';
+let view = DEFAULT_VIEW;
+let bootState = 'BOOT_LOADING';
+pushBootStep('script start');
 
 const BRAND = Object.freeze({
   APP_NAME: 'Fortnite Jam Mixer',
@@ -1521,7 +1581,7 @@ function track(eventName, payload = {}){
         localStorage.setItem('activeProfileUid', currentUser.uid);
         localStorage.setItem('isAuthed', 'true');
       }
-      view = 'browser';
+      view = 'browse';
       if(!skipPersist){
         await persistProfileRobust(currentProfileFromState(), { force: false, reason: 'system' });
       }
@@ -1800,7 +1860,6 @@ function track(eventName, payload = {}){
     let previewSong = null;
     let setlist = [];
     let searchTerm = '';
-    let view = DEFAULT_VIEW;
     let showOwnedOnly = false;
     let showMixableOnly = false;
     let selectedGenre = 'All';
@@ -1879,8 +1938,8 @@ function track(eventName, payload = {}){
     const TOUR_VERSION = 1;
     const TOUR_STORAGE_KEY = 'tour_done_v1';
     const TOUR_STEPS = [
-      { id: 'browse', selector: '#searchInput', title: 'Browse Tracks', copy: 'Scroll or search to find songs you want to mix.', route: 'browser', routeLabel: 'Go to Browse' },
-      { id: 'setlist', selector: '#setlistBtn', title: 'Build Your Setlist', copy: 'Tap a track to add it, then open Setlist to review your picks.', route: 'browser' },
+      { id: 'browse', selector: '#searchInput', title: 'Browse Tracks', copy: 'Scroll or search to find songs you want to mix.', route: 'browse', routeLabel: 'Go to Browse' },
+      { id: 'setlist', selector: '#setlistBtn', title: 'Build Your Setlist', copy: 'Tap a track to add it, then open Setlist to review your picks.', route: 'browse' },
       { id: 'profile', selector: '#profileBtn', title: 'Profile Overview', copy: 'Check your owned count and bandmates from Profile.', route: 'profile', routeLabel: 'Go to Profile' }
     ];
     const tourState = {
@@ -1918,11 +1977,10 @@ function track(eventName, payload = {}){
       ready: 'READY',
       fatal: 'FATAL_ERROR'
     });
-    const DEFAULT_VIEW = 'browser';
-    let appBootState = APP_BOOT_STATES.bootLoading;
+    let appBootState = bootState;
     let bootstrapFatalError = null;
     const SYNC_TIMEOUT_MS = 6000;
-    const BOOT_DEADLINE_MS = 10000;
+    const BOOT_DEADLINE_MS = 8000;
     const BOOT_CALL_TIMEOUT_MS = 6000;
     const PROFILE_SAVE_DEBOUNCE_MS = 400;
     let syncState = {
@@ -2025,13 +2083,13 @@ function track(eventName, payload = {}){
       usedSnapshotProfile: false,
       initialOwnedCount: 0,
       errors: [],
-      logs: [],
-      lastError: null,
-      startedAt: Date.now()
+      logs: window.__BOOT__?.steps ? window.__BOOT__.steps.slice() : [],
+      lastError: window.__BOOT__?.lastError || null,
+      startedAt: window.__BOOT__?.startedAt || Date.now()
     };
     const BOOT_LOG_LIMIT = 50;
     function recordBootStep(step){
-      const entry = { step, at: new Date().toISOString() };
+      const entry = pushBootStep(step);
       boot.logs.push(entry);
       if(boot.logs.length > BOOT_LOG_LIMIT){
         boot.logs.shift();
@@ -2052,6 +2110,11 @@ function track(eventName, payload = {}){
         window.__BOOT__ = { steps: boot.logs.slice(), lastError: message, startedAt: boot.startedAt };
       } else {
         window.__BOOT__.lastError = message;
+      }
+      try{
+        localStorage.setItem('ffjm:lastBootError', message);
+      }catch(e){
+        // ignore storage failures
       }
       return message;
     }
@@ -4667,7 +4730,12 @@ function track(eventName, payload = {}){
         currentUser = profile;
         await persistProfileRobust(profile, { force: true, reason: 'system' });
         enforcePostLoginDefaults();
-        await bootstrapApp({ showBootScreen: true, allowProfileAutoOpen: false });
+        view = DEFAULT_VIEW;
+        setAppBootState(APP_BOOT_STATES.ready);
+        render();
+        setupEventListeners();
+        recordBootStep('READY rendered');
+        void loadAppData({ showBootScreen: false, allowProfileAutoOpen: false });
       }catch(err){
         console.error('[auth] enter failed', err);
         setLocalAuthError('Couldn’t enter the mix. Check console for details.');
@@ -5100,7 +5168,8 @@ function track(eventName, payload = {}){
     }
 
     async function hydrateSignedInProfile({ uid, email, legacyOwnedTracks = [] } = {}){
-      recordBootStep('BOOT: hydration started');
+      recordBootStep('hydration started');
+      let hydrationFailed = false;
       try{
         const localProfile = await withTimeout(hydrateFromLocalCacheOnly(), BOOT_CALL_TIMEOUT_MS, 'local cache');
         if(localProfile){
@@ -5108,6 +5177,7 @@ function track(eventName, payload = {}){
         }
       }catch(err){
         console.warn('[profile] local cache hydrate failed', err);
+        hydrationFailed = true;
         setSyncError({ code: err?.code || 'local_cache_failed', step: err?.step || 'localCache', message: 'Local cache failed to load.' });
       }
       try{
@@ -5119,9 +5189,10 @@ function track(eventName, payload = {}){
         await applyProfileToState(merged, { loadEpic: true, loadOverrides: true, skipPersist: true });
       }catch(err){
         console.warn('[profile] cloud hydrate failed', err);
+        hydrationFailed = true;
         setSyncError({ code: err?.code || 'cloud_hydrate_failed', step: err?.step || 'cloudProfile', message: 'Cloud sync failed.' });
       }finally{
-        recordBootStep('BOOT: hydration finished');
+        recordBootStep(hydrationFailed ? 'hydration error' : 'hydration success');
         render();
         setupEventListeners();
       }
@@ -5169,7 +5240,7 @@ function track(eventName, payload = {}){
           authReadyResolve = null;
         }
         if (!user) {
-          recordBootStep('AUTH: resolved signedOut');
+          recordBootStep('auth resolved: signedOut');
           enterSignedOutState();
           return;
         }
@@ -5180,12 +5251,11 @@ function track(eventName, payload = {}){
           enterSignedOutState();
           return;
         }
-        recordBootStep(`AUTH: resolved ${user.uid}`);
+        recordBootStep(`auth resolved: ${user.uid}`);
         if (authSettledUser === user.uid && appBootState === APP_BOOT_STATES.ready) return;
         authSettledUser = user.uid;
         startBootDeadline();
         recordBootStep('BOOT: auth change');
-        setAppBootState(APP_BOOT_STATES.signedInLoading);
         enforcePostLoginDefaults();
         updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Sync: Loading…', errorCode: null, errorStep: null });
         const savedUsername = getSavedUsername();
@@ -5197,15 +5267,12 @@ function track(eventName, payload = {}){
           username: defaultUsername,
           djName: defaultUsername
         }, user.uid);
-        view = resolvePostAuthLanding();
-        try{
-          await bootstrapApp({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: true, allowProfileAutoOpen: false });
-        }catch(err){
-          return;
-        }
+        view = DEFAULT_VIEW;
         setAppBootState(APP_BOOT_STATES.ready);
         render();
         setupEventListeners();
+        recordBootStep('READY rendered');
+        void loadAppData({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: false, allowProfileAutoOpen: false });
         const legacyIds = [currentUser?.username, user.email, emailPrefix, user.displayName]
           .filter((value) => value && value !== user.uid);
         void (async () => {
@@ -5594,7 +5661,7 @@ function track(eventName, payload = {}){
     }
 
     function getStickyCtaConfig(){
-      if(view !== 'browser') return { visible: false };
+      if(view !== 'browse') return { visible: false };
       if(viewingProfile) return { visible: false };
       if(!isMobileViewport()) return { visible: false };
       if(stickyCtaDismissed) return { visible: false };
@@ -6121,7 +6188,7 @@ function track(eventName, payload = {}){
         return;
       }
       if(setlist.length===0){
-        setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button data-action="switchView" data-view="browser" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
+        setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button data-action="switchView" data-view="browse" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
         return;
       }
       if(!songsById || Object.keys(songsById).length === 0){
@@ -6425,7 +6492,7 @@ function renderBootScreen(message){
 function resolveExplicitView(value){
   if(!value) return null;
   const normalized = String(value).trim().toLowerCase();
-  if(['browser', 'profile', 'setlist', 'audit'].includes(normalized)) return normalized;
+  if(['browse', 'browser', 'profile', 'setlist', 'audit'].includes(normalized)) return normalized === 'browser' ? 'browse' : normalized;
   return null;
 }
 
@@ -6449,9 +6516,9 @@ function startBootDeadline(){
   window.__BOOT__ = { steps: boot.logs.slice(), lastError: boot.lastError, startedAt: boot.startedAt };
   bootDeadlineTimer = setTimeout(() => {
     if([APP_BOOT_STATES.signedOut, APP_BOOT_STATES.ready, APP_BOOT_STATES.fatal].includes(appBootState)) return;
-    const lastStep = boot.logs?.length ? boot.logs[boot.logs.length - 1].step : 'Unknown';
-    const error = new Error(`Boot timed out after ${BOOT_DEADLINE_MS / 1000}s (last step: ${lastStep})`);
-    setAppBootState(APP_BOOT_STATES.fatal, { error });
+    const lastStep = window.__BOOT__?.steps?.length ? window.__BOOT__.steps[window.__BOOT__.steps.length - 1].step : 'Unknown';
+    const error = new Error(`Boot timed out (last step: ${lastStep})`);
+    showFatalBootError(error);
   }, BOOT_DEADLINE_MS);
 }
 
@@ -6462,33 +6529,56 @@ function clearBootDeadline(){
   }
 }
 
-let bootDebugOpen = false;
 function trimBootErrorMessage(message, maxLength = 180){
   if(!message) return '';
   const normalized = String(message);
   if(normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength).trim()}…`;
 }
-function toggleBootstrapDebug(force){
-  bootDebugOpen = typeof force === 'boolean' ? force : !bootDebugOpen;
-  const panel = document.getElementById('bootDebugPanel');
-  const button = document.getElementById('bootDebugToggle');
-  if(panel){ panel.style.display = bootDebugOpen ? 'block' : 'none'; }
-  if(button){ button.textContent = bootDebugOpen ? 'Hide Debug' : 'Open Debug'; }
+function buildBootDebugPayload(){
+  const steps = window.__BOOT__?.steps || boot.logs || [];
+  return JSON.stringify({
+    startedAt: window.__BOOT__?.startedAt || boot.startedAt,
+    lastError: window.__BOOT__?.lastError || boot.lastError || null,
+    steps
+  }, null, 2);
 }
-
+function copyBootDebug(){
+  const payload = buildBootDebugPayload();
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(payload)
+      .then(()=>{ alert('Boot debug copied.'); })
+      .catch(()=>{ alert('Copy failed.'); });
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = payload;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try{
+    document.execCommand('copy');
+    alert('Boot debug copied.');
+  }catch(e){
+    alert('Copy failed.');
+  }finally{
+    textarea.remove();
+  }
+}
 function renderBootstrapFatal(errorMessage){
   const message = errorMessage || 'Something went wrong while preparing the app.';
   const trimmed = trimBootErrorMessage(message);
-  const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid || '';
-  const logRows = (boot.logs || []).slice(-8).map((entry)=>(
+  const bootSteps = window.__BOOT__?.steps || boot.logs || [];
+  const logRows = bootSteps.slice(-5).map((entry)=>(
     `<div class="flex items-start justify-between gap-3 text-xs text-cyan-100/90">
       <span>${entry.step}</span>
       <span class="text-gray-400">${entry.at}</span>
     </div>`
   )).join('') || '<div class="text-xs text-gray-400">No boot steps recorded.</div>';
-  const lastStep = boot.logs?.length ? boot.logs[boot.logs.length - 1].step : 'Unknown';
-  const lastError = boot.lastError ? trimBootErrorMessage(boot.lastError) : trimmed;
+  const lastStep = bootSteps?.length ? bootSteps[bootSteps.length - 1].step : 'Unknown';
+  const lastError = (window.__BOOT__?.lastError || boot.lastError) ? trimBootErrorMessage(window.__BOOT__?.lastError || boot.lastError) : trimmed;
   document.getElementById('app').innerHTML = `
     <div class="min-h-screen flex items-center justify-center bg-black text-white">
       <div class="max-w-md text-center space-y-4 bg-black/60 border border-red-500/40 rounded-2xl p-6">
@@ -6496,16 +6586,14 @@ function renderBootstrapFatal(errorMessage){
         <div class="text-sm text-gray-200">${trimmed}</div>
         <div class="flex items-center justify-center gap-3">
           <button onclick="location.reload()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
-          <button id="bootDebugToggle" onclick="toggleBootstrapDebug()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Open Debug</button>
+          <button onclick="copyBootDebug()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Copy Debug</button>
         </div>
-        <div id="bootDebugPanel" style="display:none;" class="text-left text-sm text-gray-200 border border-white/10 rounded-xl p-4 space-y-3 bg-black/70">
+        <div class="text-left text-sm text-gray-200 border border-white/10 rounded-xl p-4 space-y-3 bg-black/70">
           <div class="text-xs uppercase tracking-wide text-gray-400">Last step</div>
           <div class="text-sm font-semibold text-cyan-100">${lastStep}</div>
-          <div class="text-xs uppercase tracking-wide text-gray-400">UID</div>
-          <div class="text-sm text-cyan-100">${uid || 'Unknown'}</div>
           <div class="text-xs uppercase tracking-wide text-gray-400">Last error</div>
           <div class="text-sm text-red-200">${lastError}</div>
-          <div class="text-xs uppercase tracking-wide text-gray-400">Boot log</div>
+          <div class="text-xs uppercase tracking-wide text-gray-400">Recent boot steps</div>
           <div class="space-y-2">${logRows}</div>
         </div>
       </div>
@@ -6515,6 +6603,7 @@ function renderBootstrapFatal(errorMessage){
 
 function setAppBootState(state, { error } = {}){
   appBootState = state;
+  bootState = state;
   bootstrapFatalError = error || null;
   if(state === APP_BOOT_STATES.fatal){
     clearBootDeadline();
@@ -6577,7 +6666,7 @@ function syncAllHeaderCountsAndButtons(){
   updateStickyCTA();
 }
 
-async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache = false, legacyOwnedTracks = [], showBootScreen = true, allowProfileAutoOpen = true } = {}){
+async function loadAppData({ loadSongs = true, loadProfile = true, preferCache = false, legacyOwnedTracks = [], showBootScreen = true, allowProfileAutoOpen = true } = {}){
   try{
     boot.phase = 'init';
     boot.profileLoaded = false;
@@ -6632,7 +6721,7 @@ async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache 
     }
 
     boot.phase = boot.usedFallbackSongs ? 'degraded' : 'ready';
-    recordBootStep('BOOT: READY');
+    recordBootStep('data loaded');
 
     render();
     setupEventListeners();
@@ -6652,7 +6741,7 @@ function render(){
   logEvent('ui_render', { view });
   if(view === 'audit' && !isAdmin()){
     alert('Admin only');
-    view = 'browser';
+    view = 'browse';
   }
   currentUser = getActiveProfile() || currentUser;
   if(!isAdmin() && adminMenuOpen){
@@ -6787,14 +6876,14 @@ function render(){
       <main class="max-w-[1400px] mx-auto px-4 py-6 space-y-4" style="padding-bottom: calc(6rem + var(--safe-bottom));">
         <div class="flex items-center justify-between gap-3 flex-wrap">
             <div class="flex gap-2 flex-wrap">
-            <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
+            <button id="browserBtn" data-action="switchView" data-view="browse" class="px-4 py-2 rounded-lg font-medium transition ${view==='browse'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
             <div class="flex items-center gap-1">
               <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">${setlistLabel} (<span id="setlistCount">${setlist.length}</span>)</button>
               <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
             <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">${profileLabel}</button>
           </div>
-          ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
+          ${view==='browse'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
         </div>
         <div class="flex items-center gap-2 flex-wrap text-sm text-cyan-100">
           ${networkBadge}
@@ -6807,7 +6896,7 @@ function render(){
         ${ownedLibraryBanner}
         ${recoveryBanner}
         ${regressionBanner}
-        <div id="browserView" style="display:${view==='browser'?'block':'none'}">
+        <div id="browserView" style="display:${view==='browse'?'block':'none'}">
           <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
             <div class="space-y-4">
               <div class="panel space-y-2 dim-when-sticky">
@@ -6918,7 +7007,7 @@ function render(){
       </div>
     </div>
   `;
-  if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
+  if(view==='browse'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
   syncCommunityStatsUI();
   bindTourEvents();
   updateTourUI();
@@ -7542,7 +7631,7 @@ function render(){
       if(searchInput) searchInput.value = '';
       if(clearSearchBtn) clearSearchBtn.style.display = 'none';
       if(searchStatus) searchStatus.style.display = 'none';
-      view = 'browser';
+      view = 'browse';
       resetMainPagination();
       updateMobileWindowState({ reset: true });
       render();
@@ -7617,26 +7706,26 @@ function render(){
     window.switchView = (newView) => {
       if(newView === 'audit' && !isAdmin()){
         alert('Admin only');
-        newView = 'browser';
+        newView = 'browse';
       }
       adminMenuOpen = false;
       logEvent('view_switch', { from: view, to: newView });
       view = newView;
-      if(view === 'browser'){ updateMobileWindowState({ reset: true }); }
+      if(view === 'browse'){ updateMobileWindowState({ reset: true }); }
       const browserView = document.getElementById('browserView');
       const setlistView = document.getElementById('setlistView');
       const profileView = document.getElementById('profileView');
       const auditViewEl = document.getElementById('auditView');
-      if(browserView) browserView.style.display = view==='browser' ? 'block' : 'none';
+      if(browserView) browserView.style.display = view==='browse' ? 'block' : 'none';
       if(setlistView) setlistView.style.display = view==='setlist' ? 'block' : 'none';
       if(profileView) profileView.style.display = view==='profile' ? 'block' : 'none';
       if(auditViewEl) auditViewEl.style.display = view==='audit' ? 'block' : 'none';
       const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn'); const profileBtn = document.getElementById('profileBtn'); const auditBtn = document.getElementById('auditBtn');
-      if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
+      if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browse'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(profileBtn) profileBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}`;
       if(auditBtn) auditBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='audit'?'bg-gradient-to-r from-amber-500 to-yellow-500':'bg-white/10 hover:bg-white/20'}`;
-      if(view==='browser'){ renderSongList(); setupEventListeners(); sandboxInit(); renderSandbox(); }
+      if(view==='browse'){ renderSongList(); setupEventListeners(); sandboxInit(); renderSandbox(); }
       else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
       else if(view==='audit'){ renderAuditView(); setupEventListeners(); }
       else { renderProfile(); setupEventListeners(); }
@@ -8738,96 +8827,87 @@ function render(){
       });
     }
     initCommunityMetrics();
-    async function bootApp(){
-      boot.logs = [];
+    let bootstrapInvoked = false;
+    function bootstrapApp(){
+      if(bootstrapInvoked) return;
+      bootstrapInvoked = true;
+      boot.logs = window.__BOOT__?.steps ? window.__BOOT__.steps.slice() : [];
       boot.errors = [];
-      boot.lastError = null;
+      boot.lastError = window.__BOOT__?.lastError || null;
       startBootDeadline();
-      recordBootStep('BOOT: start');
+      recordBootStep('bootstrap started');
       setAppBootState(APP_BOOT_STATES.bootLoading);
       renderBootstrapGate('Checking sign-in…');
-      if (firebaseEnabled && firebaseAuth) {
+      (async () => {
         try{
-          await withTimeout(ensureFirebasePersistence(), BOOT_CALL_TIMEOUT_MS, 'auth persistence');
-          recordBootStep('BOOT: persistence set');
-        }catch(err){
-          setAppBootState(APP_BOOT_STATES.fatal, { error: err });
-          return;
-        }
-        let initialUser = null;
-        try{
-          initialUser = await withTimeout(resolveInitialAuthState(), BOOT_CALL_TIMEOUT_MS, 'auth state');
-        }catch(err){
-          setAppBootState(APP_BOOT_STATES.fatal, { error: err });
-          return;
-        }
-        recordBootStep(`AUTH: resolved ${initialUser?.uid || 'signedOut'}`);
-        setupFirebaseAuthListener();
-        if(!initialUser){
-          enterSignedOutState();
-          return;
-        }
-        if(!initialUser.uid){
-          console.warn('[auth] missing uid');
-          setSyncError({ code: 'missing_uid', step: 'checkingAuth', message: 'Sign in again to restore sync.' });
-          await firebaseAuth.signOut();
-          enterSignedOutState();
-          return;
-        }
-        authSettledUser = initialUser.uid;
-        setAppBootState(APP_BOOT_STATES.signedInLoading);
-        enforcePostLoginDefaults();
-        updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Sync: Loading…', errorCode: null, errorStep: null });
-        const savedUsername = getSavedUsername();
-        const emailPrefix = initialUser.email ? initialUser.email.split('@')[0] : '';
-        const defaultUsername = savedUsername || initialUser.displayName || emailPrefix || `user_${initialUser.uid.slice(0,6)}`;
-        currentUser = normalizeProfileShape({
-          uid: initialUser.uid,
-          email: initialUser.email || '',
-          username: defaultUsername,
-          djName: defaultUsername
-        }, initialUser.uid);
-        view = resolvePostAuthLanding();
-        try{
-          await bootstrapApp({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: true, allowProfileAutoOpen: false });
-        }catch(err){
-          return;
-        }
-        setAppBootState(APP_BOOT_STATES.ready);
-        render();
-        setupEventListeners();
-        const legacyIds = [currentUser?.username, initialUser.email, emailPrefix, initialUser.displayName]
-          .filter((value) => value && value !== initialUser.uid);
-        void (async () => {
-          let migrationOwned = [];
-          try{
-            migrationOwned = await withTimeout(migrateLegacyOwnedTracks(initialUser.uid, legacyIds), BOOT_CALL_TIMEOUT_MS, 'legacy owned migration') || [];
-          }catch(err){
-            console.warn('[owned-library] legacy migration failed', err);
+          if (firebaseEnabled && firebaseAuth) {
+            await withTimeout(ensureFirebasePersistence(), BOOT_CALL_TIMEOUT_MS, 'auth persistence');
+            recordBootStep('persistence set');
+            const initialUser = await withTimeout(resolveInitialAuthState(), BOOT_CALL_TIMEOUT_MS, 'auth state');
+            recordBootStep(`auth resolved: ${initialUser?.uid || 'signedOut'}`);
+            setupFirebaseAuthListener();
+            if(!initialUser){
+              enterSignedOutState();
+              return;
+            }
+            if(!initialUser.uid){
+              console.warn('[auth] missing uid');
+              setSyncError({ code: 'missing_uid', step: 'checkingAuth', message: 'Sign in again to restore sync.' });
+              await firebaseAuth.signOut();
+              enterSignedOutState();
+              return;
+            }
+            authSettledUser = initialUser.uid;
+            enforcePostLoginDefaults();
+            updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Sync: Loading…', errorCode: null, errorStep: null });
+            const savedUsername = getSavedUsername();
+            const emailPrefix = initialUser.email ? initialUser.email.split('@')[0] : '';
+            const defaultUsername = savedUsername || initialUser.displayName || emailPrefix || `user_${initialUser.uid.slice(0,6)}`;
+            currentUser = normalizeProfileShape({
+              uid: initialUser.uid,
+              email: initialUser.email || '',
+              username: defaultUsername,
+              djName: defaultUsername
+            }, initialUser.uid);
+            view = DEFAULT_VIEW;
+            setAppBootState(APP_BOOT_STATES.ready);
+            render();
+            setupEventListeners();
+            recordBootStep('READY rendered');
+            void loadAppData({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: false, allowProfileAutoOpen: false });
+            const legacyIds = [currentUser?.username, initialUser.email, emailPrefix, initialUser.displayName]
+              .filter((value) => value && value !== initialUser.uid);
+            void (async () => {
+              let migrationOwned = [];
+              try{
+                migrationOwned = await withTimeout(migrateLegacyOwnedTracks(initialUser.uid, legacyIds), BOOT_CALL_TIMEOUT_MS, 'legacy owned migration') || [];
+              }catch(err){
+                console.warn('[owned-library] legacy migration failed', err);
+              }
+              await hydrateSignedInProfile({ uid: initialUser.uid, email: initialUser.email || '', legacyOwnedTracks: migrationOwned });
+            })();
+            return;
           }
-          await hydrateSignedInProfile({ uid: initialUser.uid, email: initialUser.email || '', legacyOwnedTracks: migrationOwned });
-        })();
-        return;
-      }
-      const savedUsername = getSavedUsername();
-      const profile = savedUsername ? await loadUserProfile(savedUsername) : null;
-      if(profile){
-        recordBootStep(`AUTH: resolved ${profile.uid || profile.username || 'local'}`);
-        currentUser = profile;
-        enforcePostLoginDefaults();
-        try{
-          setAppBootState(APP_BOOT_STATES.signedInLoading);
-          await bootstrapApp({ loadSongs: true, loadProfile: true, preferCache: false, showBootScreen: true, allowProfileAutoOpen: false });
+          const savedUsername = getSavedUsername();
+          const profile = savedUsername ? await loadUserProfile(savedUsername) : null;
+          if(profile){
+            recordBootStep(`auth resolved: ${profile.uid || profile.username || 'local'}`);
+            currentUser = profile;
+            enforcePostLoginDefaults();
+            view = DEFAULT_VIEW;
+            setAppBootState(APP_BOOT_STATES.ready);
+            render();
+            setupEventListeners();
+            recordBootStep('READY rendered');
+            void loadAppData({ loadSongs: true, loadProfile: true, preferCache: false, showBootScreen: false, allowProfileAutoOpen: false });
+            return;
+          }
+          recordBootStep('auth resolved: signedOut');
+          enterSignedOutState();
         }catch(err){
-          return;
+          showFatalBootError(err);
         }
-        setAppBootState(APP_BOOT_STATES.ready);
-        render();
-        setupEventListeners();
-        return;
-      }
-      recordBootStep('AUTH: resolved signedOut');
-      enterSignedOutState();
+      })();
     }
 
     updatePerformanceMode();
@@ -8847,7 +8927,11 @@ function render(){
       }, { passive: true });
     }
 
-    bootApp();
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', bootstrapApp, { once: true });
+    } else {
+      bootstrapApp();
+    }
 
     // ------------------ Drag/drop support ---------------------------
     document.addEventListener('dragstart', safeOn('dragstart', (e)=>{
