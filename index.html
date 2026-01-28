@@ -5813,7 +5813,30 @@ function track(eventName, payload = {}){
 
     function extractTracksFromPayload(payload){
       if(!payload) return null;
+      const maybeParseWrappedJson = (value)=>{
+        if(!value || typeof value !== 'string') return null;
+        const trimmed = value.trim();
+        if(!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+        try{
+          return JSON.parse(trimmed);
+        }catch(err){
+          return null;
+        }
+      };
       if(Array.isArray(payload)) return payload;
+      const wrappedCandidates = [
+        payload.contents,
+        payload.data?.contents,
+        payload.result,
+        payload.data?.result
+      ];
+      for(const candidate of wrappedCandidates){
+        const parsed = maybeParseWrappedJson(candidate);
+        if(parsed){
+          const extracted = extractTracksFromPayload(parsed);
+          if(extracted) return extracted;
+        }
+      }
       const directCandidates = [
         payload.tracks,
         payload.trackList,
@@ -5825,11 +5848,17 @@ function track(eventName, payload = {}){
         payload.data?.catalog?.items,
         payload.data?.jamTracks,
         payload.data?.sparkTracks,
+        payload.data?.pages,
         payload.jamTracks,
-        payload.sparkTracks
+        payload.sparkTracks,
+        payload.pages
       ];
       const direct = directCandidates.find(candidate => Array.isArray(candidate) && candidate.length);
-      if(direct) return direct;
+      if(direct){
+        const maybeNestedTracks = direct.find(entry => Array.isArray(entry?.tracks));
+        if(maybeNestedTracks?.tracks?.length) return maybeNestedTracks.tracks;
+        return direct;
+      }
       const visited = new Set();
       const queue = [payload];
       const looksLikeTrack = (entry)=>{
@@ -5865,6 +5894,7 @@ function track(eventName, payload = {}){
       const epicEndpoint = 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks';
       const endpoints = [
         { id: 'epic', url: epicEndpoint },
+        { id: 'proxy-local', url: '/api/catalog' },
         { id: 'proxy-1', url: `https://corsproxy.io/?${encodeURIComponent(epicEndpoint)}` },
         { id: 'proxy-2', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(epicEndpoint)}` }
       ];
@@ -7266,8 +7296,8 @@ function render(){
         : 'Catalog: Fallback';
   const catalogErrorSuffix = catalogError ? ' (API failed)' : '';
   const catalogBadgeTitle = catalogError
-    ? `API failed: ${catalogError}`
-    : `${catalogSourceLabel}`;
+    ? `API failed: ${catalogError}${catalogEndpoint ? ` (last endpoint: ${catalogEndpoint})` : ''}`
+    : `${catalogSourceLabel}${catalogEndpoint ? ` (endpoint: ${catalogEndpoint})` : ''}`;
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100" title="${escapeHtml(catalogBadgeTitle)}">📚 ${catalogSourceLabel}${catalogErrorSuffix}</span>`;
   const ownedSyncPhase = ownedLibraryState?.phase || 'idle';
   const ownedSyncError = ownedSyncPhase === 'error';
