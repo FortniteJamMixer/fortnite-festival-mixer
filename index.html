@@ -5776,7 +5776,7 @@ function track(eventName, payload = {}){
       if(!id) return null;
       const title = entry.title || entry.tt || 'Unknown';
       const artist = entry.artist || entry.an || 'Unknown';
-      const rawBpm = Number(entry.rawBpm ?? entry.bpm ?? 0) || 0;
+      const rawBpm = Number(entry.rawBpm ?? entry.bpm ?? entry.tempo ?? entry.bpmValue ?? 0) || 0;
       const detectedGenre = entry.genre || detectGenre(artist, title);
       const finalGenre = genreOverrides[id] || detectedGenre;
       const camelotData = deriveCamelotForTrack({ ...entry, id, title, artist });
@@ -5796,7 +5796,18 @@ function track(eventName, payload = {}){
         camelot: camelotApplied.camelot,
         derivedCamelot: camelotData.camelot,
         duration: Number(entry.duration ?? entry.dn ?? 0) || 0,
-        albumArt: entry.albumArt || entry.coverArt || entry.au || '',
+        albumArt: entry.albumArt
+          || entry.albumArtUrl
+          || entry.coverArt
+          || entry.coverArtUrl
+          || entry.coverArt?.url
+          || entry.coverArt?.sources?.[0]?.url
+          || entry.images?.cover?.url
+          || entry.images?.album?.url
+          || entry.image
+          || entry.art
+          || entry.au
+          || '',
         genre: finalGenre,
         camelotOverridden: camelotApplied.overridden,
         bpmOverridden: bpmApplied.overridden,

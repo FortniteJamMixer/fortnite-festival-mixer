@@ -6,6 +6,18 @@ const REQUEST_TIMEOUT_MS = 9000;
 
 function extractTracksFromPayload(payload) {
   if (!payload) return null;
+  const maybeParseWrappedJson = (value) => {
+    if (!value || typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch (err) {
+      return null;
+    }
+  };
+  const parsedPayload = maybeParseWrappedJson(payload);
+  if (parsedPayload) return extractTracksFromPayload(parsedPayload);
   if (Array.isArray(payload)) return payload;
   const normalizeCollection = (collection) => {
     if (!collection) return null;
@@ -42,7 +54,10 @@ function extractTracksFromPayload(payload) {
   if (pages && typeof pages === "object") {
     const pageEntries = Object.values(pages);
     for (const page of pageEntries) {
-      const pageTracks = normalizeCollection(page?.data?.tracks || page?.data?.trackMap);
+      const pageData = maybeParseWrappedJson(page?.data) || page?.data;
+      const pageTracks = normalizeCollection(
+        pageData?.tracks || pageData?.trackMap || page?.data?.tracks || page?.data?.trackMap
+      );
       if (Array.isArray(pageTracks) && pageTracks.length) {
         return pageTracks;
       }
@@ -75,7 +90,12 @@ function extractTracksFromPayload(payload) {
         return matches;
       }
       values.forEach((value) => {
-        if (value && typeof value === "object") {
+        if (typeof value === "string") {
+          const parsed = maybeParseWrappedJson(value);
+          if (parsed) {
+            queue.push(parsed);
+          }
+        } else if (value && typeof value === "object") {
           queue.push(value);
         }
       });
