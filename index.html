@@ -5802,19 +5802,22 @@ function track(eventName, payload = {}){
     async function loadTrackCatalog(){
       const catalogFetch = async () => {
         try{
-          const res = await fetch('/tracks.catalog.json', { cache: 'no-store' });
+          const res = await fetch('/api/catalog', { cache: 'no-store' });
           if(!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
-          const payload = await res.json();
+          const text = await res.text();
+          const first = text.trim()[0];
+          if(first === '<') throw new Error('CATALOG_ENDPOINT_RETURNED_HTML');
+          const payload = JSON.parse(text);
           const tracks = Array.isArray(payload) ? payload : payload?.tracks;
           if(!Array.isArray(tracks) || !tracks.length){
             throw new Error('Catalog payload missing tracks');
           }
           const normalized = normalizeCatalogTracks(tracks);
           if(!normalized.length) throw new Error('Catalog contained no valid tracks');
-          writeCatalogCache(normalized, { source: 'bundled' });
-          return { tracks: normalized, source: 'bundled' };
+          writeCatalogCache(normalized, { source: 'api' });
+          return { tracks: normalized, source: 'api' };
         }catch(err){
-          console.warn('[catalog] bundled fetch failed', err);
+          console.warn('[catalog] api fetch failed', err);
           return null;
         }
       };
@@ -5847,10 +5850,10 @@ function track(eventName, payload = {}){
         logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
         return { songs, usedFallback: false };
       }
-      console.warn('catalog load failed, using fallback sample');
-      trackLoadNotice = `Catalog failed to load. <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="tracks.retry">Retry</button>`;
-      applySongsSnapshot(SAMPLE_TRACKS, { source: 'sample', notice: trackLoadNotice, catalogTotal: catalogTotalCount || SAMPLE_TRACKS.length });
-      logEvent('songs_fetch_fail', { message: 'catalog miss; using fallback' });
+      console.warn('catalog load failed, showing error banner');
+      trackLoadNotice = `Catalog error. <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="tracks.retry">Retry</button>`;
+      applySongsSnapshot([], { source: 'error', notice: trackLoadNotice, catalogTotal: 0 });
+      logEvent('songs_fetch_fail', { message: 'catalog miss; no fallback' });
       return { songs, usedFallback: true };
     }
 
