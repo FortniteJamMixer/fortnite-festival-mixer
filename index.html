@@ -514,7 +514,7 @@
           <button id="helpTabAdvanced" class="helpTabBtn" data-tab="advanced" role="tab" aria-selected="false" aria-controls="helpAdvanced" tabindex="-1">Advanced</button>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="helpCloseBtn" onclick="closeHelp()" aria-label="Close help">✕ Close</button>
+          <button class="helpCloseBtn" data-action="help.close" aria-label="Close help">✕ Close</button>
         </div>
       </div>
 
@@ -552,8 +552,8 @@
       <div class="helpFooter">
         <span class="small-muted" id="helpVersion"></span>
         <div class="helpFooterActions">
-          <button class="helpAltBtn" onclick="startTour('help',{ force: true })">Run Quick Tour</button>
-          <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
+          <button class="helpAltBtn" data-action="help.tour">Run Quick Tour</button>
+          <button class="helpCloseBtn" data-action="help.close">Close</button>
         </div>
       </div>
     </div>
@@ -640,8 +640,8 @@
             <div class="text-sm text-gray-200">${message}</div>
             <div class="space-y-2 text-left">${lastSteps}</div>
             <div class="flex items-center justify-center gap-3">
-              <button onclick="location.reload()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
-              <button onclick="copyBootDebug()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Copy Debug</button>
+              <button data-action="boot.retry" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
+              <button data-action="boot.copy" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Copy Debug</button>
             </div>
           </div>
         </div>
@@ -662,8 +662,10 @@
      **************************************************************************/
 
 const DEFAULT_VIEW = 'browse';
+const ENTRY_STATES = Object.freeze({ landing: 'landing', login: 'login', app: 'app' });
 let view = DEFAULT_VIEW;
 let bootState = 'BOOT_LOADING';
+let entryState = ENTRY_STATES.landing;
 pushBootStep('script start');
 
 const BRAND = Object.freeze({
@@ -880,6 +882,7 @@ let userProfileUnsub = null;
 let authSettledUser = null;
 let authProcessing = false;
 let authInFlight = false;
+let pendingImportContext = null;
 let appConfigLoaded = false;
 if (firebaseConfigValid && window.firebase?.initializeApp && window.firebase?.auth && window.firebase?.firestore) {
   try {
@@ -4473,7 +4476,25 @@ function track(eventName, payload = {}){
     }
 
     // --------------------- UI: Landing / Auth ------------------------
+    function resolveSignedInState(){
+      if(firebaseEnabled){
+        return !!firebaseAuth?.currentUser;
+      }
+      return !!(currentUser || getActiveProfile());
+    }
+
+    function getSignedInDisplayName(){
+      return currentUser?.djName || currentUser?.username || '';
+    }
+
     function showLandingPage(){
+      entryState = ENTRY_STATES.landing;
+      const signedIn = resolveSignedInState();
+      const welcomeLine = signedIn ? '<div class="text-sm text-emerald-200 font-semibold uppercase tracking-wide">Welcome back</div>' : '';
+      const welcomeName = signedIn && getSignedInDisplayName()
+        ? `<div class="text-lg text-cyan-100 font-semibold mt-2">Hi, ${escapeHtml(getSignedInDisplayName())}</div>`
+        : '';
+      const ctaLabel = signedIn ? 'Enter Mixer' : 'Sign In / Create Profile';
       const camelotOrder = Array.from({ length: 12 }, (_, i) => i + 1);
       const camelotBStops = camelotOrder
         .map((num, index) => {
@@ -4503,9 +4524,11 @@ function track(eventName, payload = {}){
                 <div class="w-32 h-32 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-6xl vinyl-spin">🎧</div>
               </div>
               <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">${BRAND.APP_NAME.toUpperCase()}</h1>
+              ${welcomeLine}
+              ${welcomeName}
               <p class="text-xl md:text-2xl text-cyan-300 mb-6">Create Epic Mashups & DJ Like a Pro on the Jam Stage!</p>
               <div class="mt-6">
-                <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 START MIXING NOW</button>
+                <button type="button" data-action="landing.cta" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 ${ctaLabel}</button>
               </div>
             </div>
             <div class="bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12">
@@ -4532,16 +4555,17 @@ function track(eventName, payload = {}){
             </div>
 
             <div class="text-center">
-              <button onclick="hideLanding()" class="px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-2xl md:text-3xl shadow-2xl">🎵 LET'S MIX!</button>
+              <button type="button" data-action="landing.cta" class="px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-2xl md:text-3xl shadow-2xl">🎵 ${ctaLabel}</button>
             </div>
           </div>
         </div>
       `;
+      bindAppDelegates();
     }
-    window.hideLanding = () => { showLoginScreen(); };
 
     // -------------------- Login / Profile handlers ---------------------
     function showLoginScreen(){
+      entryState = ENTRY_STATES.login;
       setAppBootState(APP_BOOT_STATES.signedOut);
       // default auth mode
       setTimeout(()=>{ try{ if(window.setAuthMode) window.setAuthMode('signin'); }catch(e){} }, 50);
@@ -4584,15 +4608,15 @@ function track(eventName, payload = {}){
                 ${firebaseEnabled ? `
                   <div class="mb-5">
                     <div class="flex gap-2 bg-black/30 p-1 rounded-xl border border-cyan-500/20">
-                      <button type="button" id="tabSignIn" onclick="setAuthMode('signin')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
-                      <button type="button" id="tabSignUp" onclick="setAuthMode('signup')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
+                      <button type="button" id="tabSignIn" data-action="auth.mode" data-mode="signin" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
+                      <button type="button" id="tabSignUp" data-action="auth.mode" data-mode="signup" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
                     </div>
                     <p class="text-xs text-gray-300 mt-3 text-center">
                       Cloud sync works after you create an account once. Sign in to access your profile and owned songs.
                     </p>
                   </div>
 
-                  <form onsubmit="handleFirebaseAuth(event)" class="space-y-4" autocomplete="on">
+                  <form id="firebaseAuthForm" class="space-y-4" autocomplete="on">
                     <input type="hidden" id="authMode" value="signin" />
 
                     <div>
@@ -4622,7 +4646,7 @@ function track(eventName, payload = {}){
                     </div>
 
                     <div class="text-center">
-                      <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
+                      <button type="button" data-action="auth.forgot" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
                     </div>
                     <div id="authError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
                   </form>
@@ -4665,11 +4689,34 @@ function track(eventName, payload = {}){
           </div>
         </div>
       `;
-      const localForm = document.getElementById('localAuthForm');
-      if(localForm && !localForm.dataset.bound){
-        localForm.dataset.bound = 'true';
-        localForm.addEventListener('submit', onEnterMixSubmit);
+      bindAppDelegates();
+    }
+
+    function enterMixerApp(){
+      entryState = ENTRY_STATES.app;
+      if(appBootState !== APP_BOOT_STATES.ready || !songsLoaded){
+        renderBootScreen('Loading Festival Jam Tracks…');
+        if(boot?.phase !== 'loadingSongs'){
+          void loadAppData({
+            loadSongs: true,
+            loadProfile: !boot?.profileLoaded,
+            preferCache: false,
+            showBootScreen: false,
+            allowProfileAutoOpen: false
+          });
+        }
+        return;
       }
+      render();
+      setupEventListeners();
+    }
+
+    function handleLandingCta(){
+      if(resolveSignedInState()){
+        enterMixerApp();
+        return;
+      }
+      showLoginScreen();
     }
 
       // -------------------- Firebase Auth UI helpers ---------------------
@@ -4869,6 +4916,7 @@ function track(eventName, payload = {}){
         enforcePostLoginDefaults();
         view = DEFAULT_VIEW;
         setAppBootState(APP_BOOT_STATES.ready);
+        entryState = ENTRY_STATES.app;
         render();
         setupEventListeners();
         recordBootStep('READY rendered');
@@ -5025,25 +5073,20 @@ function track(eventName, payload = {}){
             ${optionsHtml || ''}
             ${deviceDataAvailable ? '<p class="text-xs text-gray-300 mb-4">Tip: If you used this app on this device before, choose Import to keep your owned songs and setlists.</p>' : ''}
             <div class="flex gap-2 justify-end">
-              <button id="importSkip" class="px-4 py-2 rounded-lg bg-gray-700 text-white">Skip</button>
-              <button id="importConfirm" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Import</button>
+              <button id="importSkip" data-action="import.skip" class="px-4 py-2 rounded-lg bg-gray-700 text-white">Skip</button>
+              <button id="importConfirm" data-action="import.confirm" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Import</button>
             </div>
           </div>`;
         document.body.appendChild(modal);
         const cleanup = ()=>{ modal.remove(); };
-        modal.querySelector('#importSkip').onclick = ()=>{ cleanup(); resolve(null); };
-        modal.querySelector('#importConfirm').onclick = ()=>{
-          const choice = modal.querySelector('#importProfileSelect')?.value || null;
-          cleanup();
-          if(choice && profiles[choice]) return resolve(profiles[choice]);
-          if(deviceDataAvailable){
-            return resolve({
-              ownedTracks: localOwned,
-              setlist: localSet,
-              genreOverrides: localGenre
-            });
-          }
-          resolve(null);
+        pendingImportContext = {
+          resolve,
+          cleanup,
+          profiles,
+          deviceDataAvailable,
+          localOwned,
+          localSet,
+          localGenre
         };
       });
     }
@@ -5297,7 +5340,7 @@ function track(eventName, payload = {}){
       resetUiDefaults();
       updateSyncState({ state: SYNC_STATES.idle, message: '', errorCode: null, errorStep: null });
       setAppBootState(APP_BOOT_STATES.signedOut);
-      showLoginScreen();
+      showLandingPage();
     }
 
     function resolvePostAuthLanding(){
@@ -5415,11 +5458,18 @@ function track(eventName, payload = {}){
           username: defaultUsername,
           djName: defaultUsername
         }, user.uid);
+        const wasLoginFlow = entryState === ENTRY_STATES.login;
         view = DEFAULT_VIEW;
         setAppBootState(APP_BOOT_STATES.ready);
-        render();
-        setupEventListeners();
-        recordBootStep('READY rendered');
+        if(wasLoginFlow){
+          entryState = ENTRY_STATES.app;
+          render();
+          setupEventListeners();
+          recordBootStep('READY rendered');
+        } else {
+          showLandingPage();
+          recordBootStep('READY landing');
+        }
         void loadAppData({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: false, allowProfileAutoOpen: false });
         const legacyIds = [currentUser?.username, user.email, emailPrefix, user.displayName]
           .filter((value) => value && value !== user.uid);
@@ -5516,6 +5566,7 @@ function track(eventName, payload = {}){
         localStorage.removeItem('currentUser');
         setSyncMode(SYNC_MODES.localOnly, { silent: true });
         updateSyncState({ state: SYNC_STATES.idle, message: '', errorCode: null, errorStep: null });
+        showLandingPage();
       };
       const signOutHard = async () => {
         showFatalToast('Sign out failed — Reloading');
@@ -5749,7 +5800,7 @@ function track(eventName, payload = {}){
         return { songs, usedFallback: false };
       }
       console.warn('catalog load failed, using fallback sample');
-      trackLoadNotice = `Catalog failed to load. <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryTracksNow()">Retry</button>`;
+      trackLoadNotice = `Catalog failed to load. <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="tracks.retry">Retry</button>`;
       applySongsSnapshot(SAMPLE_TRACKS, { source: 'sample', notice: trackLoadNotice, catalogTotal: catalogTotalCount || SAMPLE_TRACKS.length });
       logEvent('songs_fetch_fail', { message: 'catalog miss; using fallback' });
       return { songs, usedFallback: true };
@@ -6676,7 +6727,7 @@ function track(eventName, payload = {}){
           const flags = t.flags && t.flags.length ? t.flags.map(f=>`<span class="px-2 py-1 rounded bg-white/10 border border-white/10 text-xs mr-1">${f}</span>`).join('') : '<span class="text-green-300 text-xs">OK</span>';
           const hasOverride = genreOverrides[t.id];
           const genreButton = `<button data-song-id-genre="${t.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${t.genre}${hasOverride ? ' ✓' : ''}</button>`;
-          return `<tr class="border-b border-white/5"><td class="p-2">${t.title}<div class="text-xs text-gray-400">${t.artist}</div></td><td class="p-2">${t.bpm} <div class="text-xs text-gray-400">raw ${t.rawBpm||t.bpm}</div></td><td class="p-2">${t.camelot}<div class="text-xs text-gray-400">derived ${t.derivedCamelot}</div></td><td class="p-2 text-xs text-gray-300">${t.rawKey||'?'} ${t.rawMode||''}</td><td class="p-2">${genreButton}</td><td class="p-2">${flags}</td><td class="p-2 text-xs"><button class="px-2 py-1 bg-purple-500/30 rounded" onclick="openOverrideModal('camelot','${t.id}')">Set Camelot</button><button class="ml-1 px-2 py-1 bg-blue-500/30 rounded" onclick="openOverrideModal('bpm','${t.id}')">Set BPM</button><button class="ml-1 px-2 py-1 bg-red-500/30 rounded" onclick="clearOverrides('${t.id}')">Clear</button></td></tr>`;
+          return `<tr class="border-b border-white/5"><td class="p-2">${t.title}<div class="text-xs text-gray-400">${t.artist}</div></td><td class="p-2">${t.bpm} <div class="text-xs text-gray-400">raw ${t.rawBpm||t.bpm}</div></td><td class="p-2">${t.camelot}<div class="text-xs text-gray-400">derived ${t.derivedCamelot}</div></td><td class="p-2 text-xs text-gray-300">${t.rawKey||'?'} ${t.rawMode||''}</td><td class="p-2">${genreButton}</td><td class="p-2">${flags}</td><td class="p-2 text-xs"><button class="px-2 py-1 bg-purple-500/30 rounded" data-action="audit.override" data-kind="camelot" data-id="${t.id}">Set Camelot</button><button class="ml-1 px-2 py-1 bg-blue-500/30 rounded" data-action="audit.override" data-kind="bpm" data-id="${t.id}">Set BPM</button><button class="ml-1 px-2 py-1 bg-red-500/30 rounded" data-action="audit.clearOverrides" data-id="${t.id}">Clear</button></td></tr>`;
         }).join('');
 
       auditEl.innerHTML = `
@@ -6693,11 +6744,11 @@ function track(eventName, payload = {}){
               <input id="auditSearchInput" value="${auditSearch}" placeholder="Search title or artist" class="flex-1 min-w-[200px] px-3 py-2 bg-black/40 border border-white/10 rounded" />
             </div>
             <div class="flex flex-wrap gap-2 text-xs">
-              <button class="px-3 py-1 rounded ${auditFilters.flaggedOnly?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('flaggedOnly')">Show flagged only</button>
-              <button class="px-3 py-1 rounded ${auditFilters.overriddenOnly?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('overriddenOnly')">Show overridden only</button>
-              <button class="px-3 py-1 rounded ${auditFilters.invalidCamelot?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('invalidCamelot')">Invalid camelot</button>
-              <button class="px-3 py-1 rounded ${auditFilters.modeMismatch?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('modeMismatch')">Mode mismatch</button>
-              <button class="px-3 py-1 rounded ${auditFilters.bpmOutlier?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('bpmOutlier')">BPM outliers</button>
+              <button class="px-3 py-1 rounded ${auditFilters.flaggedOnly?'bg-amber-500/40':'bg-white/10'}" data-action="audit.filter" data-filter="flaggedOnly">Show flagged only</button>
+              <button class="px-3 py-1 rounded ${auditFilters.overriddenOnly?'bg-amber-500/40':'bg-white/10'}" data-action="audit.filter" data-filter="overriddenOnly">Show overridden only</button>
+              <button class="px-3 py-1 rounded ${auditFilters.invalidCamelot?'bg-amber-500/40':'bg-white/10'}" data-action="audit.filter" data-filter="invalidCamelot">Invalid camelot</button>
+              <button class="px-3 py-1 rounded ${auditFilters.modeMismatch?'bg-amber-500/40':'bg-white/10'}" data-action="audit.filter" data-filter="modeMismatch">Mode mismatch</button>
+              <button class="px-3 py-1 rounded ${auditFilters.bpmOutlier?'bg-amber-500/40':'bg-white/10'}" data-action="audit.filter" data-filter="bpmOutlier">BPM outliers</button>
             </div>
           </div>
           <div class="panel overflow-auto">
@@ -6717,7 +6768,6 @@ function track(eventName, payload = {}){
           </div>
         </div>
       `;
-      bindGenreEditors(auditEl);
     }
 
 function renderCommunityStat(id, label, icon, value, caption=''){
@@ -6842,8 +6892,8 @@ function renderBootstrapFatal(errorMessage){
         <div class="text-xl font-bold text-red-200">Something went wrong while loading your profile.</div>
         <div class="text-sm text-gray-200">${trimmed}</div>
         <div class="flex items-center justify-center gap-3">
-          <button onclick="location.reload()" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
-          <button onclick="copyBootDebug()" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Copy Debug</button>
+          <button data-action="boot.retry" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
+          <button data-action="boot.copy" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Copy Debug</button>
         </div>
         <div class="text-left text-sm text-gray-200 border border-white/10 rounded-xl p-4 space-y-3 bg-black/70">
           <div class="text-xs uppercase tracking-wide text-gray-400">Last step</div>
@@ -6937,15 +6987,26 @@ async function loadAppData({ loadSongs = true, loadProfile = true, preferCache =
 
     if(loadProfile){
       boot.phase = 'loadingProfile';
-      const profile = (firebaseEnabled && firebaseAuth?.currentUser)
-        ? await hydrateProfileFromCloudThenMergeLocal(firebaseAuth.currentUser.uid, firebaseAuth.currentUser.email, { legacyOwnedTracks })
-        : await hydrateProfileRobust();
-      resetUiDefaults();
-      await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
-      if(allowProfileAutoOpen){
-        await maybeLoadSharedProfile();
+      try{
+        const profile = (firebaseEnabled && firebaseAuth?.currentUser)
+          ? await hydrateProfileFromCloudThenMergeLocal(firebaseAuth.currentUser.uid, firebaseAuth.currentUser.email, { legacyOwnedTracks })
+          : await hydrateProfileRobust();
+        resetUiDefaults();
+        await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
+        if(allowProfileAutoOpen){
+          await maybeLoadSharedProfile();
+        }
+        boot.profileLoaded = true;
+      }catch(err){
+        console.warn('[boot] profile load failed, continuing with catalog', err);
+        boot.profileLoaded = false;
+        boot.errors.push(err);
+        setSyncError({
+          code: err?.code || 'profile_load_failed',
+          step: err?.step || 'loadingProfile',
+          message: 'Profile load failed — showing full catalog.'
+        });
       }
-      boot.profileLoaded = true;
     } else {
       boot.profileLoaded = false;
     }
@@ -6992,7 +7053,11 @@ async function loadAppData({ loadSongs = true, loadProfile = true, preferCache =
 }
 
 function render(){
-  if(appBootState !== APP_BOOT_STATES.ready){
+  if(entryState !== ENTRY_STATES.app){
+    return;
+  }
+  if(appBootState !== APP_BOOT_STATES.ready || !songsLoaded){
+    renderBootScreen('Loading Festival Jam Tracks…');
     return;
   }
   logEvent('ui_render', { view });
@@ -7041,7 +7106,7 @@ function render(){
   const cloudSyncBadge = (firebaseEnabled && firebaseAuth?.currentUser)
     ? (isLocalOnly
       ? '<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>'
-      : `<button onclick="${ownedSyncError ? 'retryCloudSync()' : 'void 0'}" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline || ownedSyncError ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : ownedSyncSaving ? 'bg-sky-500/20 border border-sky-400/50 text-sky-100' : 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-100'}" ${ownedSyncError ? '' : 'disabled'}>☁️ ${ownedSyncLabel}${ownedSyncError ? ' · Retry' : ''}</button>`)
+      : `<button data-action="sync.retry" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline || ownedSyncError ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : ownedSyncSaving ? 'bg-sky-500/20 border border-sky-400/50 text-sky-100' : 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-100'}" ${ownedSyncError ? '' : 'disabled'}>☁️ ${ownedSyncLabel}${ownedSyncError ? ' · Retry' : ''}</button>`)
     : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
   const firestoreDebugClass = firestoreAccessTestResult?.status === 'success'
     ? 'text-emerald-200'
@@ -7052,25 +7117,25 @@ function render(){
     ? `<div class="mt-2 text-xs ${firestoreDebugClass}">${escapeHtml(firestoreAccessTestResult.message)}</div>`
     : '';
   const firestoreDebugButton = showSyncDebugPanel
-    ? '<button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="testFirestoreAccess()">Test Firestore Access</button>'
+    ? '<button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.testFirestore">Test Firestore Access</button>'
     : '';
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const syncInProgress = [SYNC_STATES.checkingAuth, SYNC_STATES.loadingRemote, SYNC_STATES.merging, SYNC_STATES.savingRemote].includes(syncState.state);
   const localOnlyBanner = (isLocalOnly && firebaseAuth?.currentUser)
-    ? `<div class="inline-banner mt-2">⚠️ Cloud Sync Paused (Permissions). <span class="text-gray-200">Local Only — your owned tracks are safe on this device.</span> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="openFirestoreRulesHelp()">How to fix Firestore rules</button></div>`
+    ? `<div class="inline-banner mt-2">⚠️ Cloud Sync Paused (Permissions). <span class="text-gray-200">Local Only — your owned tracks are safe on this device.</span> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.retry">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.exportBackup">Export Backup JSON</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.openRules">How to fix Firestore rules</button></div>`
     : '';
   const syncBanner = localOnlyBanner || (syncState.state === SYNC_STATES.error
-    ? `<div class="inline-banner mt-2">⚠️ ${syncState.message || 'Sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button></div>`
+    ? `<div class="inline-banner mt-2">⚠️ ${syncState.message || 'Sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.retry">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.exportBackup">Export Backup JSON</button></div>`
     : (syncInProgress
       ? `<div class="inline-banner mt-2">🔄 ${syncState.message || 'Syncing your profile…'}</div>`
       : ''));
   const ownedLibraryBanner = localOnlyBanner
     ? ''
     : (ownedLibraryState?.phase === 'error'
-      ? `<div class="inline-banner mt-2">⚠️ ${ownedLibraryState.message || 'Owned library sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button>${firestoreDebugButton}${firestoreDebugStatus}</div>`
+      ? `<div class="inline-banner mt-2">⚠️ ${ownedLibraryState.message || 'Owned library sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.retry">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.exportBackup">Export Backup JSON</button>${firestoreDebugButton}${firestoreDebugStatus}</div>`
       : '');
   const recoveryBanner = recoveryBannerState?.visible
-    ? `<div class="inline-banner mt-2">🛟 ${recoveryBannerState.message || 'Recovery mode active.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryTracksNow()">Retry Tracks</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="restoreLastKnownGoodProfile()">Restore Library</button></div>`
+    ? `<div class="inline-banner mt-2">🛟 ${recoveryBannerState.message || 'Recovery mode active.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.retryTracks">Retry Tracks</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="sync.restoreLibrary">Restore Library</button></div>`
     : '';
   const communityStatsRow = FEATURE_SIGNIN_STATS
     ? `
@@ -7094,10 +7159,10 @@ function render(){
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button id="panelClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
-        <button id="panelClearSearchBtn" onclick="clearSearch()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
-        <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
-      </div>
+        <button id="panelClearSelectionBtn" data-action="selection.clear" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
+        <button id="panelClearSearchBtn" data-action="search.clear" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
+        <button id="panelDisableMixableBtn" data-action="mixable.disable" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
+      </div>`;
     </div>`;
   const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
   const signedInUid = firebaseAuth?.currentUser?.uid || currentUser?.uid || '';
@@ -7110,9 +7175,6 @@ function render(){
   const authButtonLabel = isSignedIn && firebaseEnabled
     ? (logoutInProgress ? 'Saving…' : 'Logout')
     : 'Sign In';
-  const authButtonAction = isSignedIn && firebaseEnabled
-    ? (logoutInProgress ? 'void 0' : 'logoutUser()')
-    : 'showLoginScreen()';
   const authButtonDisabled = isSignedIn && firebaseEnabled && logoutInProgress;
   const showAuthButton = firebaseEnabled ? true : !isSignedIn;
   const stickyCtaActive = getStickyCtaConfig().visible;
@@ -7132,15 +7194,15 @@ function render(){
             </div>
             <div class="flex items-center flex-wrap justify-end header-actions">
               <button class="mobile-only px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-xs text-white" data-action="toggleHeaderMore">More</button>
-              ${viewingProfile?`<button onclick="exitProfileViewMode()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
-              ${(!viewingProfile && isAdmin())?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
-                  <button id="adminMenuHelpEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Help Editor</button>
-                  <button id="adminMenuWhatsNewEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
-                  <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
+              ${viewingProfile?`<button data-action="view.exitProfile" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
+              ${(!viewingProfile && isAdmin())?`<div class="relative"><button id="adminToolsBtn" data-action="admin.toggle" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
+                  <button id="adminMenuHelpEditor" data-action="admin.helpEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Help Editor</button>
+                  <button id="adminMenuWhatsNewEditor" data-action="admin.whatsNew" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
+                  <button id="adminMenuAudit" data-action="admin.audit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
                 </div>`:''}</div>`:''}
-              <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
-              <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
-              ${showAuthButton ? `<button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm" ${authButtonDisabled ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${authButtonLabel}</button>` : ''}
+              <button data-action="view.profile" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
+              <button data-action="help.open" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
+              ${showAuthButton ? `<button data-action="auth.toggle" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm" ${authButtonDisabled ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${authButtonLabel}</button>` : ''}
             </div>
           </div>
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
@@ -7163,7 +7225,7 @@ function render(){
             <button id="browserBtn" data-action="switchView" data-view="browse" class="px-4 py-2 rounded-lg font-medium transition ${view==='browse'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
             <div class="flex items-center gap-1">
               <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">${setlistLabel} (<span id="setlistCount">${setlist.length}</span>)</button>
-              <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
+              <button type="button" class="helpIconBtn" data-action="help.openModal" data-source="setlist_icon" data-target="setlist" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
             <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">${profileLabel}</button>
           </div>
@@ -7198,7 +7260,7 @@ function render(){
                   <button id="ownedFilterBtn" class="w-full min-h-[44px] px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}" ${isGuest && !viewingProfile ? 'disabled style="opacity:0.55;cursor:not-allowed;" title="Sign in to filter by owned"' : ''}>${isGuest && !viewingProfile ? 'Sign in for Owned' : (showOwnedOnly ? '✓ Owned Only' : 'Show All')}</button>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                  <button id="controlClearSelectionBtn" onclick="clearSelection()" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100 col-span-2" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
+                  <button id="controlClearSelectionBtn" data-action="selection.clear" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100 col-span-2" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
                 <div class="bg-black/40 border border-white/10 rounded-lg p-3 space-y-3">
@@ -7239,9 +7301,9 @@ function render(){
                   <span class="text-xs text-gray-300">Priority selector</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                  <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Tempo (BPM)</button>
-                  <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
-                  <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                  <button data-action="sort" data-sort="bpm" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Tempo (BPM)</button>
+                  <button data-action="sort" data-sort="camelot" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                  <button data-action="sort" data-sort="genre" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="text-xs text-gray-300 font-semibold">Priority Strength</div>
@@ -7261,7 +7323,7 @@ function render(){
                   <div class="font-bold text-white">Sandbox (Drag tracks here)</div>
                   <div class="flex items-center gap-2 text-xs text-gray-300">
                     <span>Limit 4</span>
-                    <button onclick="clearSandbox()" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10">Clear</button>
+                    <button data-action="sandbox.clear" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10">Clear</button>
                   </div>
                 </div>
                 <div id="sandbox" class="sandbox-drop bg-black/40"></div>
@@ -7316,7 +7378,9 @@ function render(){
       menu.innerHTML = `<div style="padding:8px 12px;color:#00d9ff;font-weight:bold;border-bottom:1px solid rgba(0,217,255,0.3);margin-bottom:6px;">Select Genre:</div>`;
       genres.forEach(g=>{
         const btn=document.createElement('button'); btn.textContent=g; btn.style.display='block'; btn.style.width='100%'; btn.style.padding='8px 12px'; btn.style.background='transparent'; btn.style.border='none'; btn.style.textAlign='left'; btn.style.color='#e6f7ff'; btn.style.cursor='pointer';
-        btn.addEventListener('click',async()=>{ await setGenreOverride(songId,g); menu.remove(); });
+        btn.dataset.action = 'genre.pick';
+        btn.dataset.genre = g;
+        btn.dataset.songId = songId;
         menu.appendChild(btn);
       });
       document.body.appendChild(menu);
@@ -7333,12 +7397,7 @@ function render(){
     }
 
     function bindGenreEditors(scope=document){
-      if(!isAdmin()) return;
-      scope.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
-        const handler = (e)=>{ e.preventDefault(); e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); };
-        btn.onclick = handler;
-        btn.oncontextmenu = handler;
-      });
+      return;
     }
 
     const setGenreOverride = async (songId,newGenre) => {
@@ -7381,14 +7440,13 @@ function render(){
       const options = Array.from({length:12},(_,i)=>`${i+1}A`).concat(Array.from({length:12},(_,i)=>`${i+1}B`));
       const camelotSelect = `<select id="camelotSelect" class="w-full px-3 py-2 bg-black/60 border border-white/20 rounded">${options.map(o=>`<option value="${o}" ${track.camelot===o?'selected':''}>${o}</option>`).join('')}</select>`;
       const bpmInput = `<input id="bpmInput" type="number" value="${Math.round(track.bpm)}" class="w-full px-3 py-2 bg-black/60 border border-white/20 rounded"/>`;
-      const actionCall = type==='camelot' ? `setCamelotOverride('${trackId}', document.getElementById('camelotSelect').value)` : `setBpmOverride('${trackId}', document.getElementById('bpmInput').value)`;
       modal.innerHTML = `<div class="panel max-w-md w-full">
-        <div class="flex items-center justify-between mb-3"><div class="font-bold">Set ${type==='camelot'?'Camelot':'BPM'} for ${track.title}</div><button onclick="closeOverrideModal()">✕</button></div>
+        <div class="flex items-center justify-between mb-3"><div class="font-bold">Set ${type==='camelot'?'Camelot':'BPM'} for ${track.title}</div><button data-action="override.close">✕</button></div>
         <div class="space-y-3">
           ${type==='camelot'?camelotSelect:bpmInput}
           <div class="flex gap-2 justify-end">
-            <button class="px-3 py-2 bg-white/10 rounded" onclick="closeOverrideModal()">Cancel</button>
-            <button class="px-3 py-2 bg-blue-500/60 rounded" onclick="${actionCall}; closeOverrideModal();">Save</button>
+            <button class="px-3 py-2 bg-white/10 rounded" data-action="override.close">Cancel</button>
+            <button class="px-3 py-2 bg-blue-500/60 rounded" data-action="override.save" data-type="${type}" data-id="${trackId}">Save</button>
           </div>
         </div>
       </div>`;
@@ -7481,6 +7539,11 @@ function render(){
           showGenreMenu(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), e);
           return;
         }
+        const auditGenreBtn = closestFromEvent(e, '[data-song-id-genre]', { within: app });
+        if(auditGenreBtn && isAdmin()){
+          showGenreMenu(auditGenreBtn.dataset.songIdGenre || auditGenreBtn.getAttribute('data-song-id-genre'), e);
+          return;
+        }
         const songAction = closestFromEvent(e, '[data-song-action]', { within: app });
         if(songAction){
           const action = songAction.dataset.songAction;
@@ -7493,6 +7556,12 @@ function render(){
           if(action === 'preview' && songId){ onPreviewClick(songId); return; }
         }
       }, { action: 'app-click' }));
+      app.addEventListener('submit', safeOn('submit', (e)=>{
+        const target = getEventElement(e);
+        if(!target) return;
+        if(target.id === 'firebaseAuthForm'){ handleFirebaseAuth(e); return; }
+        if(target.id === 'localAuthForm'){ onEnterMixSubmit(e); return; }
+      }, { action: 'app-submit' }));
       app.addEventListener('input', safeOn('input', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
@@ -7621,22 +7690,9 @@ function render(){
       const semitoneRangeInput = document.getElementById('semitoneRangeInput'); if(semitoneRangeInput){ semitoneRangeInput.value = maxSemitoneRange; }
       const includeOppToggle = document.getElementById('includeOppositeModeToggle'); if(includeOppToggle){ includeOppToggle.checked = includeOppositeMode; }
       if(isAdmin()){
-        const adminBtn = document.getElementById('adminToolsBtn');
-        if(adminBtn){
-          adminBtn.onclick = (e)=>{ e.stopPropagation(); console.debug('[admin] Admin Tools clicked'); window.toggleAdminTools(); };
-          console.debug('[admin] Admin Tools button bound');
-        } else {
-          console.debug('[admin] Admin Tools button missing after render');
-        }
         const adminMenu = document.getElementById('adminToolsMenu');
         if(adminMenu){
           adminMenu.style.pointerEvents = 'auto';
-          const helpBtn = document.getElementById('adminMenuHelpEditor');
-          if(helpBtn) helpBtn.onclick = (e)=>{ e.stopPropagation(); openAdminHelpEditor(); toggleAdminTools(false); };
-          const whatsNewBtn = document.getElementById('adminMenuWhatsNewEditor');
-          if(whatsNewBtn) whatsNewBtn.onclick = (e)=>{ e.stopPropagation(); openAdminWhatsNewEditor(); toggleAdminTools(false); };
-          const auditBtn = document.getElementById('adminMenuAudit');
-          if(auditBtn) auditBtn.onclick = (e)=>{ e.stopPropagation(); openAuditFromMenu(); };
         }
       }
       setupLiveNowCarousel();
@@ -7749,6 +7805,239 @@ function render(){
       if(!el) return;
       const action = el.dataset?.action;
       if(!action) return;
+      const dataset = el.dataset || {};
+      if(action === 'landing.cta'){
+        event?.preventDefault();
+        handleLandingCta();
+        return;
+      }
+      if(action === 'auth.mode'){
+        event?.preventDefault();
+        const mode = dataset.mode || 'signin';
+        setAuthMode(mode);
+        return;
+      }
+      if(action === 'auth.forgot'){
+        event?.preventDefault();
+        forgotPassword();
+        return;
+      }
+      if(action === 'auth.toggle'){
+        event?.preventDefault();
+        if(resolveSignedInState()){
+          logoutUser();
+        } else {
+          showLoginScreen();
+        }
+        return;
+      }
+      if(action === 'help.open'){
+        event?.preventDefault();
+        openHelp();
+        return;
+      }
+      if(action === 'help.openModal'){
+        event?.preventDefault();
+        openHelpModal({ source: dataset.source || 'menu', target: dataset.target || 'none' });
+        return;
+      }
+      if(action === 'help.close'){
+        event?.preventDefault();
+        closeHelp();
+        return;
+      }
+      if(action === 'help.tour'){
+        event?.preventDefault();
+        startTour('help', { force: true });
+        return;
+      }
+      if(action === 'boot.retry'){
+        event?.preventDefault();
+        location.reload();
+        return;
+      }
+      if(action === 'boot.copy'){
+        event?.preventDefault();
+        copyBootDebug();
+        return;
+      }
+      if(action === 'tracks.retry'){
+        event?.preventDefault();
+        retryTracksNow();
+        return;
+      }
+      if(action === 'sync.retry'){
+        event?.preventDefault();
+        retryCloudSync();
+        return;
+      }
+      if(action === 'sync.exportBackup'){
+        event?.preventDefault();
+        exportOwnedBackupJson();
+        return;
+      }
+      if(action === 'sync.openRules'){
+        event?.preventDefault();
+        openFirestoreRulesHelp();
+        return;
+      }
+      if(action === 'sync.retryTracks'){
+        event?.preventDefault();
+        retryTracksNow();
+        return;
+      }
+      if(action === 'sync.restoreLibrary'){
+        event?.preventDefault();
+        restoreLastKnownGoodProfile();
+        return;
+      }
+      if(action === 'sync.testFirestore'){
+        event?.preventDefault();
+        testFirestoreAccess();
+        return;
+      }
+      if(action === 'selection.clear'){
+        event?.preventDefault();
+        clearSelection();
+        return;
+      }
+      if(action === 'search.clear'){
+        event?.preventDefault();
+        clearSearch();
+        return;
+      }
+      if(action === 'mixable.disable'){
+        event?.preventDefault();
+        disableMixable();
+        return;
+      }
+      if(action === 'view.profile'){
+        event?.preventDefault();
+        openProfileView();
+        return;
+      }
+      if(action === 'view.exitProfile'){
+        event?.preventDefault();
+        exitProfileViewMode();
+        return;
+      }
+      if(action === 'sort'){
+        event?.preventDefault();
+        const sort = dataset.sort || 'bpm';
+        setSortMode(sort);
+        return;
+      }
+      if(action === 'sandbox.clear'){
+        event?.preventDefault();
+        clearSandbox();
+        return;
+      }
+      if(action === 'sandbox.remove'){
+        event?.preventDefault();
+        const id = dataset.id || '';
+        if(id) removeSandbox(id);
+        return;
+      }
+      if(action === 'audit.filter'){
+        event?.preventDefault();
+        const filter = dataset.filter || '';
+        if(filter) toggleAuditFilter(filter);
+        return;
+      }
+      if(action === 'audit.override'){
+        event?.preventDefault();
+        const kind = dataset.kind || '';
+        const id = dataset.id || '';
+        if(kind && id) openOverrideModal(kind, id);
+        return;
+      }
+      if(action === 'audit.clearOverrides'){
+        event?.preventDefault();
+        const id = dataset.id || '';
+        if(id) clearOverrides(id);
+        return;
+      }
+      if(action === 'override.close'){
+        event?.preventDefault();
+        closeOverrideModal();
+        return;
+      }
+      if(action === 'override.save'){
+        event?.preventDefault();
+        const type = dataset.type || '';
+        const id = dataset.id || '';
+        if(type === 'camelot' && id){
+          setCamelotOverride(id, document.getElementById('camelotSelect')?.value || '');
+        }
+        if(type === 'bpm' && id){
+          setBpmOverride(id, document.getElementById('bpmInput')?.value || '');
+        }
+        closeOverrideModal();
+        return;
+      }
+      if(action === 'genre.pick'){
+        event?.preventDefault();
+        const genre = dataset.genre || '';
+        const songId = dataset.songId || '';
+        if(genre && songId){
+          void setGenreOverride(songId, genre);
+        }
+        const menu = document.getElementById('genreContextMenu');
+        if(menu) menu.remove();
+        return;
+      }
+      if(action === 'admin.toggle'){
+        event?.preventDefault();
+        toggleAdminTools();
+        return;
+      }
+      if(action === 'admin.helpEditor'){
+        event?.preventDefault();
+        openAdminHelpEditor();
+        toggleAdminTools(false);
+        return;
+      }
+      if(action === 'admin.whatsNew'){
+        event?.preventDefault();
+        openAdminWhatsNewEditor();
+        toggleAdminTools(false);
+        return;
+      }
+      if(action === 'admin.audit'){
+        event?.preventDefault();
+        openAuditFromMenu();
+        return;
+      }
+      if(action === 'import.skip'){
+        event?.preventDefault();
+        if(pendingImportContext){
+          pendingImportContext.cleanup?.();
+          pendingImportContext.resolve(null);
+          pendingImportContext = null;
+        }
+        return;
+      }
+      if(action === 'import.confirm'){
+        event?.preventDefault();
+        if(pendingImportContext){
+          const choice = document.getElementById('importProfileSelect')?.value || null;
+          const { profiles, deviceDataAvailable, localOwned, localSet, localGenre } = pendingImportContext;
+          pendingImportContext.cleanup?.();
+          if(choice && profiles?.[choice]){
+            pendingImportContext.resolve(profiles[choice]);
+          } else if(deviceDataAvailable){
+            pendingImportContext.resolve({
+              ownedTracks: localOwned,
+              setlist: localSet,
+              genreOverrides: localGenre
+            });
+          } else {
+            pendingImportContext.resolve(null);
+          }
+          pendingImportContext = null;
+        }
+        return;
+      }
       if(action.startsWith('profile.')){
         event?.preventDefault();
         handleProfileAction(action, el, event);
@@ -8146,7 +8435,7 @@ function render(){
     function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; if(!el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); } if(!sandboxTracks.length && sandboxIds.length){ sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4); } renderSandbox(); }
     function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds)); }
     function addToSandbox(id){ const track=songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)){ alert('Track already in sandbox'); return; } if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); renderSongList(); }
-    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; }
+    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" data-action="sandbox.remove" data-id="${t.id}">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function clearSandbox(){ sandboxTracks=[]; sandboxIds=[]; renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
@@ -9155,9 +9444,8 @@ function render(){
             }, initialUser.uid);
             view = DEFAULT_VIEW;
             setAppBootState(APP_BOOT_STATES.ready);
-            render();
-            setupEventListeners();
-            recordBootStep('READY rendered');
+            showLandingPage();
+            recordBootStep('READY landing');
             void loadAppData({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: false, allowProfileAutoOpen: false });
             const legacyIds = [currentUser?.username, initialUser.email, emailPrefix, initialUser.displayName]
               .filter((value) => value && value !== initialUser.uid);
@@ -9180,9 +9468,8 @@ function render(){
             enforcePostLoginDefaults();
             view = DEFAULT_VIEW;
             setAppBootState(APP_BOOT_STATES.ready);
-            render();
-            setupEventListeners();
-            recordBootStep('READY rendered');
+            showLandingPage();
+            recordBootStep('READY landing');
             void loadAppData({ loadSongs: true, loadProfile: true, preferCache: false, showBootScreen: false, allowProfileAutoOpen: false });
             return;
           }
