@@ -4,7 +4,29 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Epic OAuth Callback</title>
-  <script src="/api/firebase-config"></script>
+  <script>
+    window.firebaseConfig = window.firebaseConfig || null;
+    window.firebaseConfigPromise = fetch('./api/firebase-config?format=json', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`firebase-config fetch failed: ${response.status}`);
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(`firebase-config unexpected content-type: ${contentType || 'unknown'}`);
+        }
+        return response.json();
+      })
+      .then((config) => {
+        window.firebaseConfig = config;
+        return config;
+      })
+      .catch((error) => {
+        console.warn('Firebase config unavailable; continuing without Firebase.', error);
+        window.firebaseConfig = null;
+        return null;
+      });
+  </script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -162,6 +184,9 @@
 
       scrubUrl();
 
+      if (window.firebaseConfigPromise) {
+        await window.firebaseConfigPromise;
+      }
       const firebaseReady = initFirebase();
       const idToken = firebaseReady ? await getIdToken() : null;
 
