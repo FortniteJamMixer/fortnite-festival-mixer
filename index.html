@@ -89,7 +89,7 @@
     .selected-card { border: 2px solid rgba(0,217,255,0.8); box-shadow: 0 0 26px rgba(0,217,255,0.45), 0 0 12px rgba(236,72,153,0.25); }
     #adminToolsBtn { pointer-events: auto; cursor: pointer; }
     .admin-tools-menu { z-index: 6000; pointer-events: auto; position: absolute; }
-    .song-grid { grid-template-columns: 1fr; contain: layout paint; }
+    .song-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); contain: layout paint; }
     .song-card { content-visibility: auto; contain-intrinsic-size: 320px 220px; }
     .reduced-effects .vinyl-spin,
     .reduced-effects .bounce-icon { animation: none !important; }
@@ -217,9 +217,6 @@
     }
     @media (prefers-reduced-motion: reduce) {
       .sticky-cta-bar { transition: none; }
-    }
-    @media (min-width: 768px) {
-      .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     #profileView { position: relative; z-index: 10; }
     .profile-hit-target { min-height: 44px; }
@@ -2195,6 +2192,7 @@ function track(eventName, payload = {}){
     let isOffline = !navigator.onLine;
     let trackSource = 'bundled';
     let catalogTotalCount = 0;
+    let catalogStatus = { state: 'loading', count: 0 };
     const CATALOG_VERSION = 'v1';
     const CATALOG_CACHE_KEY = `ffjm:catalog:${CATALOG_VERSION}`;
     const CATALOG_META_KEY = `ffjm:catalog:meta:${CATALOG_VERSION}`;
@@ -2250,13 +2248,6 @@ function track(eventName, payload = {}){
     const communityStatGraceTimers = {};
     const COMMUNITY_STAT_GRACE_MS = 3000;
     const COMMUNITY_TOTAL_DJS_CACHE_KEY = 'ffmCommunityTotalDjs';
-    const SAMPLE_TRACKS = [
-      { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
-      { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, rawBpm:115, key:'C minor', rawKey:'C', rawMode:'minor', mode:'minor', camelot:'8A', derivedCamelot:'8A', duration:210, albumArt:'', genre:'Rock'},
-      { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, rawBpm:128, key:'D major', rawKey:'D', rawMode:'major', mode:'major', camelot:'10B', derivedCamelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
-      { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, rawBpm:95, key:'G minor', rawKey:'G', rawMode:'minor', mode:'minor', camelot:'9A', derivedCamelot:'9A', duration:190, albumArt:'', genre:'Indie'},
-      { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, rawBpm:142, key:'A minor', rawKey:'A', rawMode:'minor', mode:'minor', camelot:'11A', derivedCamelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
-    ].map(t=>({ ...t, flags: computeTrackFlags ? computeTrackFlags(t) : {} }));
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
     const profileParam = new URLSearchParams(window.location.search).get('profile');
     const viewParam = new URLSearchParams(window.location.search).get('view');
@@ -5802,28 +5793,38 @@ function track(eventName, payload = {}){
     async function loadTrackCatalog(){
       const catalogFetch = async () => {
         try{
-          const res = await fetch('/tracks.catalog.json', { cache: 'no-store' });
+          const res = await fetch('/api/catalog', { cache: 'no-store' });
+          const rawText = await res.text();
           if(!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
-          const payload = await res.json();
+          const trimmed = rawText.trimStart();
+          if(trimmed.startsWith('<')) throw new Error('Catalog response returned HTML');
+          let payload;
+          try{
+            payload = JSON.parse(rawText);
+          }catch(parseErr){
+            throw new Error('Catalog JSON parse failed');
+          }
           const tracks = Array.isArray(payload) ? payload : payload?.tracks;
           if(!Array.isArray(tracks) || !tracks.length){
             throw new Error('Catalog payload missing tracks');
           }
           const normalized = normalizeCatalogTracks(tracks);
           if(!normalized.length) throw new Error('Catalog contained no valid tracks');
-          writeCatalogCache(normalized, { source: 'bundled' });
-          return { tracks: normalized, source: 'bundled' };
+          writeCatalogCache(normalized, { source: 'server' });
+          catalogStatus = { state: 'ok', count: normalized.length };
+          return { tracks: normalized, source: 'server' };
         }catch(err){
-          console.warn('[catalog] bundled fetch failed', err);
+          console.warn('[catalog] server fetch failed', err);
           return null;
         }
       };
-      const bundled = await catalogFetch();
-      if(bundled) return bundled;
+      const serverCatalog = await catalogFetch();
+      if(serverCatalog) return serverCatalog;
       const cached = readCatalogCache();
       if(cached){
         const normalized = normalizeCatalogTracks(cached.tracks);
         if(normalized.length){
+          catalogStatus = { state: 'ok', count: normalized.length };
           return { tracks: normalized, source: 'cache' };
         }
       }
@@ -5838,6 +5839,7 @@ function track(eventName, payload = {}){
       maxMobileCardsRendered = 0;
       logEvent('songs_fetch_start', { online: navigator.onLine });
       trackLoadNotice = '';
+      catalogStatus = { state: 'loading', count: 0 };
       trackLoadState = { status: 'loading', loaded: 0, total: 0, message: 'Loading tracks…' };
       const catalogResult = await loadTrackCatalog();
       if(catalogResult){
@@ -5847,10 +5849,11 @@ function track(eventName, payload = {}){
         logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
         return { songs, usedFallback: false };
       }
-      console.warn('catalog load failed, using fallback sample');
-      trackLoadNotice = `Catalog failed to load. <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="tracks.retry">Retry</button>`;
-      applySongsSnapshot(SAMPLE_TRACKS, { source: 'sample', notice: trackLoadNotice, catalogTotal: catalogTotalCount || SAMPLE_TRACKS.length });
-      logEvent('songs_fetch_fail', { message: 'catalog miss; using fallback' });
+      console.warn('catalog load failed');
+      catalogStatus = { state: 'error', count: 0 };
+      trackLoadNotice = `Catalog failed (server) — demo disabled <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="tracks.retry">Retry</button>`;
+      applySongsSnapshot([], { source: 'unavailable', notice: trackLoadNotice, catalogTotal: 0 });
+      logEvent('songs_fetch_fail', { message: 'catalog miss; demo disabled' });
       return { songs, usedFallback: true };
     }
 
@@ -6456,7 +6459,7 @@ function track(eventName, payload = {}){
       const loadingBlock = trackLoadState.status === 'loading' && !songs.length
         ? `<div class="space-y-3">
             <div class="inline-banner">Loading tracks… <span id="trackLoadProgress">${trackLoadState.total ? `Loaded ${trackLoadState.loaded}/${trackLoadState.total}` : ''}</span></div>
-            <div class="song-grid grid gap-4">${loadingSkeleton}</div>
+            <div class="song-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${loadingSkeleton}</div>
           </div>`
         : '';
       const refreshBanner = trackLoadState.status === 'refreshing'
@@ -6477,8 +6480,8 @@ function track(eventName, payload = {}){
         : '';
       const matchHint = matchHintMessage ? `<div class="inline-banner">${matchHintMessage}</div>` : '';
       const listContent = loadingBlock || (scored.length
-        ? `<div id="mainPaginationTop"></div>${refreshBanner}${trackLoadNotice ? `<div class="inline-banner">${trackLoadNotice}</div>` : ''}${emptyOwnedCallout}${matchHint}<div class="song-grid grid gap-4">${cardGrid}</div>${mobileControls}<div id="mainPaginationBottom"></div>`
-        : `<div class="panel p-6 text-center text-gray-300 space-y-3"><div>No songs match your filters yet.</div><button data-action="clearFilters" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-sm text-white">Clear filters</button></div>`);
+        ? `<div id="mainPaginationTop"></div>${refreshBanner}${trackLoadNotice ? `<div class="inline-banner">${trackLoadNotice}</div>` : ''}${emptyOwnedCallout}${matchHint}<div class="song-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${cardGrid}</div>${mobileControls}<div id="mainPaginationBottom"></div>`
+        : `${trackLoadNotice ? `<div class="inline-banner">${trackLoadNotice}</div>` : ''}<div class="panel p-6 text-center text-gray-300 space-y-3"><div>No songs match your filters yet.</div><button data-action="clearFilters" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-sm text-white">Clear filters</button></div>`);
 
       songListEl.innerHTML = priorityHeader + listContent;
       if(scored.length && !isMobile){
@@ -6615,7 +6618,7 @@ function track(eventName, payload = {}){
         ? '<div class="text-xs text-red-200/80">Danger Zone actions are disabled while viewing a bandmate profile.</div>'
         : '';
       const fallbackBanner = boot.usedFallbackSongs
-        ? '<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Track list failed to load — using fallback list</div>'
+        ? '<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Track list failed to load — retry the catalog in Browse.</div>'
         : '';
       const guestBanner = (!viewOnly && isGuest)
         ? `<div class="panel border border-purple-400/40 bg-purple-500/10 text-purple-100 text-sm flex items-center justify-between gap-3 flex-wrap">
@@ -6979,7 +6982,7 @@ function setAppBootState(state, { error } = {}){
 
 function maybeShowRecoveryBanner(){
   const reasons = [];
-  if(boot.usedFallbackSongs) reasons.push('Tracks restored from cache/fallback.');
+  if(boot.usedFallbackSongs) reasons.push('Tracks loaded from cache or require retry.');
   if(boot.usedSnapshotProfile) reasons.push('Library restored from snapshot.');
   if(writeFenceBlockedSave) reasons.push('Save paused to protect your library. Click Restore if needed.');
   recoveryBannerState = {
@@ -7131,14 +7134,25 @@ function render(){
     ? `<span class="${ownedLibraryBadgeClass}">${ownedLibraryStatusMessage}</span>`
     : '';
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
-  const trackSourceLabel = trackSource === 'bundled'
-    ? 'Bundled catalog'
+  const trackSourceLabel = trackSource === 'server'
+    ? 'Live catalog'
     : trackSource === 'cache'
       ? 'Cached catalog'
-      : trackSource === 'sample'
-        ? 'Sample tracks'
+      : trackSource === 'bundled'
+        ? 'Bundled catalog'
         : 'Tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
+  const catalogStatusLabel = catalogStatus.state === 'loading'
+    ? 'Catalog: Loading…'
+    : catalogStatus.state === 'ok'
+      ? `Catalog: OK (${catalogStatus.count || catalogTotalCount || songs.length || '—'})`
+      : 'Catalog: ERROR';
+  const catalogStatusClass = catalogStatus.state === 'ok'
+    ? 'bg-emerald-600/20 border-emerald-300/40 text-emerald-100'
+    : catalogStatus.state === 'error'
+      ? 'bg-red-600/20 border-red-300/40 text-red-100'
+      : 'bg-slate-500/20 border-slate-300/40 text-slate-100';
+  const catalogStatusBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${catalogStatusClass}">📚 ${catalogStatusLabel}</span>`;
   const ownedSyncPhase = ownedLibraryState?.phase || 'idle';
   const ownedSyncError = ownedSyncPhase === 'error';
   const ownedSyncSaving = ownedSyncPhase === 'saving';
@@ -7257,6 +7271,7 @@ function render(){
               <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">${getHeaderTrackCountLabel()}</p>
               ${ownedLibraryBadge}
               ${networkBadge}
+              ${catalogStatusBadge}
               ${trackSourceBadge}
               ${cloudSyncBadge}
               <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
@@ -7280,6 +7295,7 @@ function render(){
         </div>
         <div class="flex items-center gap-2 flex-wrap text-sm text-cyan-100">
           ${networkBadge}
+          ${catalogStatusBadge}
           ${trackSourceBadge}
           ${cloudSyncBadge}
           <span class="text-xs text-gray-300">${isLocalOnly ? 'Local Only — sync paused' : (isOffline ? 'Offline — sync paused' : 'Cloud Sync active.')}</span>
