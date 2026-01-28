@@ -89,7 +89,12 @@
     .selected-card { border: 2px solid rgba(0,217,255,0.8); box-shadow: 0 0 26px rgba(0,217,255,0.45), 0 0 12px rgba(236,72,153,0.25); }
     #adminToolsBtn { pointer-events: auto; cursor: pointer; }
     .admin-tools-menu { z-index: 6000; pointer-events: auto; position: absolute; }
-    .song-grid { grid-template-columns: 1fr; contain: layout paint; }
+    .song-grid {
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      width: 100%;
+      align-items: stretch;
+      contain: layout paint;
+    }
     .song-card { content-visibility: auto; contain-intrinsic-size: 320px 220px; }
     .reduced-effects .vinyl-spin,
     .reduced-effects .bounce-icon { animation: none !important; }
@@ -219,7 +224,7 @@
       .sticky-cta-bar { transition: none; }
     }
     @media (min-width: 768px) {
-      .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .song-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
     }
     #profileView { position: relative; z-index: 10; }
     .profile-hit-target { min-height: 44px; }
@@ -2194,10 +2199,14 @@ function track(eventName, payload = {}){
     let adminMenuListenersBound = false;
     let isOffline = !navigator.onLine;
     let trackSource = 'bundled';
+    let catalogSource = 'bundled';
+    let catalogError = null;
+    let catalogEndpoint = null;
     let catalogTotalCount = 0;
-    const CATALOG_VERSION = 'v1';
+    const CATALOG_VERSION = 'v2';
     const CATALOG_CACHE_KEY = `ffjm:catalog:${CATALOG_VERSION}`;
     const CATALOG_META_KEY = `ffjm:catalog:meta:${CATALOG_VERSION}`;
+    const CATALOG_API_TIMEOUT_MS = 9000;
     const boot = {
       phase: 'init',
       profileLoaded: false,
@@ -2602,7 +2611,7 @@ function track(eventName, payload = {}){
         signedIn: !!user,
         firebaseReady: firebaseEnabled && !!firestore,
         online: navigator.onLine,
-        catalogSource: trackSource,
+        catalogSource,
         catalogCount: catalogTotalCount || songs.length,
         syncState: syncState.state,
         syncMessage: syncState.message,
@@ -2887,7 +2896,7 @@ function track(eventName, payload = {}){
     function getOwnedCountInSongs(list){
       const ids = normalizeOwnedList(list || []);
       if(!ids.length || !songs.length) return 0;
-      const songIdSet = new Set(songs.map(song => song.id));
+      const songIdSet = new Set(Object.keys(songsById));
       return ids.filter(id => songIdSet.has(id)).length;
     }
 
@@ -5717,12 +5726,15 @@ function track(eventName, payload = {}){
     }
 
     // -------------------- Songs loading -----------------------
-    function applySongsSnapshot(nextSongs, { source = 'bundled', notice = '', catalogTotal } = {}){
+    function applySongsSnapshot(nextSongs, { source = 'bundled', notice = '', catalogTotal, catalogError: nextCatalogError = null, catalogEndpoint: nextCatalogEndpoint = null } = {}){
       songs = nextSongs;
       songs.forEach(hydrateKeyInfo);
       songsById = Object.fromEntries(songs.map(s => [s.id, s]));
       refreshRegressionWarnings();
       trackSource = source;
+      catalogSource = source === 'fallback' ? 'fallback' : source;
+      catalogError = nextCatalogError;
+      catalogEndpoint = nextCatalogEndpoint;
       songsLoaded = true;
       trackLoadNotice = notice;
       trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
@@ -5747,9 +5759,9 @@ function track(eventName, payload = {}){
       }
     }
 
-    function writeCatalogCache(tracks, { source = 'bundled' } = {}){
+    function writeCatalogCache(tracks, { source = 'bundled', endpoint = null } = {}){
       try{
-        const meta = { version: CATALOG_VERSION, count: tracks.length, source, storedAt: new Date().toISOString() };
+        const meta = { version: CATALOG_VERSION, count: tracks.length, source, endpoint, storedAt: new Date().toISOString() };
         localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ version: CATALOG_VERSION, tracks, meta }));
         localStorage.setItem(CATALOG_META_KEY, JSON.stringify(meta));
         return meta;
@@ -5799,10 +5811,119 @@ function track(eventName, payload = {}){
       return (tracks || []).map(normalizeCatalogTrack).filter(Boolean).filter(track => track.bpm > 0);
     }
 
+    function extractTracksFromPayload(payload){
+      if(!payload) return null;
+      if(Array.isArray(payload)) return payload;
+      const directCandidates = [
+        payload.tracks,
+        payload.trackList,
+        payload.items,
+        payload.data?.tracks,
+        payload.data?.trackList,
+        payload.data?.items,
+        payload.data?.catalog?.tracks,
+        payload.data?.catalog?.items,
+        payload.data?.jamTracks,
+        payload.data?.sparkTracks,
+        payload.jamTracks,
+        payload.sparkTracks
+      ];
+      const direct = directCandidates.find(candidate => Array.isArray(candidate) && candidate.length);
+      if(direct) return direct;
+      const visited = new Set();
+      const queue = [payload];
+      const looksLikeTrack = (entry)=>{
+        if(!entry || typeof entry !== 'object') return false;
+        const id = entry.id || entry.trackId || entry.trackID;
+        const title = entry.title || entry.tt || entry.name;
+        const artist = entry.artist || entry.an || entry.creator || entry.author;
+        return Boolean(id && (title || artist));
+      };
+      while(queue.length){
+        const node = queue.shift();
+        if(!node || typeof node !== 'object') continue;
+        if(visited.has(node)) continue;
+        visited.add(node);
+        if(Array.isArray(node)){
+          const matches = node.filter(looksLikeTrack);
+          if(matches.length >= Math.min(5, node.length)){
+            return node;
+          }
+          queue.push(...node);
+        } else {
+          Object.values(node).forEach((value)=>{
+            if(value && typeof value === 'object'){
+              queue.push(value);
+            }
+          });
+        }
+      }
+      return null;
+    }
+
+    async function fetchCatalogFromEndpoints(){
+      const epicEndpoint = 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks';
+      const endpoints = [
+        { id: 'epic', url: epicEndpoint },
+        { id: 'proxy-1', url: `https://corsproxy.io/?${encodeURIComponent(epicEndpoint)}` },
+        { id: 'proxy-2', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(epicEndpoint)}` }
+      ];
+      let lastError = null;
+      for(const endpoint of endpoints){
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), CATALOG_API_TIMEOUT_MS);
+        try{
+          const res = await fetch(endpoint.url, { cache: 'no-store', signal: controller.signal });
+          if(!res.ok) throw new Error(`HTTP ${res.status}`);
+          const contentType = res.headers.get('content-type') || '';
+          const rawText = await res.text();
+          let payload;
+          try{
+            payload = JSON.parse(rawText);
+          }catch(err){
+            throw new Error(`Invalid JSON (${contentType || 'unknown content-type'})`);
+          }
+          const tracks = extractTracksFromPayload(payload);
+          if(!Array.isArray(tracks) || !tracks.length){
+            throw new Error('Catalog payload missing tracks');
+          }
+          const normalized = normalizeCatalogTracks(tracks);
+          if(normalized.length < 10){
+            throw new Error('Catalog contained too few valid tracks');
+          }
+          writeCatalogCache(normalized, { source: 'api', endpoint: endpoint.id });
+          console.info(`[catalog] source=api count=${normalized.length} endpoint=${endpoint.id}`);
+          return { tracks: normalized, source: 'api', endpoint: endpoint.id };
+        }catch(err){
+          lastError = err;
+          if(err?.name === 'AbortError'){
+            console.warn(`[catalog] api timeout endpoint=${endpoint.id}`);
+          } else {
+            console.warn(`[catalog] api failed endpoint=${endpoint.id}`, err);
+          }
+        }finally{
+          clearTimeout(timeoutId);
+        }
+      }
+      return { tracks: null, error: lastError };
+    }
+
     async function loadTrackCatalog(){
+      const apiResult = await fetchCatalogFromEndpoints();
+      if(apiResult?.tracks?.length){
+        return { tracks: apiResult.tracks, source: 'api', endpoint: apiResult.endpoint, error: null };
+      }
+      const cached = readCatalogCache();
+      if(cached){
+        const normalized = normalizeCatalogTracks(cached.tracks);
+        if(normalized.length){
+          console.warn('[catalog] api failed; using cached catalog');
+          return { tracks: normalized, source: 'cache', endpoint: cached.meta?.endpoint || null, error: apiResult?.error?.message || null };
+        }
+      }
       const catalogFetch = async () => {
         try{
-          const res = await fetch('/tracks.catalog.json', { cache: 'no-store' });
+          const res = await fetch('/spark-tracks-snapshot.json', { cache: 'no-store' });
           if(!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
           const payload = await res.json();
           const tracks = Array.isArray(payload) ? payload : payload?.tracks;
@@ -5819,13 +5940,12 @@ function track(eventName, payload = {}){
         }
       };
       const bundled = await catalogFetch();
-      if(bundled) return bundled;
-      const cached = readCatalogCache();
-      if(cached){
-        const normalized = normalizeCatalogTracks(cached.tracks);
-        if(normalized.length){
-          return { tracks: normalized, source: 'cache' };
-        }
+      if(bundled){
+        console.warn('[catalog] api failed; using bundled catalog');
+        return { ...bundled, error: apiResult?.error?.message || null };
+      }
+      if(apiResult?.error){
+        console.warn('[catalog] api failed; using fallback sample');
       }
       return null;
     }
@@ -5842,14 +5962,20 @@ function track(eventName, payload = {}){
       const catalogResult = await loadTrackCatalog();
       if(catalogResult){
         const nextSongs = catalogResult.tracks.slice().sort((a,b)=>a.title.localeCompare(b.title));
-        applySongsSnapshot(nextSongs, { source: catalogResult.source, notice: '', catalogTotal: nextSongs.length });
+        applySongsSnapshot(nextSongs, {
+          source: catalogResult.source,
+          notice: '',
+          catalogTotal: nextSongs.length,
+          catalogError: catalogResult.error || null,
+          catalogEndpoint: catalogResult.endpoint || null
+        });
         if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
         logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
         return { songs, usedFallback: false };
       }
       console.warn('catalog load failed, using fallback sample');
       trackLoadNotice = `Catalog failed to load. <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" data-action="tracks.retry">Retry</button>`;
-      applySongsSnapshot(SAMPLE_TRACKS, { source: 'sample', notice: trackLoadNotice, catalogTotal: catalogTotalCount || SAMPLE_TRACKS.length });
+      applySongsSnapshot(SAMPLE_TRACKS, { source: 'fallback', notice: trackLoadNotice, catalogTotal: catalogTotalCount || SAMPLE_TRACKS.length, catalogError: 'Bundled catalog missing or invalid' });
       logEvent('songs_fetch_fail', { message: 'catalog miss; using fallback' });
       return { songs, usedFallback: true };
     }
@@ -7131,14 +7257,18 @@ function render(){
     ? `<span class="${ownedLibraryBadgeClass}">${ownedLibraryStatusMessage}</span>`
     : '';
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
-  const trackSourceLabel = trackSource === 'bundled'
-    ? 'Bundled catalog'
-    : trackSource === 'cache'
-      ? 'Cached catalog'
-      : trackSource === 'sample'
-        ? 'Sample tracks'
-        : 'Tracks';
-  const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
+  const catalogSourceLabel = catalogSource === 'api'
+    ? 'Catalog: API'
+    : catalogSource === 'cache'
+      ? 'Catalog: Cached'
+      : catalogSource === 'bundled'
+        ? 'Catalog: Bundled'
+        : 'Catalog: Fallback';
+  const catalogErrorSuffix = catalogError ? ' (API failed)' : '';
+  const catalogBadgeTitle = catalogError
+    ? `API failed: ${catalogError}`
+    : `${catalogSourceLabel}`;
+  const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100" title="${escapeHtml(catalogBadgeTitle)}">📚 ${catalogSourceLabel}${catalogErrorSuffix}</span>`;
   const ownedSyncPhase = ownedLibraryState?.phase || 'idle';
   const ownedSyncError = ownedSyncPhase === 'error';
   const ownedSyncSaving = ownedSyncPhase === 'saving';
@@ -7291,7 +7421,7 @@ function render(){
         ${regressionBanner}
         <div id="browserView" style="display:${view==='browse'?'block':'none'}">
           <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
-            <div class="space-y-4">
+            <div class="space-y-4 min-w-0">
               <div class="panel space-y-2 dim-when-sticky">
                 <div class="flex items-center justify-between">
                   <div class="font-bold text-white">Controls</div>
@@ -7383,7 +7513,7 @@ function render(){
                 <div class="text-xl font-bold text-white">Song Browser</div>
                 <div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>
               </div>
-              <div id="songList" class="space-y-4"></div>
+              <div id="songList" class="space-y-4 w-full"></div>
             </div>
           </div>
         </div>
