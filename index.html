@@ -6,23 +6,45 @@
   <meta name="theme-color" content="#0f1020" />
   <title>Fortnite Jam Mixer – Cross-Browser Edition</title>
   <meta name="description" content="Fortnite Jam Mixer helps you build harmonious Fortnite Festival mashups with Camelot, BPM, and setlist tools." />
-  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="manifest" href="./manifest.webmanifest" />
   <script>document.documentElement.classList.add('tw-offline');</script>
-  <link rel="stylesheet" href="/offline.css" />
+  <link rel="stylesheet" href="./offline.css" />
   <script src="https://cdn.tailwindcss.com" onload="document.documentElement.classList.remove('tw-offline');" onerror="console.warn('Tailwind CDN unavailable; using offline fallback.');"></script>
 
   <!-- Firebase config injected from Vercel (serverless /api/firebase-config) -->
-  <script src="/api/firebase-config"></script>
+  <script>
+    window.firebaseConfig = window.firebaseConfig || null;
+    window.firebaseConfigPromise = fetch('./api/firebase-config?format=json', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`firebase-config fetch failed: ${response.status}`);
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(`firebase-config unexpected content-type: ${contentType || 'unknown'}`);
+        }
+        return response.json();
+      })
+      .then((config) => {
+        window.firebaseConfig = config;
+        return config;
+      })
+      .catch((error) => {
+        console.warn('Firebase config unavailable; continuing without Firebase.', error);
+        window.firebaseConfig = null;
+        return null;
+      });
+  </script>
 
   <!-- Optional Firebase SDKs (compat). Enable only if you use Firebase. -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-  <script src="/constants/appMeta.js"></script>
-  <script src="/services/configService.js"></script>
-  <script type="module" src="/services/profileStore.js"></script>
-  <script type="module" src="/services/ownedLibraryStore.js"></script>
+  <script src="./constants/appMeta.js"></script>
+  <script src="./services/configService.js"></script>
+  <script type="module" src="./services/profileStore.js"></script>
+  <script type="module" src="./services/ownedLibraryStore.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -599,6 +621,7 @@
   </div>
 
   <script>
+    console.log("✅ JS PARSED — BOOT START");
     window.__BOOT__ = window.__BOOT__ || { startedAt: Date.now(), steps: [], lastError: null };
     function pushBootStep(step){
       const entry = { step, at: new Date().toISOString() };
@@ -632,27 +655,52 @@
         return;
       }
       const steps = window.__BOOT__?.steps || [];
-      const lastSteps = steps.slice(-5).map((entry) => `<div class="text-xs text-cyan-100/90">${entry.step} <span class="text-gray-400">${entry.at}</span></div>`).join('') || '<div class="text-xs text-gray-400">No boot steps recorded.</div>';
+      const lastSteps = steps.slice(-5).map((entry) => `${entry.step} ${entry.at}`).join(' • ');
       document.getElementById('app').innerHTML = `
-        <div class="min-h-screen flex items-center justify-center bg-black text-white">
-          <div class="max-w-md text-center space-y-4 bg-black/60 border border-red-500/40 rounded-2xl p-6">
-            <div class="text-xl font-bold text-red-200">Something went wrong while loading.</div>
-            <div class="text-sm text-gray-200">${message}</div>
-            <div class="space-y-2 text-left">${lastSteps}</div>
-            <div class="flex items-center justify-center gap-3">
-              <button data-action="boot.retry" class="px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-cyan-500 text-white font-bold">Retry</button>
-              <button data-action="boot.copy" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white">Copy Debug</button>
-            </div>
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center">
+          <div>
+            <div style="font-size:42px;margin-bottom:12px">⚠️</div>
+            <div style="font-size:20px;font-weight:800;margin-bottom:8px;color:#fff">Jam Mixer failed to start</div>
+            <div style="opacity:.8;margin-bottom:16px;color:#cfefff">Open Console for details.</div>
+            <div style="font-size:12px;opacity:.7;margin-bottom:16px;color:#cfefff">${message}</div>
+            ${lastSteps ? `<div style="font-size:11px;opacity:.55;margin-bottom:16px;color:#cfefff">${lastSteps}</div>` : ''}
+            <button onclick="location.reload()" style="padding:10px 14px;border-radius:10px;border:1px solid rgba(0,217,255,.3);background:rgba(255,255,255,.08);color:#e9f7ff;font-weight:700;cursor:pointer">
+              Reload
+            </button>
           </div>
         </div>
       `;
     }
-    window.onerror = function(message, source, lineno, colno, error){
-      showFatalBootError(error || message);
-    };
-    window.onunhandledrejection = function(event){
+    window.addEventListener("error", (event) => {
+      console.error("BOOT ERROR:", event?.message || event);
+      showFatalBootError(event?.error || event?.message || event);
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      console.error("BOOT PROMISE ERROR:", event?.reason || event);
       showFatalBootError(event?.reason || event);
-    };
+    });
+    setTimeout(() => {
+      const parsedOk = true;
+      const appStillLoading = document.body?.innerText?.includes("Loading Fortnite Jam Mixer");
+      if (parsedOk && appStillLoading) {
+        console.error("BOOT TIMEOUT: app stuck in loading state");
+        const appRoot = document.getElementById("app");
+        if (appRoot) {
+          appRoot.innerHTML = `
+            <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center">
+              <div>
+                <div style="font-size:42px;margin-bottom:12px">⏱️</div>
+                <div style="font-size:20px;font-weight:800;margin-bottom:8px;color:#fff">Startup timeout</div>
+                <div style="opacity:.8;margin-bottom:16px;color:#cfefff">The app didn’t finish initializing.</div>
+                <button onclick="location.reload()" style="padding:10px 14px;border-radius:10px;border:1px solid rgba(0,217,255,.3);background:rgba(255,255,255,.08);color:#e9f7ff;font-weight:700;cursor:pointer">
+                  Reload
+                </button>
+              </div>
+            </div>
+          `;
+        }
+      }
+    }, 3000);
 
     /**************************************************************************
      * Final merged app
