@@ -7211,7 +7211,6 @@ function render(){
         <button id="panelClearSearchBtn" data-action="search.clear" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
         <button id="panelDisableMixableBtn" data-action="mixable.disable" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
       </div>`;
-    </div>`;
   const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
   const signedInUid = firebaseAuth?.currentUser?.uid || currentUser?.uid || '';
   const signedInShortUid = signedInUid ? signedInUid.slice(0, 8) : '';
