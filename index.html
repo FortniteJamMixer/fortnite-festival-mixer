@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f1020" />
   <title>Fortnite Jam Mixer – Cross-Browser Edition</title>
   <meta name="description" content="Fortnite Jam Mixer helps you build harmonious Fortnite Festival mashups with Camelot, BPM, and setlist tools." />
-  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <script>document.documentElement.classList.add('tw-offline');</script>
   <link rel="stylesheet" href="./offline.css" />
   <script src="https://cdn.tailwindcss.com" onload="document.documentElement.classList.remove('tw-offline');" onerror="console.warn('Tailwind CDN unavailable; using offline fallback.');"></script>
@@ -5893,7 +5893,6 @@ function track(eventName, payload = {}){
     async function fetchCatalogFromEndpoints(){
       const epicEndpoint = 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks';
       const endpoints = [
-        { id: 'epic', url: epicEndpoint },
         { id: 'proxy-local', url: '/api/catalog' },
         { id: 'proxy-1', url: `https://corsproxy.io/?${encodeURIComponent(epicEndpoint)}` },
         { id: 'proxy-2', url: `https://api.allorigins.win/raw?url=${encodeURIComponent(epicEndpoint)}` }
