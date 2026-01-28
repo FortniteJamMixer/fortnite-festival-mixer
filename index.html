@@ -5790,6 +5790,48 @@ function track(eventName, payload = {}){
       return (tracks || []).map(normalizeCatalogTrack).filter(Boolean).filter(track => track.bpm > 0);
     }
 
+    function extractCatalogTracks(payload){
+      const seen = new Set();
+      const stack = [payload];
+      while(stack.length){
+        const current = stack.pop();
+        if(!current || typeof current !== 'object') continue;
+        if(seen.has(current)) continue;
+        seen.add(current);
+        if(Array.isArray(current)){
+          const trackLike = current.filter(entry=>{
+            if(!entry || typeof entry !== 'object') return false;
+            const id = entry.id || entry.trackId || entry.trackID;
+            const title = entry.title || entry.tt;
+            const artist = entry.artist || entry.an;
+            return Boolean(id && title && artist);
+          });
+          if(trackLike.length){
+            return current;
+          }
+          continue;
+        }
+        const values = Object.values(current);
+        for(const value of values){
+          if(Array.isArray(value)){
+            const trackLike = value.filter(entry=>{
+              if(!entry || typeof entry !== 'object') return false;
+              const id = entry.id || entry.trackId || entry.trackID;
+              const title = entry.title || entry.tt;
+              const artist = entry.artist || entry.an;
+              return Boolean(id && title && artist);
+            });
+            if(trackLike.length){
+              return value;
+            }
+          } else if(value && typeof value === 'object') {
+            stack.push(value);
+          }
+        }
+      }
+      return null;
+    }
+
     async function loadTrackCatalog(){
       const catalogFetch = async () => {
         try{
@@ -5804,7 +5846,7 @@ function track(eventName, payload = {}){
           }catch(parseErr){
             throw new Error('Catalog JSON parse failed');
           }
-          const tracks = Array.isArray(payload) ? payload : payload?.tracks;
+          const tracks = extractCatalogTracks(payload);
           if(!Array.isArray(tracks) || !tracks.length){
             throw new Error('Catalog payload missing tracks');
           }
