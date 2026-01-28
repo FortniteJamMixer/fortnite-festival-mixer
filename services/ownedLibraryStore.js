@@ -244,21 +244,19 @@ const createOwnedLibraryStore = ({
     return chained;
   };
 
-  const scheduleLocalSave = (reason) => {
+  const persistLocalImmediate = (reason) => {
     clearTimeout(localTimer);
-    localTimer = setTimeout(() => {
-      const snapshot = persistLocal(reason);
-      if (!isSaving && !pendingCloudWrite) {
-        updateStatus({
-          phase: 'ready',
-          source: getOnline() ? 'local' : 'device',
-          message: getOnline() ? 'Synced ✅' : 'Offline — sync paused'
-        });
-      }
-      if (snapshot) {
-        recordSyncEvent({ type: 'local_save', reason, count: snapshot.trackIds.length });
-      }
-    }, localDebounceMs);
+    const snapshot = persistLocal(reason);
+    if (!isSaving && !pendingCloudWrite) {
+      updateStatus({
+        phase: 'ready',
+        source: getOnline() ? 'local' : 'device',
+        message: getOnline() ? 'Synced ✅' : 'Offline — sync paused'
+      });
+    }
+    if (snapshot) {
+      recordSyncEvent({ type: 'local_save', reason, count: snapshot.trackIds.length });
+    }
   };
 
   const scheduleCloudSave = (reason) => {
@@ -276,7 +274,7 @@ const createOwnedLibraryStore = ({
     libraryVersion += 1;
     markDirty();
     emitSnapshot();
-    scheduleLocalSave(reason);
+    persistLocalImmediate(reason);
     scheduleCloudSave(reason);
     if (next.length === 0 && !allowEmpty && reason !== 'explicit_clear') {
       pendingCloudWrite = { reason, allowEmpty: false };
