@@ -1,5 +1,5 @@
-const DEFAULT_LOCAL_DEBOUNCE_MS = 250;
-const DEFAULT_CLOUD_DEBOUNCE_MS = 400;
+const DEFAULT_LOCAL_DEBOUNCE_MS = 150;
+const DEFAULT_CLOUD_DEBOUNCE_MS = 900;
 const DEFAULT_SYNC_TIMEOUT_MS = 10000;
 const DEFAULT_LOCAL_BACKUP_INTERVAL_MS = 60000;
 
@@ -73,7 +73,6 @@ const createOwnedLibraryStore = ({
   let cloudTimer = null;
   let status = { phase: 'idle', source: 'none', message: '', errorCode: null, errorStep: null, updatedAt: null };
   let lastKnownRemoteCount = 0;
-  let lastKnownRemoteIds = new Set();
   let libraryVersion = 0;
   let lastLocalBackupAt = null;
 
@@ -98,15 +97,14 @@ const createOwnedLibraryStore = ({
 
   const recordSyncError = (err, step, message) => {
     const code = err?.code || err?.errorCode || 'sync_error';
-    const resolvedMessage = message || err?.message || 'Sync failed — Retry.';
     updateStatus({
       phase: 'error',
       source: getOnline() ? 'cloud' : 'device',
-      message: resolvedMessage,
+      message: message || 'Sync failed — Retry.',
       errorCode: code,
       errorStep: step || err?.step || null
     });
-    recordSyncEvent({ type: 'error', code, step: step || err?.step, message: resolvedMessage });
+    recordSyncEvent({ type: 'error', code, step: step || err?.step, message: err?.message || message });
   };
 
   const emitSnapshot = () => {
@@ -168,11 +166,9 @@ const createOwnedLibraryStore = ({
       pendingCloudWrite = { reason, allowEmpty: false };
       return null;
     }
-    const removedTrackIds = Array.from(lastKnownRemoteIds).filter((id) => !trackIds.has(id));
     const snapshot = normalizeSnapshotWithFallback(normalizeSnapshot, ids, new Date().toISOString(), { reason }, libraryVersion);
-    await withTimeout(Promise.resolve(writeCloud(uid, { ...snapshot, removedTrackIds })), { step: 'savingRemote' });
+    await withTimeout(Promise.resolve(writeCloud(uid, snapshot)), { step: 'savingRemote' });
     lastKnownRemoteCount = ids.length;
-    lastKnownRemoteIds = new Set(ids);
     if (typeof writeLastSyncAt === 'function') {
       writeLastSyncAt(uid, Date.now());
     }
@@ -210,7 +206,7 @@ const createOwnedLibraryStore = ({
       const offline = !getOnline();
       const cloudPaused = !getCloudEnabled();
       if (offline) {
-        updateStatus({ phase: 'ready', source: 'device', message: 'Offline — sync paused' });
+        updateStatus({ phase: 'ready', source: 'device', message: 'Offline — Cloud Sync unavailable.' });
       } else if (cloudPaused) {
         updateStatus({ phase: 'ready', source: 'local', message: 'Sync paused' });
       } else {
@@ -242,7 +238,7 @@ const createOwnedLibraryStore = ({
         updateStatus({
           phase: 'ready',
           source: getOnline() ? 'local' : 'device',
-          message: getOnline() ? 'Synced ✅' : 'Offline — sync paused'
+          message: getOnline() ? 'Synced ✅' : 'Offline — Cloud Sync unavailable.'
         });
       }
       if (snapshot) {
@@ -292,7 +288,6 @@ const createOwnedLibraryStore = ({
     dirtySince = null;
     pendingCloudWrite = null;
     lastKnownRemoteCount = 0;
-    lastKnownRemoteIds = new Set();
     libraryVersion = 0;
     lastLocalBackupAt = null;
     isBooting = true;
@@ -318,7 +313,6 @@ const createOwnedLibraryStore = ({
 
     if (localSnapshot?.trackIds?.length) {
       trackIds = new Set(localSnapshot.trackIds);
-      lastKnownRemoteIds = new Set(localSnapshot.trackIds);
       emitSnapshot();
       updateStatus({ phase: 'syncing', source: 'cache', message: 'Syncing library…' });
     }
@@ -333,7 +327,7 @@ const createOwnedLibraryStore = ({
       updateStatus({
         phase: 'ready',
         source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
-        message: offline ? 'Offline — sync paused' : cloudPaused ? 'Sync paused' : 'Synced ✅'
+        message: offline ? 'Offline — Cloud Sync unavailable.' : cloudPaused ? 'Sync paused' : 'Synced ✅'
       });
       return emitSnapshot();
     }
@@ -348,9 +342,6 @@ const createOwnedLibraryStore = ({
       if (cloudSnapshot) {
         if (cloudSnapshot.trackIds?.length) {
           lastKnownRemoteCount = cloudSnapshot.trackIds.length;
-        }
-        if (cloudSnapshot.trackIds?.length) {
-          lastKnownRemoteIds = new Set(cloudSnapshot.trackIds);
         }
         libraryVersion = Math.max(libraryVersion, cloudSnapshot.libraryVersion || 0);
       }
@@ -374,7 +365,6 @@ const createOwnedLibraryStore = ({
       if ((plan?.shouldSeedCloud || plan?.shouldWriteCloud) && plan?.chosen?.trackIds?.length) {
         await withTimeout(Promise.resolve(writeCloud(uid, plan.chosen)), { step: 'savingRemote' });
         lastKnownRemoteCount = plan.chosen.trackIds.length;
-        lastKnownRemoteIds = new Set(plan.chosen.trackIds);
         if (typeof writeLastSyncAt === 'function') {
           writeLastSyncAt(uid, Date.now());
         }
@@ -398,7 +388,7 @@ const createOwnedLibraryStore = ({
         updateStatus({
           phase: 'ready',
           source: plan?.source || 'local',
-          message: getOnline() ? 'Synced ✅' : 'Offline — sync paused'
+          message: getOnline() ? 'Synced ✅' : 'Offline — Cloud Sync unavailable.'
         });
       }
       const shouldRetry =
@@ -439,10 +429,6 @@ const createOwnedLibraryStore = ({
     setOwnedList: (ids, reason = 'update', { allowEmpty = false } = {}) => (
       setTrackIds(ids, { reason, allowEmpty })
     ),
-    queueSaveOwned: (reason = 'update') => {
-      scheduleCloudSave(reason);
-      return savePromise || Promise.resolve();
-    },
     setManyOwned: (ids, owned, reason = 'update') => {
       const base = new Set(trackIds);
       (Array.isArray(ids) ? ids : []).forEach((id) => {
