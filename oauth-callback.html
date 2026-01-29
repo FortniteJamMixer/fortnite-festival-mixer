@@ -23,7 +23,7 @@
     const statusMessage = document.getElementById('statusMessage');
     const statusBox = document.getElementById('statusBox');
     const returnButton = document.getElementById('returnButton');
-    const redirectTarget = '/';
+    const redirectTarget = '/?view=profile';
 
     let firebaseApp = null;
     let firebaseAuth = null;
@@ -149,7 +149,7 @@
         // Cosmetic hint only; ignore failures.
       }
 
-      updateStatus('Epic account linked!', 'You will be returned to the app shortly. Update your profile anytime from the Profile button.');
+      updateStatus('Epic account linked!', 'You will be returned to your profile shortly.');
       setTimeout(() => { window.location.href = redirectTarget; }, 1200);
       return true;
     }
