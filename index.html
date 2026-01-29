@@ -761,24 +761,6 @@ function showDelegationToast(message){
   setTimeout(()=>{ toast.remove(); }, 3000);
 }
 
-function showFatalToast(message){
-  const toast = document.createElement('div');
-  toast.textContent = message;
-  toast.style.position = 'fixed';
-  toast.style.bottom = '20px';
-  toast.style.right = '20px';
-  toast.style.zIndex = '9999';
-  toast.style.background = 'rgba(220,38,38,0.9)';
-  toast.style.color = '#fff';
-  toast.style.padding = '10px 14px';
-  toast.style.borderRadius = '10px';
-  toast.style.fontSize = '12px';
-  toast.style.fontWeight = '700';
-  toast.style.boxShadow = '0 10px 20px rgba(0,0,0,0.4)';
-  document.body.appendChild(toast);
-  setTimeout(()=>{ toast.remove(); }, 3500);
-}
-
 function safeOn(type, handler, meta = {}){
   return function(event){
     try{
@@ -1578,7 +1560,7 @@ function track(eventName, payload = {}){
         const storeUid = store.getMeta?.().uid;
         const targetUid = currentUser.uid || ensureLocalDeviceId();
         if(storeUid !== targetUid){
-          await initOwnedLibraryForUser(targetUid, { initialTrackIds: incomingOwned.length ? incomingOwned : ownedTracks, skipCloud: !firebaseAuth?.currentUser || syncMode === SYNC_MODES.localOnly });
+          await initOwnedLibraryForUser(targetUid, { initialTrackIds: incomingOwned.length ? incomingOwned : ownedTracks, skipCloud: !firebaseAuth?.currentUser });
         }
       } else if(incomingOwned.length){
         ownedTracks = incomingOwned;
@@ -1612,9 +1594,6 @@ function track(eventName, payload = {}){
     async function saveUserProfileToBackend(profile, { reason = 'system' } = {}) {
       if (!profile) return;
       await awaitAuthReady();
-      if(syncMode === SYNC_MODES.localOnly){
-        return false;
-      }
       const safeOwned = resolveSafeOwnedTracks(profile, { reason });
       if(profile.ownedTracks?.length === 0 && safeOwned.length){
         profile = { ...profile, ownedTracks: safeOwned };
@@ -1663,9 +1642,6 @@ function track(eventName, payload = {}){
           }
         } catch (e) {
           console.error('[SYNC] Firestore save failed', e);
-          if(isPermissionDeniedError(e)){
-            handlePermissionDenied(e, { reason: 'profile_save' });
-          }
           setSyncError({
             code: e?.code || 'profile_save_failed',
             step: 'savingRemote',
@@ -1699,12 +1675,7 @@ function track(eventName, payload = {}){
             const match = query.docs[0];
             if(match?.exists) return normalizeProfileShape({ ...match.data(), uid: match.id }, match.id);
           }
-        } catch (e) {
-          console.warn('Firestore load failed', e);
-          if(isPermissionDeniedError(e)){
-            handlePermissionDenied(e, { reason: 'profile_load' });
-          }
-        }
+        } catch (e) { console.warn('Firestore load failed', e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
       if (lookupKey && profiles[lookupKey]) return normalizeProfileShape(profiles[lookupKey], lookupKey);
@@ -2013,8 +1984,6 @@ function track(eventName, payload = {}){
     const BOOT_DEADLINE_MS = 8000;
     const BOOT_CALL_TIMEOUT_MS = 6000;
     const PROFILE_SAVE_DEBOUNCE_MS = 400;
-    const LOGOUT_FLUSH_TIMEOUT_MS = 2500;
-    const SYNC_MODES = Object.freeze({ cloud: 'cloud', localOnly: 'localOnly' });
     let syncState = {
       state: SYNC_STATES.idle,
       message: '',
@@ -2024,7 +1993,6 @@ function track(eventName, payload = {}){
       lastSyncHash: null,
       updatedAt: null
     };
-    let syncMode = SYNC_MODES.cloud;
     let profileSaveTimeout = null;
     let pendingProfileSave = null;
     let pendingProfileSavePromise = null;
@@ -2058,41 +2026,6 @@ function track(eventName, payload = {}){
       console.debug('[sync]', syncState.state, { step: syncState.errorStep, code: syncState.errorCode, message: syncState.message });
       render();
       setupEventListeners();
-    }
-    function isPermissionDeniedError(err){
-      const code = String(err?.code || err?.errorCode || '').toLowerCase();
-      const message = String(err?.message || '').toLowerCase();
-      return code.includes('permission') || message.includes('insufficient permissions') || message.includes('permission denied');
-    }
-    function setSyncMode(nextMode, { reason = null, message = null, silent = false } = {}){
-      if(syncMode === nextMode) return;
-      syncMode = nextMode;
-      if(silent){
-        render();
-        setupEventListeners();
-        return;
-      }
-      if(syncMode === SYNC_MODES.localOnly){
-        updateSyncState({
-          state: SYNC_STATES.error,
-          message: message || 'Cloud Sync Paused (Permissions).',
-          errorCode: 'permission-denied',
-          errorStep: reason || 'permissions'
-        });
-      } else if(syncState.errorCode === 'permission-denied') {
-        updateSyncState({
-          state: SYNC_STATES.idle,
-          message: 'Sync resumed.',
-          errorCode: null,
-          errorStep: null
-        });
-      }
-      render();
-      setupEventListeners();
-    }
-    function handlePermissionDenied(err, { reason = 'permissions' } = {}){
-      console.warn('[sync] permission denied', err);
-      setSyncMode(SYNC_MODES.localOnly, { reason, message: 'Cloud Sync Paused (Permissions).' });
     }
     function setSyncError({ code = 'sync_error', step = null, message = 'Sync failed. Retry.' } = {}){
       console.error('[SYNC]', { code, step, message });
@@ -2443,9 +2376,6 @@ function track(eventName, payload = {}){
         throw { code: 'missing_uid', step: 'checkingAuth' };
       }
       await awaitAuthReady();
-      if(syncMode === SYNC_MODES.localOnly){
-        throw { code: 'permission-denied', step: 'savingRemote', message: 'Cloud sync paused (permissions).' };
-      }
       if(!firebaseEnabled || !firestore || !navigator.onLine){
         throw { code: 'offline', step: 'savingRemote' };
       }
@@ -2480,10 +2410,6 @@ function track(eventName, payload = {}){
         updateSyncState({ state: SYNC_STATES.idle, message: 'Sync paused', errorCode: null, errorStep: null });
         return Promise.resolve({ skipped: true });
       }
-      if(syncMode === SYNC_MODES.localOnly){
-        updateSyncState({ state: SYNC_STATES.idle, message: 'Local Only — sync paused', errorCode: 'permission-denied', errorStep: 'permissions' });
-        return Promise.resolve({ skipped: true, localOnly: true });
-      }
       if(!navigator.onLine && !flush){
         updateSyncState({ state: SYNC_STATES.idle, message: 'Offline — sync paused', errorCode: null, errorStep: null });
         return Promise.resolve({ skipped: true, offline: true });
@@ -2501,9 +2427,6 @@ function track(eventName, payload = {}){
             return result;
           })
           .catch((err)=>{
-            if(isPermissionDeniedError(err)){
-              handlePermissionDenied(err, { reason: 'profile_save' });
-            }
             pendingProfileSave?.reject?.(err);
             pendingProfileSave = null;
             pendingProfileSavePromise = null;
@@ -2516,9 +2439,6 @@ function track(eventName, payload = {}){
           .then(() => flushPendingProfileSave())
           .catch((err) => {
             console.warn('[profile] cloud sync failed', err);
-            if(isPermissionDeniedError(err)){
-              handlePermissionDenied(err, { reason: 'profile_save' });
-            }
             setSyncError({
               code: err?.code || 'profile_save_failed',
               step: err?.step || 'savingRemote',
@@ -2584,14 +2504,8 @@ function track(eventName, payload = {}){
       };
       downloadJsonPayload(payload, buildExportFilename(currentUser?.username || currentUser?.djName || 'owned-backup'));
     }
-    function openFirestoreRulesHelp(){
-      window.open('https://firebase.google.com/docs/firestore/security/get-started', '_blank', 'noopener');
-    }
     function retryCloudSync(){
       if(syncState.state === SYNC_STATES.savingRemote) return;
-      if(syncMode === SYNC_MODES.localOnly){
-        setSyncMode(SYNC_MODES.cloud, { reason: 'manual_retry' });
-      }
       updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Retrying sync…', errorCode: null, errorStep: null });
       queueSaveProfile({ reason: 'retry', flush: true }).catch(()=>{});
       const store = ensureOwnedLibraryStore();
@@ -2623,16 +2537,10 @@ function track(eventName, payload = {}){
           lastDebugWriteAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
         }, { merge: true });
         setFirestoreAccessTestResult({ status: 'success', message: '✅ Firestore access ok.' });
-        if(syncMode === SYNC_MODES.localOnly){
-          setSyncMode(SYNC_MODES.cloud, { silent: true });
-        }
       }catch(err){
         const code = err?.code || 'permission_denied';
         const message = err?.message || 'Missing or insufficient permissions.';
         setFirestoreAccessTestResult({ status: 'error', message: `❌ ${code}: ${message}` });
-        if(isPermissionDeniedError(err)){
-          handlePermissionDenied(err, { reason: 'firestore_test' });
-        }
       }
     }
     function showSyncFailureModal(){
@@ -2641,13 +2549,11 @@ function track(eventName, payload = {}){
         modal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:40000;backdrop-filter:blur(6px);padding:12px;';
         modal.innerHTML = `
           <div class="w-full max-w-md bg-gradient-to-b from-black/85 to-black/90 border border-amber-500/40 rounded-2xl p-6 text-white shadow-2xl">
-            <h3 class="text-xl font-bold mb-2">Couldn’t sync right now</h3>
-            <p class="text-sm text-gray-200 mb-4">Cloud sync didn’t finish. You can retry, export a backup, or log out anyway (local cache stays).</p>
-            <div class="flex flex-wrap gap-2 justify-end">
-              <button data-action="cancel" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20">Cancel</button>
-              <button data-action="download" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20">Export backup JSON</button>
-              <button data-action="retry" class="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold">Retry sync & logout</button>
-              <button data-action="logout" class="px-4 py-2 rounded-lg bg-red-500/80 hover:bg-red-500 text-white font-bold">Logout anyway</button>
+            <h3 class="text-xl font-bold mb-2">Sync failed</h3>
+            <p class="text-sm text-gray-200 mb-4">Cloud Sync didn’t finish. Retry now or download a backup JSON before signing out.</p>
+            <div class="flex gap-2 justify-end">
+              <button data-action="download" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20">Download backup</button>
+              <button data-action="retry" class="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold">Retry sync</button>
             </div>
           </div>`;
         document.body.appendChild(modal);
@@ -2671,11 +2577,10 @@ function track(eventName, payload = {}){
           <div class="w-full max-w-md bg-gradient-to-b from-black/85 to-black/90 border border-amber-500/40 rounded-2xl p-6 text-white shadow-2xl">
             <h3 class="text-xl font-bold mb-2">Finish saving owned tracks?</h3>
             <p class="text-sm text-gray-200 mb-4">${message}</p>
-            <div class="flex flex-wrap gap-2 justify-end">
+            <div class="flex gap-2 justify-end">
               <button data-action="cancel" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20">Cancel logout</button>
               <button data-action="download" class="px-4 py-2 rounded-lg bg-white/10 border border-white/20">Export backup JSON</button>
-              <button data-action="retry" class="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold">Retry sync & logout</button>
-              <button data-action="logout" class="px-4 py-2 rounded-lg bg-red-500/80 hover:bg-red-500 text-white font-bold">Logout anyway</button>
+              <button data-action="retry" class="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold">Retry save</button>
             </div>
           </div>`;
         document.body.appendChild(modal);
@@ -2958,7 +2863,6 @@ function track(eventName, payload = {}){
 
     // ---------------------- Offline helpers -----------------------
     function flushOwnedLibraryPendingWrite(){
-      if(syncMode === SYNC_MODES.localOnly) return Promise.resolve();
       const store = ensureOwnedLibraryStore();
       if(!store) return Promise.resolve();
       return store.flush('reconnect').catch(()=>{});
@@ -2976,7 +2880,7 @@ function track(eventName, payload = {}){
       setupEventListeners();
       if(!isOffline){
         flushOwnedLibraryPendingWrite().catch(err=>console.warn('[owned-library] pending flush failed', err));
-        if(firebaseEnabled && firebaseAuth?.currentUser && syncMode === SYNC_MODES.cloud){
+        if(firebaseEnabled && firebaseAuth?.currentUser){
           updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Reconnecting sync…', errorCode: null, errorStep: null });
           queueSaveProfile({ reason: 'reconnect' }).catch(()=>{});
         }
@@ -3286,7 +3190,7 @@ function track(eventName, payload = {}){
         buildPlan: window.profileStore?.buildOwnedLibraryPlan,
         normalizeSnapshot: window.profileStore?.normalizeOwnedLibrarySnapshot,
         getOnline: () => navigator.onLine,
-        getCloudEnabled: () => firebaseEnabled && firestore && !!firebaseAuth?.currentUser && syncMode === SYNC_MODES.cloud,
+        getCloudEnabled: () => firebaseEnabled && firestore && !!firebaseAuth?.currentUser,
         readLastGoodCount: (uid) => window.profileStore?.readLastGoodOwnedCount?.(uid) || null,
         writeLastGoodCount: (uid, value) => window.profileStore?.writeLastGoodOwnedCount?.(uid, value),
         readLastSyncAt: (uid) => window.profileStore?.readLastSyncAt?.(uid) || null,
@@ -3318,10 +3222,7 @@ function track(eventName, payload = {}){
               message: next?.message || 'Sync failed. Retry.'
             });
           }
-          if(next?.errorCode && isPermissionDeniedError({ code: next.errorCode, message: next.message })){
-            handlePermissionDenied({ code: next.errorCode, message: next.message }, { reason: 'owned_library' });
-          }
-          if(next?.phase === 'ready' && navigator.onLine && firebaseEnabled && firestore && syncMode === SYNC_MODES.cloud){
+          if(next?.phase === 'ready' && navigator.onLine && firebaseEnabled && firestore){
             setSyncedState('Synced ✅');
             const uid = firebaseAuth?.currentUser?.uid;
             if(uid){
@@ -3344,7 +3245,6 @@ function track(eventName, payload = {}){
       ownedLibraryState = { phase, source, message };
     }
     function resolveOwnedLibraryStatusMessage(){
-      if(syncMode === SYNC_MODES.localOnly) return 'Local Only — sync paused';
       if(ownedLibraryState?.message) return ownedLibraryState.message;
       if(ownedLibraryState?.phase === 'syncing') return 'Syncing library…';
       if(!navigator.onLine) return 'Offline — sync paused';
@@ -5138,27 +5038,24 @@ function track(eventName, payload = {}){
         initOwnedLibraryForUser(uid, { legacyOwnedTracks: combinedLegacyOwned, initialTrackIds: normalizeOwnedList(localProfile.ownedTracks || []) }),
         { step: 'loadingRemote' }
       );
-      if((usedLegacy || combinedLegacyOwned.length) && ownedSnapshot?.trackIds?.length && firebaseEnabled && firestore && navigator.onLine && syncMode === SYNC_MODES.cloud){
+      if((usedLegacy || combinedLegacyOwned.length) && ownedSnapshot?.trackIds?.length && firebaseEnabled && firestore && navigator.onLine){
         const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
         const migratedAt = serverTimestamp ? serverTimestamp() : new Date().toISOString();
-        void withSyncTimeout(
-          window.profileStore?.writeOwnedLibraryDoc?.(uid, { trackIds: ownedSnapshot.trackIds, migratedAt }),
-          { step: 'savingRemote' }
-        ).then(() => {
+        try{
+          await withSyncTimeout(
+            window.profileStore?.writeOwnedLibraryDoc?.(uid, { trackIds: ownedSnapshot.trackIds, migratedAt }),
+            { step: 'savingRemote' }
+          );
           profileSyncOutcome.migrationApplied = true;
-        }).catch((err) => {
+        }catch(err){
           console.warn('[owned-library] migration write failed', err);
           profileSyncOutcome.syncError = true;
-          if(isPermissionDeniedError(err)){
-            handlePermissionDenied(err, { reason: 'owned_migration' });
-            return;
-          }
           setSyncError({
             code: err?.code || 'owned_migration_failed',
             step: err?.step || 'savingRemote',
             message: err?.message || 'Sync failed. Retry.'
           });
-        });
+        }
       }
       let cloudProfile = null;
       try{
@@ -5166,9 +5063,6 @@ function track(eventName, payload = {}){
       }catch(err){
         console.warn('[profile] cloud profile read failed', err);
         profileSyncOutcome.syncError = true;
-        if(isPermissionDeniedError(err)){
-          handlePermissionDenied(err, { reason: 'profile_load' });
-        }
         setSyncError({
           code: err?.code || 'profile_load_failed',
           step: err?.step || 'loadingRemote',
@@ -5204,21 +5098,16 @@ function track(eventName, payload = {}){
             ? (serverTimestamp ? serverTimestamp() : new Date().toISOString())
             : merged.migratedFromLocalAt ?? null
         };
-        if(syncMode === SYNC_MODES.cloud){
-          void withSyncTimeout(window.profileStore.writeCloudProfile(uid, patch), { step: 'savingRemote' })
-            .catch((err) => {
-              console.warn('[profile] cloud profile write failed', err);
-              profileSyncOutcome.syncError = true;
-              if(isPermissionDeniedError(err)){
-                handlePermissionDenied(err, { reason: 'profile_save' });
-                return;
-              }
-              setSyncError({
-                code: err?.code || 'profile_save_failed',
-                step: err?.step || 'savingRemote',
-                message: err?.message || 'Sync failed. Retry.'
-              });
-            });
+        try{
+          await withSyncTimeout(window.profileStore.writeCloudProfile(uid, patch), { step: 'savingRemote' });
+        }catch(err){
+          console.warn('[profile] cloud profile write failed', err);
+          profileSyncOutcome.syncError = true;
+          setSyncError({
+            code: err?.code || 'profile_save_failed',
+            step: err?.step || 'savingRemote',
+            message: err?.message || 'Sync failed. Retry.'
+          });
         }
       }
       writeProfileCache(uid, merged);
@@ -5245,7 +5134,6 @@ function track(eventName, payload = {}){
       genreOverrides = {};
       ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
       ownedStore = null;
-      setSyncMode(SYNC_MODES.localOnly, { silent: true });
       resetUiDefaults();
       updateSyncState({ state: SYNC_STATES.idle, message: '', errorCode: null, errorStep: null });
     }
@@ -5287,7 +5175,6 @@ function track(eventName, payload = {}){
         userProfileUnsub();
         userProfileUnsub = null;
       }
-      setSyncMode(SYNC_MODES.localOnly, { silent: true });
       resetUiDefaults();
       updateSyncState({ state: SYNC_STATES.idle, message: '', errorCode: null, errorStep: null });
       setAppBootState(APP_BOOT_STATES.signedOut);
@@ -5347,7 +5234,6 @@ function track(eventName, payload = {}){
       if(localStorage.getItem(key) === 'true') return null;
       const knownIds = Array.from(new Set((legacyIds || []).filter(Boolean)));
       if(!knownIds.length) return null;
-      if(syncMode === SYNC_MODES.localOnly) return null;
       const legacySnapshots = await Promise.all(
         knownIds.map((legacyId) => withSyncTimeout(
           window.profileStore?.readLegacyOwnedLibraryDoc?.(legacyId),
@@ -5395,7 +5281,6 @@ function track(eventName, payload = {}){
         recordBootStep(`auth resolved: ${user.uid}`);
         if (authSettledUser === user.uid && appBootState === APP_BOOT_STATES.ready) return;
         authSettledUser = user.uid;
-        setSyncMode(SYNC_MODES.cloud, { silent: true });
         startBootDeadline();
         recordBootStep('BOOT: auth change');
         enforcePostLoginDefaults();
@@ -5489,126 +5374,80 @@ function track(eventName, payload = {}){
 
 
     async function logoutUser(){
-      if(logoutInProgress) return;
-      logoutInProgress = true;
-      render();
-      setupEventListeners();
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
       const store = ensureOwnedLibraryStore();
-      const setBusy = (busy) => {
-        logoutInProgress = busy;
-        render();
-        setupEventListeners();
-      };
-      const finalizeLogout = () => {
-        authSettledUser = null; authProcessing = false;
-        currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
-        ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-        ownedStore = null;
-        logoutInProgress = false;
-        resetUiDefaults();
-        localStorage.removeItem('currentUser');
-        setSyncMode(SYNC_MODES.localOnly, { silent: true });
-        updateSyncState({ state: SYNC_STATES.idle, message: '', errorCode: null, errorStep: null });
-      };
-      const signOutHard = async () => {
-        showFatalToast('Sign out failed — Reloading');
-        finalizeLogout();
-        setTimeout(() => {
-          window.location.reload();
-        }, 800);
-      };
       const signOut = async () => {
-        if(!firebaseAuth){
-          finalizeLogout();
-          return;
-        }
-        try{
-          await withTimeout(firebaseAuth.signOut(), LOGOUT_FLUSH_TIMEOUT_MS, 'signOut');
-          finalizeLogout();
-        }catch(err){
-          console.warn('signout', err);
-          await signOutHard();
+        if(firebaseAuth){
+          try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); }
         }
       };
       try{
-        if(syncMode === SYNC_MODES.cloud){
-          try{
-            await withTimeout(queueSaveProfile({ reason: 'logout', flush: true }), LOGOUT_FLUSH_TIMEOUT_MS, 'logout_profile');
-          }catch(err){
-            console.warn('[profile] sync flush before logout failed', err);
-            if(isPermissionDeniedError(err)){
-              handlePermissionDenied(err, { reason: 'logout_profile' });
-            }
-            let action = await showSyncFailureModal();
-            while(action === 'retry'){
-              try{
-                await withTimeout(queueSaveProfile({ reason: 'logout_retry', flush: true }), LOGOUT_FLUSH_TIMEOUT_MS, 'logout_profile_retry');
-                action = 'logout';
-              }catch(retryErr){
-                console.warn('[profile] retry sync failed', retryErr);
-                action = await showSyncFailureModal();
-              }
-            }
-            if(action === 'download'){
-              exportOwnedBackupJson();
-              setBusy(false);
-              return;
-            }
-            if(action === 'cancel'){
-              setBusy(false);
-              return;
-            }
-            if(action !== 'logout'){
-              setBusy(false);
-              return;
-            }
-          }
+        await queueSaveProfile({ reason: 'logout', flush: true });
+      }catch(err){
+        console.warn('[profile] sync flush before logout failed', err);
+        const action = await showSyncFailureModal();
+        if(action === 'download'){
+          exportOwnedBackupJson();
+          return;
         }
-        if(store && syncMode === SYNC_MODES.cloud){
-          const needsFlush = store?.hasUnsavedChanges?.() === true;
-          if(needsFlush) setBusy(true);
+        if(action === 'retry'){
           try{
-            if(needsFlush){
-              try{
-                await withTimeout(store.flush('logout'), LOGOUT_FLUSH_TIMEOUT_MS, 'logout_owned');
-              }catch(err){
-                console.warn('[owned-library] logout flush failed', err);
-                if(isPermissionDeniedError(err)){
-                  handlePermissionDenied(err, { reason: 'logout_owned' });
-                }
-                setBusy(false);
-                let action = await showOwnedLogoutModal(err);
-                while(action === 'retry'){
-                  try{
-                    await withTimeout(store.flush('logout_retry'), LOGOUT_FLUSH_TIMEOUT_MS, 'logout_owned_retry');
-                    action = 'logout';
-                  }catch(retryErr){
-                    console.warn('[owned-library] retry flush failed', retryErr);
-                    action = await showOwnedLogoutModal(retryErr);
-                  }
-                }
-                if(action === 'download'){
-                  exportOwnedBackupJson();
+            await queueSaveProfile({ reason: 'logout_retry', flush: true });
+          }catch(retryErr){
+            console.warn('[profile] retry sync failed', retryErr);
+            return;
+          }
+        } else {
+          return;
+        }
+      }
+      if(store){
+        const setBusy = (busy) => {
+          logoutInProgress = busy;
+          render();
+          setupEventListeners();
+        };
+        const needsFlush = store?.hasUnsavedChanges?.() === true;
+        if(needsFlush) setBusy(true);
+        try{
+          if(needsFlush){
+            try{
+              await store.flush('logout');
+            }catch(err){
+              console.warn('[owned-library] logout flush failed', err);
+              setBusy(false);
+              const action = await showOwnedLogoutModal(err);
+              if(action === 'download'){
+                exportOwnedBackupJson();
+                return;
+              }
+              if(action === 'retry'){
+                try{
+                  await store.flush('logout_retry');
+                }catch(retryErr){
+                  console.warn('[owned-library] retry flush failed', retryErr);
                   return;
                 }
-                if(action === 'cancel'){
-                  return;
-                }
-                if(action !== 'logout'){
-                  return;
-                }
+              } else {
+                return;
               }
             }
-          } finally {
-            if(needsFlush) setBusy(false);
           }
+        } finally {
+          if(needsFlush) setBusy(false);
         }
         await signOut();
-      } catch(err) {
-        console.warn('[logout] failed', err);
-        await signOutHard();
+      } else {
+        await signOut();
       }
+      authSettledUser = null; authProcessing = false;
+      currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
+      ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
+      ownedStore = null;
+      logoutInProgress = false;
+      resetUiDefaults();
+      localStorage.removeItem('currentUser');
+      updateSyncState({ state: SYNC_STATES.idle, message: '', errorCode: null, errorStep: null });
     }
 
     // -------------------- Songs loading -----------------------
@@ -5631,7 +5470,7 @@ function track(eventName, payload = {}){
       maxMobileCardsRendered = 0;
       logEvent('songs_fetch_start', { online: navigator.onLine });
       trackLoadNotice = '';
-      const endpoints=[ 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
+      const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
       const canFetch = navigator.onLine;
       trackLoadState = { status: 'loading', loaded: 0, total: 0, message: 'Loading tracks…' };
       const tryFetch = async () => {
@@ -6939,7 +6778,6 @@ function render(){
   const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
   const ownedCount = getOwnedCountInSongs(displayTracks);
   const isGuest = isGuestUser();
-  const isLocalOnly = syncMode === SYNC_MODES.localOnly;
   const ownedLibraryStatusMessage = resolveOwnedLibraryStatusMessage();
   const ownedLibraryPhase = ownedLibraryState?.phase || 'idle';
   const ownedLibraryBadgeClass = ownedLibraryPhase === 'restoring' || ownedLibraryPhase === 'saving' || ownedLibraryPhase === 'syncing' || ownedLibraryPhase === 'error'
@@ -6954,19 +6792,15 @@ function render(){
   const ownedSyncPhase = ownedLibraryState?.phase || 'idle';
   const ownedSyncError = ownedSyncPhase === 'error';
   const ownedSyncSaving = ownedSyncPhase === 'saving';
-  const ownedSyncLabel = isLocalOnly
-    ? 'Local Only'
-    : isOffline
-      ? 'Offline — sync paused'
-      : ownedSyncSaving
-        ? 'Saving…'
-        : ownedSyncError
-          ? 'Error'
-          : 'Synced';
+  const ownedSyncLabel = isOffline
+    ? 'Offline — sync paused'
+    : ownedSyncSaving
+      ? 'Saving…'
+      : ownedSyncError
+        ? 'Error'
+        : 'Synced';
   const cloudSyncBadge = (firebaseEnabled && firebaseAuth?.currentUser)
-    ? (isLocalOnly
-      ? '<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>'
-      : `<button onclick="${ownedSyncError ? 'retryCloudSync()' : 'void 0'}" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline || ownedSyncError ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : ownedSyncSaving ? 'bg-sky-500/20 border border-sky-400/50 text-sky-100' : 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-100'}" ${ownedSyncError ? '' : 'disabled'}>☁️ ${ownedSyncLabel}${ownedSyncError ? ' · Retry' : ''}</button>`)
+    ? `<button onclick="${ownedSyncError ? 'retryCloudSync()' : 'void 0'}" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline || ownedSyncError ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : ownedSyncSaving ? 'bg-sky-500/20 border border-sky-400/50 text-sky-100' : 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-100'}" ${ownedSyncError ? '' : 'disabled'}>☁️ ${ownedSyncLabel}${ownedSyncError ? ' · Retry' : ''}</button>`
     : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
   const firestoreDebugClass = firestoreAccessTestResult?.status === 'success'
     ? 'text-emerald-200'
@@ -6981,19 +6815,14 @@ function render(){
     : '';
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const syncInProgress = [SYNC_STATES.checkingAuth, SYNC_STATES.loadingRemote, SYNC_STATES.merging, SYNC_STATES.savingRemote].includes(syncState.state);
-  const localOnlyBanner = (isLocalOnly && firebaseAuth?.currentUser)
-    ? `<div class="inline-banner mt-2">⚠️ Cloud Sync Paused (Permissions). <span class="text-gray-200">Local Only — your owned tracks are safe on this device.</span> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="openFirestoreRulesHelp()">How to fix Firestore rules</button></div>`
-    : '';
-  const syncBanner = localOnlyBanner || (syncState.state === SYNC_STATES.error
+  const syncBanner = syncState.state === SYNC_STATES.error
     ? `<div class="inline-banner mt-2">⚠️ ${syncState.message || 'Sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button></div>`
     : (syncInProgress
       ? `<div class="inline-banner mt-2">🔄 ${syncState.message || 'Syncing your profile…'}</div>`
-      : ''));
-  const ownedLibraryBanner = localOnlyBanner
-    ? ''
-    : (ownedLibraryState?.phase === 'error'
-      ? `<div class="inline-banner mt-2">⚠️ ${ownedLibraryState.message || 'Owned library sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button>${firestoreDebugButton}${firestoreDebugStatus}</div>`
       : '');
+  const ownedLibraryBanner = ownedLibraryState?.phase === 'error'
+    ? `<div class="inline-banner mt-2">⚠️ ${ownedLibraryState.message || 'Owned library sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button>${firestoreDebugButton}${firestoreDebugStatus}</div>`
+    : '';
   const recoveryBanner = recoveryBannerState?.visible
     ? `<div class="inline-banner mt-2">🛟 ${recoveryBannerState.message || 'Recovery mode active.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryTracksNow()">Retry Tracks</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="restoreLastKnownGoodProfile()">Restore Library</button></div>`
     : '';
@@ -7098,7 +6927,7 @@ function render(){
           ${networkBadge}
           ${trackSourceBadge}
           ${cloudSyncBadge}
-          <span class="text-xs text-gray-300">${isLocalOnly ? 'Local Only — sync paused' : (isOffline ? 'Offline — sync paused' : 'Cloud Sync active.')}</span>
+          <span class="text-xs text-gray-300">${isOffline ? 'Offline — sync paused' : 'Cloud Sync active.'}</span>
         </div>
 
         ${syncBanner}
