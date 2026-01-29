@@ -22,7 +22,6 @@
   <script src="/constants/appMeta.js"></script>
   <script src="/services/configService.js"></script>
   <script type="module" src="/services/profileStore.js"></script>
-  <script type="module" src="/services/ownedLibraryStore.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -1464,8 +1463,8 @@ function track(eventName, payload = {}){
     let draftProfile = null;
     let ownedTracks = [];
     let ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-    let ownedStore = null;
-    let logoutInProgress = false;
+    let ownedLibraryRestoring = false;
+    let ownedLibraryPendingWrite = null;
     let selectedSong = null;
     let sortMode = 'bpm';
     let previewSong = null;
@@ -2296,48 +2295,157 @@ function track(eventName, payload = {}){
       const arr = Array.isArray(ids) ? ids.filter(Boolean) : [];
       return Array.from(new Set(arr)).sort();
     }
+    function buildOwnedLibrarySnapshot(trackIds, updatedAt = new Date().toISOString(), meta = null){
+      const normalized = normalizeOwnedList(trackIds);
+      const hash = window.profileStore?.computeOwnedTracksHash
+        ? window.profileStore.computeOwnedTracksHash(normalized)
+        : normalized.join('|');
+      return {
+        trackIds: normalized,
+        count: normalized.length,
+        schemaVersion: window.profileStore?.OWNED_LIBRARY_SCHEMA_VERSION || 1,
+        updatedAt,
+        hash,
+        ...(meta ? { meta } : {})
+      };
+    }
     function readOwnedTracksCache(uid){
       if(!uid) return null;
       return window.profileStore?.readOwnedTracksCache?.(uid) || null;
     }
-    function ensureOwnedLibraryStore(){
-      if(ownedStore) return ownedStore;
-      const createStore = window.ownedLibraryStore?.createOwnedLibraryStore;
-      if(!createStore) return null;
-      ownedStore = createStore({
-        readCache: (uid) => window.profileStore?.readOwnedTracksCache?.(uid) || null,
-        writeCache: (uid, snapshot) => window.profileStore?.writeOwnedTracksCache?.(uid, snapshot) || snapshot,
-        readCloud: (uid) => window.profileStore?.readOwnedLibraryDoc?.(uid) || null,
-        writeCloud: (uid, snapshot) => window.profileStore?.writeOwnedLibraryDoc?.(uid, snapshot),
-        buildPlan: window.profileStore?.buildOwnedLibraryPlan,
-        normalizeSnapshot: window.profileStore?.normalizeOwnedLibrarySnapshot,
-        getOnline: () => navigator.onLine,
-        getCloudEnabled: () => firebaseEnabled && firestore,
-        onSnapshot: (snapshot) => {
-          ownedTracks = snapshot.trackIds || [];
-          updateOwnedCount();
-        },
-        onStatus: (next) => {
-          ownedLibraryState = next;
-          render();
-          setupEventListeners();
-        }
-      });
-      return ownedStore;
+    function writeOwnedTracksCache(uid, trackIds, updatedAt = new Date().toISOString()){
+      if(!uid) return null;
+      const snapshot = buildOwnedLibrarySnapshot(trackIds, updatedAt);
+      return window.profileStore?.writeOwnedTracksCache?.(uid, snapshot) || snapshot;
+    }
+    async function writeOwnedTracksCloud(uid, trackIds, meta = null){
+      if(!uid) return null;
+      if(!window.profileStore?.writeOwnedLibraryDoc) return null;
+      const snapshot = buildOwnedLibrarySnapshot(trackIds, new Date().toISOString(), meta);
+      return window.profileStore.writeOwnedLibraryDoc(uid, snapshot);
     }
     function setOwnedLibraryStatus({ phase = 'idle', source = 'none', message = '' } = {}){
       ownedLibraryState = { phase, source, message };
     }
     function resolveOwnedLibraryStatusMessage(){
-      if(ownedLibraryState?.message) return ownedLibraryState.message;
-      if(!navigator.onLine) return 'Saved to device ✓';
-      if(!firebaseEnabled || !firestore) return 'Sync paused';
-      return 'Saved ✓';
+      if(!ownedLibraryState?.message) return '';
+      return ownedLibraryState.message;
     }
-    async function initOwnedLibraryForUser(uid, { legacyOwnedTracks = [], initialTrackIds = [], skipCloud = false } = {}){
-      const store = ensureOwnedLibraryStore();
-      if(!store || !uid) return null;
-      return store.initForUser(uid, { legacyOwnedTracks, initialTrackIds, skipCloud });
+    async function flushOwnedLibraryPendingWrite(){
+      if(!ownedLibraryPendingWrite) return;
+      if(ownedLibraryRestoring) return;
+      const uid = firebaseAuth?.currentUser?.uid;
+      if(!uid || !firebaseEnabled || !firestore || !navigator.onLine) return;
+      const payload = ownedLibraryPendingWrite;
+      ownedLibraryPendingWrite = null;
+      const meta = payload.reason === 'explicit_clear' ? { reason: payload.reason } : null;
+      await writeOwnedTracksCloud(uid, payload.trackIds, meta);
+      setOwnedLibraryStatus({
+        phase: 'ready',
+        source: 'cloud',
+        message: 'Library loaded (Cloud)'
+      });
+    }
+    async function saveOwnedTracksSafe(nextTrackIds, { reason = 'update', allowEmpty = false, skipCloud = false } = {}){
+      const normalized = normalizeOwnedList(nextTrackIds);
+      const explicitClear = reason === 'explicit_clear';
+      const currentNormalized = normalizeOwnedList(ownedTracks);
+      if(JSON.stringify(normalized) === JSON.stringify(currentNormalized)){
+        return { skipped: true, reason: 'identical' };
+      }
+      if(normalized.length === 0 && !explicitClear && !allowEmpty){
+        console.warn('[owned-library] blocked empty save', { reason });
+        return { skipped: true, reason: 'empty_blocked' };
+      }
+      ownedTracks = normalized;
+      const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid;
+      if(uid) writeOwnedTracksCache(uid, normalized);
+      if(skipCloud || ownedLibraryRestoring){
+        ownedLibraryPendingWrite = { trackIds: normalized, reason };
+        return { savedLocal: true, queued: true };
+      }
+      if(uid && firebaseEnabled && firestore && navigator.onLine){
+        const meta = explicitClear ? { reason } : null;
+        await writeOwnedTracksCloud(uid, normalized, meta);
+        return { savedCloud: true };
+      }
+      ownedLibraryPendingWrite = { trackIds: normalized, reason };
+      return { savedLocal: true, queued: true };
+    }
+    async function restoreOwnedLibrary(uid, { legacyOwnedTracks = [] } = {}){
+      if(!uid) return;
+      ownedLibraryRestoring = true;
+      const cachedSnapshot = readOwnedTracksCache(uid);
+      const legacySnapshot = legacyOwnedTracks.length
+        ? buildOwnedLibrarySnapshot(legacyOwnedTracks, new Date().toISOString())
+        : null;
+      let localSnapshot = cachedSnapshot || legacySnapshot || null;
+      if(localSnapshot?.trackIds?.length){
+        ownedTracks = normalizeOwnedList(localSnapshot.trackIds);
+        setOwnedLibraryStatus({
+          phase: 'restoring',
+          source: 'cache',
+          message: 'Restoring your library… Using cached library.'
+        });
+        render();
+        setupEventListeners();
+      } else {
+        setOwnedLibraryStatus({
+          phase: 'restoring',
+          source: 'none',
+          message: 'Restoring your library…'
+        });
+        render();
+        setupEventListeners();
+      }
+      if(!firebaseEnabled || !firestore || !navigator.onLine){
+        if(localSnapshot && !cachedSnapshot){
+          writeOwnedTracksCache(uid, localSnapshot.trackIds, localSnapshot.updatedAt);
+        }
+        ownedLibraryRestoring = false;
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
+          message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        });
+        return;
+      }
+      try{
+        let cloudSnapshot = null;
+        try{
+          cloudSnapshot = await window.profileStore.readOwnedLibraryDoc(uid);
+        }catch(err){
+          console.warn('[owned-library] cloud read failed', err);
+        }
+        const plan = window.profileStore.buildOwnedLibraryPlan({ cache: localSnapshot, cloud: cloudSnapshot });
+        if(plan?.chosen?.trackIds){
+          ownedTracks = normalizeOwnedList(plan.chosen.trackIds);
+        }
+        if(plan.shouldUpdateCache){
+          writeOwnedTracksCache(uid, plan.chosen.trackIds, plan.chosen.updatedAt || new Date().toISOString());
+        }
+        if(plan.shouldSeedCloud || plan.shouldWriteCloud){
+          if(plan.chosen.trackIds.length){
+            await writeOwnedTracksCloud(uid, plan.chosen.trackIds, { reason: plan.shouldSeedCloud ? 'seed_cache' : 'reconcile_cache' });
+          }
+        }
+        const sourceLabel = plan.source === 'cloud' ? 'Cloud' : plan.source === 'cache' ? 'Cached' : 'Local';
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: plan.source,
+          message: `Library loaded (${sourceLabel})`
+        });
+        await flushOwnedLibraryPendingWrite();
+      } catch(err){
+        console.warn('[owned-library] reconcile failed', err);
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
+          message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        });
+      } finally {
+        ownedLibraryRestoring = false;
+      }
     }
     function normalizeSetlistIds(ids){
       if(!Array.isArray(ids)) return [];
@@ -3749,17 +3857,17 @@ function track(eventName, payload = {}){
         await loadUserOverridesFromBackend();
       }
       const incomingOwned = normalizeOwnedList(currentUser.ownedTracks || []);
-      const store = ensureOwnedLibraryStore();
-      if(store){
-        const storeUid = store.getMeta?.().uid;
-        const targetUid = currentUser.uid || ensureLocalDeviceId();
-        if(storeUid !== targetUid){
-          await initOwnedLibraryForUser(targetUid, { initialTrackIds: incomingOwned, skipCloud: !firebaseAuth?.currentUser });
-        }
-      } else if(incomingOwned.length){
+      if(incomingOwned.length){
         ownedTracks = incomingOwned;
       } else if(!ownedTracks.length) {
         ownedTracks = [];
+      }
+      if(!firebaseAuth?.currentUser && ownedLibraryState.phase === 'idle'){
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: ownedTracks.length ? 'cache' : 'local',
+          message: ownedTracks.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
+        });
       }
       setlist = normalizeSetlistIds(currentUser.setlist || currentUser.setlistIds || currentUser.setlists || []);
       bandMembers = currentUser.bandMembers || [];
@@ -4158,7 +4266,7 @@ function track(eventName, payload = {}){
       genreOverrides = localProfile.genreOverrides || {};
       bandMembers = localProfile.bandMembers || [];
       render(); setupEventListeners();
-      await initOwnedLibraryForUser(uid, { legacyOwnedTracks, initialTrackIds: normalizeOwnedList(localProfile.ownedTracks || []) });
+      await restoreOwnedLibrary(uid, { legacyOwnedTracks });
       const cloudProfile = await window.profileStore.readCloudProfile(uid);
       const plan = window.profileStore.buildSyncPlan({ cloud: cloudProfile, local: localProfile });
       const defaultProfile = {
@@ -4304,30 +4412,12 @@ function track(eventName, payload = {}){
 
     async function logoutUser(){
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
-      const store = ensureOwnedLibraryStore();
-      const signOut = async () => {
-        if(firebaseAuth){
-          try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); }
-        }
-      };
-      if(store && window.ownedLibraryStore?.flushOwnedLibraryBeforeLogout){
-        await window.ownedLibraryStore.flushOwnedLibraryBeforeLogout({
-          store,
-          signOut,
-          setBusy: (busy) => {
-            logoutInProgress = busy;
-            render();
-            setupEventListeners();
-          }
-        });
-      } else {
-        await signOut();
-      }
+      if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
       currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
       ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-      ownedStore = null;
-      logoutInProgress = false;
+      ownedLibraryRestoring = false;
+      ownedLibraryPendingWrite = null;
       localStorage.removeItem('currentUser');
     }
 
@@ -4719,14 +4809,10 @@ function track(eventName, payload = {}){
       renderQuickStartStep();
     }
 
-    async function completeQuickStart({ skipped = false } = {}){
+    function completeQuickStart({ skipped = false } = {}){
       quickStartDone = true;
       localStorage.setItem('jamMixer.quickStartDone', 'true');
       closeQuickStart();
-      const store = ensureOwnedLibraryStore();
-      if(store){
-        await store.flush('finish_marking');
-      }
       if(skipped){
         stickyCtaDismissed = false;
         updateStickyCTA();
@@ -4745,12 +4831,7 @@ function track(eventName, payload = {}){
         if(!config) return false;
         nextOwned = resolveQuickStartTrackIds(config.count);
       }
-      const store = ensureOwnedLibraryStore();
-      if(store){
-        store.setOwnedList(nextOwned, 'quickstart', { allowEmpty: true });
-      } else {
-        ownedTracks = normalizeOwnedList(nextOwned);
-      }
+      await saveOwnedTracksSafe(nextOwned, { reason: 'quickstart' });
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('quick-start-owned');
@@ -5923,12 +6004,8 @@ function render(){
   const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
   const ownedCount = displayTracks.length;
   const ownedLibraryStatusMessage = resolveOwnedLibraryStatusMessage();
-  const ownedLibraryPhase = ownedLibraryState?.phase || 'idle';
-  const ownedLibraryBadgeClass = ownedLibraryPhase === 'restoring' || ownedLibraryPhase === 'saving'
-    ? 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 border border-white/20 text-cyan-100'
-    : 'text-[11px] text-cyan-100/90';
   const ownedLibraryBadge = ownedLibraryStatusMessage
-    ? `<span class="${ownedLibraryBadgeClass}">${ownedLibraryStatusMessage}</span>`
+    ? `<span class="${ownedLibraryState.phase === 'restoring' ? 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 border border-white/20 text-cyan-100' : 'text-[11px] text-cyan-100/90'}">${ownedLibraryStatusMessage}</span>`
     : '';
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
   const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
@@ -5969,13 +6046,8 @@ function render(){
     </div>`;
   const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
   const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}${adminLabel}`;
-  const authButtonLabel = firebaseAuth?.currentUser
-    ? (logoutInProgress ? 'Saving…' : 'Logout')
-    : 'Sign In';
-  const authButtonAction = firebaseAuth?.currentUser
-    ? (logoutInProgress ? 'void 0' : 'logoutUser()')
-    : 'showLoginScreen()';
-  const authButtonDisabled = firebaseAuth?.currentUser && logoutInProgress;
+  const authButtonLabel = firebaseAuth?.currentUser ? 'Logout' : 'Sign In';
+  const authButtonAction = firebaseAuth?.currentUser ? 'logoutUser()' : 'showLoginScreen()';
   const stickyCtaActive = getStickyCtaConfig().visible;
   document.getElementById('app').innerHTML = `
     <div class="min-h-screen ${stickyCtaActive ? 'sticky-cta-active' : ''}" id="appRoot">
@@ -5999,7 +6071,7 @@ function render(){
                 </div>`:''}</div>`:''}
               <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
               <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
-              <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm" ${authButtonDisabled ? 'disabled style="opacity:0.6;cursor:not-allowed;"' : ''}>${authButtonLabel}</button>
+              <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
             </div>
           </div>
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
@@ -6277,7 +6349,7 @@ function render(){
         if(closestFromEvent(e, '[data-action="clearFilters"]', { within: app })){ clearFilters(); return; }
         if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: app })){ openQuickStart(); return; }
         if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: app })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: app })){ void completeQuickStart({ skipped: true }); return; }
+        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: app })){ completeQuickStart({ skipped: true }); return; }
         if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: app })){ moveQuickStartStep(-1); return; }
         const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: app });
         if(presetBtn){
@@ -6303,7 +6375,7 @@ function render(){
             const list = document.getElementById('songList');
             if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
             setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
-            void completeQuickStart();
+            completeQuickStart();
           }
           return;
         }
@@ -6462,7 +6534,7 @@ function render(){
         if(!target) return;
         if(target === modal){ closeQuickStart(); return; }
         if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: modal })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: modal })){ void completeQuickStart({ skipped: true }); return; }
+        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: modal })){ completeQuickStart({ skipped: true }); return; }
         if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: modal })){ moveQuickStartStep(-1); return; }
         const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: modal });
         if(presetBtn){
@@ -6488,7 +6560,7 @@ function render(){
             const list = document.getElementById('songList');
             if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
             setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
-            void completeQuickStart();
+            completeQuickStart();
           }
         }
       }, { action: 'quick-start-modal-click' }));
@@ -6872,13 +6944,8 @@ function render(){
 
     window.toggleOwned = async (id) => {
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
-      const store = ensureOwnedLibraryStore();
-      if(store){
-        store.toggleOwned(id);
-      } else {
-        const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
-        ownedTracks = normalizeOwnedList(nextOwned);
-      }
+      const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
+      await saveOwnedTracksSafe(nextOwned, { reason: 'toggle' });
       updateOwnedCount();
       updateSongCardOwnedState(id);
       updateStickyCTA();
@@ -6975,13 +7042,7 @@ function render(){
       if(viewingProfile) return;
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
-      const store = ensureOwnedLibraryStore();
-      if(store){
-        store.clearAllOwned();
-        await store.flush('explicit_clear', { allowEmpty: true });
-      } else {
-        ownedTracks = [];
-      }
+      await saveOwnedTracksSafe([], { reason: 'explicit_clear', allowEmpty: true });
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('clear-all-owned');
