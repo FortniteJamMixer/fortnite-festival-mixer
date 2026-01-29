@@ -1,25 +1,5 @@
 # Firebase Security Rules (Safe Community Metrics)
 
-## Minimal rules for owned tracks + profile docs
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // User documents: each user can read/write only their own doc
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-
-    // Optional: allow reading public config/help if you use it
-    match /appConfig/{docId} {
-      allow read: if true;
-      allow write: if false;
-    }
-  }
-}
-```
-
 ## Firestore
 ```
 rules_version = '2';
