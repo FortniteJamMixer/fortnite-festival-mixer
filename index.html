@@ -778,10 +778,10 @@ function warnIfWhatsNewStale(){
   localStorage.setItem('whatsNewSignature', JSON.stringify({ version: appVersion, signature }));
 }
 warnIfWhatsNewStale();
-const FEATURES = window.FEATURES || {};
+const featureRegistry = window.FEATURES || {};
 var isFeatureOn = window.isFeatureOn;
 if (typeof isFeatureOn !== 'function') {
-  isFeatureOn = (name) => Boolean((window.FEATURES || {})?.[name]);
+  isFeatureOn = (name) => Boolean((window.FEATURES || featureRegistry)?.[name]);
   window.isFeatureOn = isFeatureOn;
 }
 const FEATURE_DISABLED_COPY = 'Temporarily disabled while we stabilize the app.';
