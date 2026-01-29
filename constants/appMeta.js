@@ -18,7 +18,9 @@ const FEATURES = {
   HELP_POLISH: true
 };
 
-const isFeatureOn = (name) => Boolean(FEATURES?.[name]);
+if (typeof window !== 'undefined' && typeof window.isFeatureOn !== 'function') {
+  window.isFeatureOn = (name) => Boolean(FEATURES?.[name]);
+}
 
 const HELP_CONTENT = {
   version: 2,
@@ -269,7 +271,6 @@ window.APP_VERSION = APP_VERSION;
 window.WHATS_NEW = WHATS_NEW;
 window.FEATURE_FLAGS = FEATURE_FLAGS;
 window.FEATURES = FEATURES;
-window.isFeatureOn = isFeatureOn;
 window.HELP_CONTENT = HELP_CONTENT;
 window.DEFAULT_HELP_CONTENT = DEFAULT_HELP_CONTENT;
 window.DEFAULT_WHATS_NEW = DEFAULT_WHATS_NEW;

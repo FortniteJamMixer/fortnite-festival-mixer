@@ -779,9 +779,11 @@ function warnIfWhatsNewStale(){
 }
 warnIfWhatsNewStale();
 const FEATURES = window.FEATURES || {};
-const isFeatureOn = typeof window.isFeatureOn === 'function'
-  ? window.isFeatureOn
-  : (name) => Boolean(FEATURES?.[name]);
+var isFeatureOn = window.isFeatureOn;
+if (typeof isFeatureOn !== 'function') {
+  isFeatureOn = (name) => Boolean((window.FEATURES || {})?.[name]);
+  window.isFeatureOn = isFeatureOn;
+}
 const FEATURE_DISABLED_COPY = 'Temporarily disabled while we stabilize the app.';
 const FEATURE_DISABLED_TOAST_KEY = 'ffjm_feature_disabled_notice';
 function showFeatureDisabledNotice(){
@@ -6053,6 +6055,10 @@ function render(){
     ? `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : 'bg-sky-500/20 border border-sky-400/50 text-sky-100'}">☁️ ${isOffline ? 'Cloud Sync unavailable offline' : 'Cloud Sync: ON'}</span>`
     : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
+  const configStatus = window.firebaseConfigStatus || {};
+  const configWarningBanner = (!firebaseConfigValid && configStatus.reason === 'missing_env')
+    ? `<div class="inline-banner mt-2">Online config missing; running in local mode.</div>`
+    : '';
   const syncBanner = profileSyncState?.syncing
     ? `<div class="inline-banner mt-2">🔄 ${profileSyncState.message || 'Syncing your profile…'}</div>`
     : '';
@@ -6152,6 +6158,7 @@ function render(){
         </div>
 
         ${syncBanner}
+        ${configWarningBanner}
         ${regressionBanner}
         <div id="browserView" style="display:${view==='browser'?'block':'none'}">
           <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
