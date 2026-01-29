@@ -2198,6 +2198,7 @@ function track(eventName, payload = {}){
     const CATALOG_VERSION = 'v1';
     const CATALOG_CACHE_KEY = `ffjm:catalog:${CATALOG_VERSION}`;
     const CATALOG_META_KEY = `ffjm:catalog:meta:${CATALOG_VERSION}`;
+    const LAST_KNOWN_GOOD_KEY = 'catalogCache';
     const boot = {
       phase: 'init',
       profileLoaded: false,
@@ -5759,6 +5760,31 @@ function track(eventName, payload = {}){
       }
     }
 
+    function readLastKnownGoodCatalog(){
+      try{
+        const raw = localStorage.getItem(LAST_KNOWN_GOOD_KEY);
+        if(!raw) return null;
+        const payload = JSON.parse(raw);
+        const tracks = Array.isArray(payload?.tracks) ? payload.tracks : null;
+        if(!Array.isArray(tracks) || !tracks.length) return null;
+        return { tracks, meta: payload?.meta || null };
+      }catch(err){
+        console.warn('[catalog] Failed to read last-known-good cache', err);
+        return null;
+      }
+    }
+
+    function writeLastKnownGoodCatalog(tracks, { source = 'live' } = {}){
+      try{
+        const meta = { count: tracks.length, source, storedAt: new Date().toISOString() };
+        localStorage.setItem(LAST_KNOWN_GOOD_KEY, JSON.stringify({ tracks, meta }));
+        return meta;
+      }catch(err){
+        console.warn('[catalog] Failed to write last-known-good cache', err);
+        return null;
+      }
+    }
+
     function normalizeCatalogTrack(entry){
       if(!entry) return null;
       const id = entry.id || entry.trackId || entry.trackID;
@@ -5799,23 +5825,70 @@ function track(eventName, payload = {}){
       return (tracks || []).map(normalizeCatalogTrack).filter(Boolean).filter(track => track.bpm > 0);
     }
 
-    async function loadTrackCatalog(){
-      const catalogFetch = async () => {
+    function normalizeCatalogPayload(payload){
+      if(Array.isArray(payload)) return payload;
+      if(payload?.sparkTracks){
+        return Array.isArray(payload.sparkTracks) ? payload.sparkTracks : payload.sparkTracks?.items || payload.sparkTracks?.tracks || payload.sparkTracks?.data || [];
+      }
+      if(Array.isArray(payload?.pages)){
+        const items = payload.pages.flatMap(page=>{
+          if(Array.isArray(page?.items)) return page.items;
+          if(page?.items && typeof page.items === 'object') return Object.values(page.items);
+          return [];
+        });
+        return items;
+      }
+      if(Array.isArray(payload?.tracks)) return payload.tracks;
+      if(payload?.tracks && typeof payload.tracks === 'object') return Object.values(payload.tracks);
+      return payload?.items || [];
+    }
+
+    async function fetchWithTimeout(url, { timeoutMs = 5500, headers } = {}){
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try{
+        const res = await fetch(url, { cache: 'no-store', headers, signal: controller.signal });
+        return res;
+      } finally{
+        clearTimeout(timer);
+      }
+    }
+
+    async function fetchCatalogPayload(){
+      const endpoints = [
+        { url: '/api/catalog', headers: undefined }
+      ];
+      for(const endpoint of endpoints){
         try{
-          const res = await fetch('/api/catalog', { cache: 'no-store' });
+          const res = await fetchWithTimeout(endpoint.url, { headers: endpoint.headers });
           if(!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
           const text = await res.text();
           const first = text.trim()[0];
           if(first === '<') throw new Error('CATALOG_ENDPOINT_RETURNED_HTML');
-          const payload = JSON.parse(text);
-          const tracks = Array.isArray(payload) ? payload : payload?.tracks;
+          return JSON.parse(text);
+        }catch(err){
+          console.warn('[catalog] endpoint failed', endpoint.url, err);
+        }
+      }
+      throw new Error('CATALOG_FETCH_FAILED');
+    }
+
+    async function loadTrackCatalog(){
+      const catalogFetch = async () => {
+        try{
+          const payload = await fetchCatalogPayload();
+          const tracks = normalizeCatalogPayload(payload);
           if(!Array.isArray(tracks) || !tracks.length){
             throw new Error('Catalog payload missing tracks');
           }
           const normalized = normalizeCatalogTracks(tracks);
-          if(!normalized.length) throw new Error('Catalog contained no valid tracks');
-          writeCatalogCache(normalized, { source: 'api' });
-          return { tracks: normalized, source: 'api' };
+          if(!normalized.length){
+            console.error('[catalog] zero tracks parsed from payload', payload);
+            throw new Error('Catalog contained no valid tracks');
+          }
+          writeCatalogCache(normalized, { source: 'live' });
+          writeLastKnownGoodCatalog(normalized, { source: 'live' });
+          return { tracks: normalized, source: 'live' };
         }catch(err){
           console.warn('[catalog] api fetch failed', err);
           return null;
@@ -5823,11 +5896,18 @@ function track(eventName, payload = {}){
       };
       const bundled = await catalogFetch();
       if(bundled) return bundled;
+      const lastKnownGood = readLastKnownGoodCatalog();
+      if(lastKnownGood){
+        const normalized = normalizeCatalogTracks(lastKnownGood.tracks);
+        if(normalized.length){
+          return { tracks: normalized, source: 'cached' };
+        }
+      }
       const cached = readCatalogCache();
       if(cached){
         const normalized = normalizeCatalogTracks(cached.tracks);
         if(normalized.length){
-          return { tracks: normalized, source: 'cache' };
+          return { tracks: normalized, source: 'cached' };
         }
       }
       return null;
@@ -7134,13 +7214,17 @@ function render(){
     ? `<span class="${ownedLibraryBadgeClass}">${ownedLibraryStatusMessage}</span>`
     : '';
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
-  const trackSourceLabel = trackSource === 'bundled'
-    ? 'Bundled catalog'
-    : trackSource === 'cache'
-      ? 'Cached catalog'
-      : trackSource === 'sample'
-        ? 'Sample tracks'
-        : 'Tracks';
+  const trackSourceLabel = trackSource === 'live'
+    ? 'Catalog: Live'
+    : trackSource === 'cached'
+      ? 'Catalog: Cached'
+      : trackSource === 'bundled'
+        ? 'Catalog: Bundled'
+        : trackSource === 'sample'
+          ? 'Catalog: Sample'
+          : trackSource === 'error'
+            ? 'Catalog: Error'
+            : 'Catalog: Unknown';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
   const ownedSyncPhase = ownedLibraryState?.phase || 'idle';
   const ownedSyncError = ownedSyncPhase === 'error';
