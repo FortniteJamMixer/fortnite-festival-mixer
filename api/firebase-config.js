@@ -31,23 +31,35 @@ export default function handler(req, res) {
 
   if (missingKeys.length > 0) {
     if (wantsJson) {
-      res.status(500).json({ error: "Missing Firebase env vars", missingKeys });
+      res.status(200).json({
+        ok: false,
+        reason: "missing_env",
+        missingKeys,
+      });
     } else {
-      res
-        .status(500)
-        .send(
-          `console.error('Firebase config missing env vars: ${missingKeys.join(", ")}');window.firebaseConfig = null;`
-        );
+      res.status(200).send(
+        `console.warn('Firebase config missing env vars: ${missingKeys.join(
+          ", "
+        )}');window.firebaseConfig = null;window.firebaseConfigStatus = { ok: false, reason: 'missing_env', missingKeys: ${JSON.stringify(
+          missingKeys
+        )} };`
+      );
     }
     return;
   }
 
   if (wantsJson) {
-    res.status(200).json(config);
+    res.status(200).json({ ok: true, config });
     return;
   }
 
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
 
-  res.status(200).send(`window.firebaseConfig = ${JSON.stringify(config)};`);
+  res
+    .status(200)
+    .send(
+      `window.firebaseConfig = ${JSON.stringify(
+        config
+      )};window.firebaseConfigStatus = { ok: true };`
+    );
 }

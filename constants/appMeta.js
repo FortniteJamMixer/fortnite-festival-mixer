@@ -10,6 +10,18 @@ const FEATURE_FLAGS = {
   ownedToggle: true
 };
 
+const FEATURES = {
+  OWNED_SYNC: false,
+  PROFILE: false,
+  PREVIEW: false,
+  SANDBOX: false,
+  HELP_POLISH: true
+};
+
+if (typeof window !== 'undefined' && typeof window.isFeatureOn !== 'function') {
+  window.isFeatureOn = (name) => Boolean(FEATURES?.[name]);
+}
+
 const HELP_CONTENT = {
   version: 2,
   basic: {
@@ -258,6 +270,7 @@ const WHATS_NEW = DEFAULT_WHATS_NEW.items;
 window.APP_VERSION = APP_VERSION;
 window.WHATS_NEW = WHATS_NEW;
 window.FEATURE_FLAGS = FEATURE_FLAGS;
+window.FEATURES = FEATURES;
 window.HELP_CONTENT = HELP_CONTENT;
 window.DEFAULT_HELP_CONTENT = DEFAULT_HELP_CONTENT;
 window.DEFAULT_WHATS_NEW = DEFAULT_WHATS_NEW;

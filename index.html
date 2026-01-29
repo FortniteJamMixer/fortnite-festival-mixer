@@ -778,6 +778,38 @@ function warnIfWhatsNewStale(){
   localStorage.setItem('whatsNewSignature', JSON.stringify({ version: appVersion, signature }));
 }
 warnIfWhatsNewStale();
+const featureRegistry = window.FEATURES || {};
+var isFeatureOn = window.isFeatureOn;
+if (typeof isFeatureOn !== 'function') {
+  isFeatureOn = (name) => Boolean((window.FEATURES || featureRegistry)?.[name]);
+  window.isFeatureOn = isFeatureOn;
+}
+const FEATURE_DISABLED_COPY = 'Temporarily disabled while we stabilize the app.';
+const FEATURE_DISABLED_TOAST_KEY = 'ffjm_feature_disabled_notice';
+function showFeatureDisabledNotice(){
+  if(sessionStorage.getItem(FEATURE_DISABLED_TOAST_KEY)) return;
+  sessionStorage.setItem(FEATURE_DISABLED_TOAST_KEY, '1');
+  const toast = document.createElement('div');
+  toast.textContent = 'Feature temporarily disabled.';
+  toast.style.position = 'fixed';
+  toast.style.bottom = '16px';
+  toast.style.right = '16px';
+  toast.style.zIndex = '9999';
+  toast.style.background = 'rgba(15, 23, 42, 0.9)';
+  toast.style.color = '#e2e8f0';
+  toast.style.padding = '10px 14px';
+  toast.style.borderRadius = '10px';
+  toast.style.fontSize = '12px';
+  toast.style.pointerEvents = 'none';
+  toast.style.border = '1px solid rgba(148, 163, 184, 0.3)';
+  document.body.appendChild(toast);
+  setTimeout(()=>{ toast.remove(); }, 3000);
+}
+function guardFeature(name){
+  if(isFeatureOn(name)) return true;
+  showFeatureDisabledNotice();
+  return false;
+}
 let helpContentState = window.DEFAULT_HELP_CONTENT || null;
 let whatsNewState = window.DEFAULT_WHATS_NEW || null;
 let configLoadPromise = null;
@@ -4431,6 +4463,7 @@ function track(eventName, payload = {}){
       const cachedTracks = await readCachedTracks();
       const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
       const canFetch = navigator.onLine;
+      let networkSucceeded = false;
       if(cachedTracks.length){
         console.warn('Using cached track data');
         songs = cachedTracks;
@@ -4483,6 +4516,7 @@ function track(eventName, payload = {}){
               songsLoaded = true;
               trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
               logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
+              networkSucceeded = true;
               cacheTracks(songs);
               render(); setupEventListeners();
               maybeAutoStartTour();
@@ -4490,6 +4524,10 @@ function track(eventName, payload = {}){
             }
           }catch(e){ console.warn('endpoint err',e); logEvent('songs_fetch_fail', { message: e?.message, step: 'network' }); }
         }
+      }
+      if(canFetch && !networkSucceeded){
+        trackLoadNotice = 'Catalog unavailable — using cached tracks.';
+        render(); setupEventListeners();
       }
       if(cachedTracks.length){
         trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
@@ -4501,7 +4539,7 @@ function track(eventName, payload = {}){
       songsById = Object.fromEntries(songs.map(s => [s.id, s]));
       trackSource = 'fallback';
       songsLoaded = true;
-      trackLoadNotice = 'Online source unavailable—showing sample tracks.';
+      trackLoadNotice = 'Catalog unavailable — showing sample tracks.';
       trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
       logEvent('songs_fetch_fail', { message: 'network+cache miss; using fallback' });
       render(); setupEventListeners();
@@ -4652,6 +4690,7 @@ function track(eventName, payload = {}){
     }
 
     function getStickyCtaConfig(){
+      if(!isFeatureOn('OWNED_SYNC')) return { visible: false };
       if(view !== 'browser') return { visible: false };
       if(viewingProfile) return { visible: false };
       if(!isMobileViewport()) return { visible: false };
@@ -4765,6 +4804,7 @@ function track(eventName, payload = {}){
     }
 
     function openQuickStart(){
+      if(!guardFeature('OWNED_SYNC')) return;
       if(quickStartDone) return;
       quickStartState.open = true;
       quickStartState.step = 0;
@@ -4789,6 +4829,7 @@ function track(eventName, payload = {}){
     function maybeAutoOpenQuickStart(){
       if(quickStartDone || quickStartPrompted || quickStartState.open) return;
       if(!currentUser || !justEnteredProfile) return;
+      if(!isFeatureOn('OWNED_SYNC')) return;
       if(ownedTracks.length === 0){
         quickStartPrompted = true;
         openQuickStart();
@@ -4814,6 +4855,7 @@ function track(eventName, payload = {}){
     }
 
     async function applyQuickStartPreset(preset){
+      if(!guardFeature('OWNED_SYNC')) return false;
       let nextOwned = [];
       if(preset === 'completionist'){
         const confirmed = confirm('⚠️ This will mark every track as owned. This cannot be undone easily. Continue?');
@@ -4875,6 +4917,10 @@ function track(eventName, payload = {}){
 
     function renderSongList(){
       listRenderCount += 1;
+      const ownedSyncEnabled = isFeatureOn('OWNED_SYNC');
+      const previewEnabled = isFeatureOn('PREVIEW');
+      const sandboxEnabled = isFeatureOn('SANDBOX');
+      const disabledFeatureAttrs = `disabled title="${FEATURE_DISABLED_COPY}" style="opacity:0.5;cursor:not-allowed;pointer-events:none;"`;
       const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
       const isMobile = isMobileViewport();
       if(!isMobile && mobileListObserver){
@@ -5045,10 +5091,16 @@ function track(eventName, payload = {}){
             </div>
             <div class="flex flex-wrap gap-2 items-center">
               <button data-song-action="select" data-song-id="${song.id}" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
-              <button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-song-action="preview" data-song-id="${song.id}">Preview</button>
-              <button data-song-action="toggle-owned" data-song-id="${song.id}" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
-              <button data-song-action="toggle-setlist" data-song-id="${song.id}" class="addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isInSetlist ? '✓ In Setlist' : '+ Set'}</button>
-              <button data-song-action="add-sandbox" data-song-id="${song.id}" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Sandbox</button>
+              ${previewEnabled
+                ? `<button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-song-action="preview" data-song-id="${song.id}">Preview</button>`
+                : `<button class="previewBtn px-3 py-2 bg-white/10 rounded-lg text-sm text-gray-400" ${disabledFeatureAttrs}>Preview</button>`}
+              ${ownedSyncEnabled
+                ? `<button data-song-action="toggle-owned" data-song-id="${song.id}" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>`
+                : `<button class="px-3 py-2 bg-gray-700/40 rounded-lg text-sm font-medium text-gray-400" ${disabledFeatureAttrs}>Mark Owned</button>`}
+              <button data-song-action="toggle-setlist" data-song-id="${song.id}" class="addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isInSetlist ? '✓ In Setlist' : '+ Set'}</button>
+              ${sandboxEnabled
+                ? `<button data-song-action="add-sandbox" data-song-id="${song.id}" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>+ Sandbox</button>`
+                : `<button class="px-3 py-2 bg-blue-600/20 border border-blue-400/20 rounded-lg text-sm font-medium text-gray-400" ${disabledFeatureAttrs}>+ Sandbox</button>`}
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
           </div>
@@ -5071,7 +5123,7 @@ function track(eventName, payload = {}){
       const refreshBanner = trackLoadState.status === 'refreshing'
         ? `<div class="inline-banner">Refreshing tracks in the background…</div>`
         : '';
-      const emptyOwnedCallout = (!viewingProfile && ownedTracks.length === 0 && !quickStartDone)
+      const emptyOwnedCallout = (ownedSyncEnabled && !viewingProfile && ownedTracks.length === 0 && !quickStartDone)
         ? `<div class="panel p-4 bg-cyan-500/10 border border-cyan-400/30 text-sm text-cyan-100 space-y-2">
             <div class="font-semibold text-white">Step 1: Mark songs you own (start small)</div>
             <div class="text-xs text-cyan-200">Quick Start marks a starter set so you can see mixes fast.</div>
@@ -5973,6 +6025,17 @@ function render(){
     alert('Admin only');
     view = 'browser';
   }
+  const ownedSyncEnabled = isFeatureOn('OWNED_SYNC');
+  const profileEnabled = isFeatureOn('PROFILE');
+  const previewEnabled = isFeatureOn('PREVIEW');
+  const sandboxEnabled = isFeatureOn('SANDBOX');
+  const disabledFeatureAttrs = `disabled title="${FEATURE_DISABLED_COPY}" style="opacity:0.5;cursor:not-allowed;pointer-events:none;"`;
+  if(!profileEnabled && view === 'profile'){
+    view = 'browser';
+  }
+  if(!ownedSyncEnabled && showOwnedOnly){
+    showOwnedOnly = false;
+  }
   currentUser = getActiveProfile() || currentUser;
   if(!isAdmin() && adminMenuOpen){
     adminMenuOpen = false;
@@ -5981,9 +6044,10 @@ function render(){
   const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
   const ownedCount = displayTracks.length;
   const ownedLibraryStatusMessage = resolveOwnedLibraryStatusMessage();
-  const ownedLibraryBadge = ownedLibraryStatusMessage
+  const ownedLibraryBadge = ownedSyncEnabled && ownedLibraryStatusMessage
     ? `<span class="${ownedLibraryState.phase === 'restoring' ? 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 border border-white/20 text-cyan-100' : 'text-[11px] text-cyan-100/90'}">${ownedLibraryStatusMessage}</span>`
     : '';
+  const stabilizationMode = !ownedSyncEnabled || !profileEnabled || !previewEnabled || !sandboxEnabled;
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
   const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
@@ -5991,6 +6055,10 @@ function render(){
     ? `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : 'bg-sky-500/20 border border-sky-400/50 text-sky-100'}">☁️ ${isOffline ? 'Cloud Sync unavailable offline' : 'Cloud Sync: ON'}</span>`
     : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
+  const configStatus = window.firebaseConfigStatus || {};
+  const configWarningBanner = (!firebaseConfigValid && configStatus.reason === 'missing_env')
+    ? `<div class="inline-banner mt-2">Online config missing; running in local mode.</div>`
+    : '';
   const syncBanner = profileSyncState?.syncing
     ? `<div class="inline-banner mt-2">🔄 ${profileSyncState.message || 'Syncing your profile…'}</div>`
     : '';
@@ -6046,14 +6114,16 @@ function render(){
                   <button id="adminMenuWhatsNewEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
                   <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
                 </div>`:''}</div>`:''}
-              <button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>
+              ${profileEnabled
+                ? `<button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>`
+                : `<button class="px-3 py-2 bg-purple-500/20 border border-purple-500/50 rounded-lg text-purple-200 text-sm" ${disabledFeatureAttrs}>Profile</button>`}
               <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
               <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
             </div>
           </div>
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
             <div class="flex items-center flex-wrap gap-2">
-              <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
+              ${ownedSyncEnabled ? `<p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>` : ''}
               ${ownedLibraryBadge}
               ${networkBadge}
               ${trackSourceBadge}
@@ -6061,6 +6131,7 @@ function render(){
               <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
             </div>
             ${communityStatsRow}
+            ${stabilizationMode ? `<div class="inline-banner mt-2">Stabilization mode: some features temporarily disabled.</div>` : ''}
           </div>
         </div>
       </header>
@@ -6073,7 +6144,9 @@ function render(){
               <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
               <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
-            <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
+            ${profileEnabled
+              ? `<button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>`
+              : `<button class="px-4 py-2 rounded-lg font-medium transition bg-white/10 text-gray-300" ${disabledFeatureAttrs}>Profile</button>`}
           </div>
           ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
         </div>
@@ -6085,6 +6158,7 @@ function render(){
         </div>
 
         ${syncBanner}
+        ${configWarningBanner}
         ${regressionBanner}
         <div id="browserView" style="display:${view==='browser'?'block':'none'}">
           <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
@@ -6101,11 +6175,13 @@ function render(){
                 <div id="searchStatus" class="text-xs text-cyan-200" style="display:none;">Filtering…</div>
                 <div class="flex flex-wrap gap-2">
                   <button id="mixableFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
-                  <button id="ownedFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
+                  ${ownedSyncEnabled
+                    ? `<button id="ownedFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>`
+                    : `<button class="px-3 py-2 rounded-lg font-medium transition bg-white/10 text-gray-300" ${disabledFeatureAttrs}>Show All</button>`}
                   <button id="controlClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
-                ${!viewingProfile?`<div class="flex flex-wrap gap-2">
+                ${(!viewingProfile && ownedSyncEnabled)?`<div class="flex flex-wrap gap-2">
                   <button id="markAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
                   <button id="clearAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
                 </div>`:''}
@@ -6164,17 +6240,22 @@ function render(){
 
               ${selectedPanel}
 
-              <div class="panel space-y-2 dim-when-sticky">
-                <div class="flex items-center justify-between">
-                  <div class="font-bold text-white">Sandbox (Drag tracks here)</div>
-                  <div class="flex items-center gap-2 text-xs text-gray-300">
-                    <span>Limit 4</span>
-                    <button onclick="clearSandbox()" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10">Clear</button>
-                  </div>
-                </div>
-                <div id="sandbox" class="sandbox-drop bg-black/40"></div>
-                <div id="sandboxInfo" class="small-muted"></div>
-              </div>
+              ${sandboxEnabled
+                ? `<div class="panel space-y-2 dim-when-sticky">
+                    <div class="flex items-center justify-between">
+                      <div class="font-bold text-white">Sandbox (Drag tracks here)</div>
+                      <div class="flex items-center gap-2 text-xs text-gray-300">
+                        <span>Limit 4</span>
+                        <button onclick="clearSandbox()" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10">Clear</button>
+                      </div>
+                    </div>
+                    <div id="sandbox" class="sandbox-drop bg-black/40"></div>
+                    <div id="sandboxInfo" class="small-muted"></div>
+                  </div>`
+                : `<div class="panel space-y-2 dim-when-sticky">
+                    <div class="font-bold text-white">Sandbox</div>
+                    <div class="text-xs text-gray-400">${FEATURE_DISABLED_COPY}</div>
+                  </div>`}
             </div>
 
             <div class="space-y-4">
@@ -6199,7 +6280,13 @@ function render(){
       </div>
     </div>
   `;
-  if(view==='browser'){ renderSongList(); sandboxInit(); renderSandbox(); } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
+  if(view==='browser'){
+    renderSongList();
+    if(isFeatureOn('SANDBOX')){
+      sandboxInit();
+      renderSandbox();
+    }
+  } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
   syncCommunityStatsUI();
   bindTourEvents();
   updateTourUI();
@@ -6766,6 +6853,7 @@ function render(){
     };
 
     window.openProfileView = () => {
+      if(!guardFeature('PROFILE')) return;
       view = 'profile';
       render();
       setupEventListeners();
@@ -6773,6 +6861,7 @@ function render(){
     };
 
     window.toggleOwned = async (id) => {
+      if(!guardFeature('OWNED_SYNC')) return;
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
       const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
       await saveOwnedTracksSafe(nextOwned, { reason: 'toggle' });
@@ -6824,6 +6913,9 @@ function render(){
         alert('Admin only');
         newView = 'browser';
       }
+      if(newView === 'profile' && !guardFeature('PROFILE')){
+        return;
+      }
       adminMenuOpen = false;
       logEvent('view_switch', { from: view, to: newView });
       view = newView;
@@ -6841,7 +6933,14 @@ function render(){
       if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(profileBtn) profileBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}`;
       if(auditBtn) auditBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='audit'?'bg-gradient-to-r from-amber-500 to-yellow-500':'bg-white/10 hover:bg-white/20'}`;
-      if(view==='browser'){ renderSongList(); setupEventListeners(); sandboxInit(); renderSandbox(); }
+      if(view==='browser'){
+        renderSongList();
+        setupEventListeners();
+        if(isFeatureOn('SANDBOX')){
+          sandboxInit();
+          renderSandbox();
+        }
+      }
       else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
       else if(view==='audit'){ renderAuditView(); setupEventListeners(); }
       else { renderProfile(); setupEventListeners(); }
@@ -6861,6 +6960,7 @@ function render(){
     };
 
     window.toggleOwnedFilter = () => {
+      if(!guardFeature('OWNED_SYNC')) return;
       showOwnedOnly = !showOwnedOnly;
       resetMainPagination();
       updateMobileWindowState({ reset: true });
@@ -6869,6 +6969,7 @@ function render(){
     };
 
     window.markAllOwned = async () => {
+      if(!guardFeature('OWNED_SYNC')) return;
       if(viewingProfile) return;
       if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
       ownedTracks = songs.map(s=>s.id);
@@ -6881,6 +6982,7 @@ function render(){
     };
 
     window.clearAllOwned = async () => {
+      if(!guardFeature('OWNED_SYNC')) return;
       if(viewingProfile) return;
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
@@ -6908,6 +7010,7 @@ function render(){
 
     // --------------------- Preview & two-track (simple) ---------------
     function onPreviewClick(id){
+      if(!guardFeature('PREVIEW')) return;
       const b = songs.find(s => s.id === id); if(!selectedSong){ selectedSong = b; render(); setupEventListeners(); alert('Main track selected. Click Preview on another track to compare.'); return; }
       previewSong = b; displayTwoTrackPreview(selectedSong, previewSong);
     }
@@ -6917,10 +7020,55 @@ function render(){
     }
 
     // -------------------- Sandbox functions --------------------------
-    function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; if(!el.dataset.bound){ el.dataset.bound='1'; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); } if(!sandboxTracks.length && sandboxIds.length){ sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4); } renderSandbox(); }
+    function sandboxInit(){
+      if(!guardFeature('SANDBOX')) return;
+      const el=document.getElementById('sandbox');
+      if(!el) return;
+      if(!el.dataset.bound){
+        el.dataset.bound='1';
+        el.addEventListener('dragover', (e)=>e.preventDefault());
+        el.addEventListener('drop', (e)=>{
+          e.preventDefault();
+          const id=e.dataTransfer.getData('text/plain');
+          const track = songs.find(s=>s.id===id);
+          if(!track) return;
+          if(sandboxTracks.find(t=>t.id===id)) return;
+          if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; }
+          sandboxTracks.push(track);
+          renderSandbox();
+        });
+      }
+      if(!sandboxTracks.length && sandboxIds.length){
+        sandboxTracks = sandboxIds.map(id=> songs.find(s=>s.id===id)).filter(Boolean).slice(0,4);
+      }
+      renderSandbox();
+    }
     function persistSandbox(){ sandboxIds = sandboxTracks.map(t=>t.id); localStorage.setItem(getNamespacedKey('sandboxTrackIds'), JSON.stringify(sandboxIds)); }
-    function addToSandbox(id){ const track=songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)){ alert('Track already in sandbox'); return; } if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); renderSongList(); }
-    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; persistSandbox(); const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`; const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; }
+    function addToSandbox(id){
+      if(!guardFeature('SANDBOX')) return;
+      const track=songs.find(s=>s.id===id);
+      if(!track) return;
+      if(sandboxTracks.find(t=>t.id===id)){ alert('Track already in sandbox'); return; }
+      if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; }
+      sandboxTracks.push(track);
+      renderSandbox();
+      renderSongList();
+    }
+    function renderSandbox(){
+      if(!isFeatureOn('SANDBOX')) return;
+      const el=document.getElementById('sandbox');
+      if(!el) return;
+      el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`;
+      persistSandbox();
+      const info=document.getElementById('sandboxInfo');
+      if(sandboxTracks.length===0){ if(info) info.textContent=''; return; }
+      const bpms=sandboxTracks.map(s=>s.bpm);
+      const keys=sandboxTracks.map(s=>s.camelot);
+      const bpmRange=`${Math.min(...bpms)}–${Math.max(...bpms)}`;
+      const bpmDiffs=bpms.length>1?Math.max(...bpms)-Math.min(...bpms):0;
+      const genreBlend=getGenreBlendScore(sandboxTracks);
+      if(info) info.innerHTML=`BPM range: ${bpmRange} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`;
+    }
     function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
     function clearSandbox(){ sandboxTracks=[]; sandboxIds=[]; renderSandbox(); }
     function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
