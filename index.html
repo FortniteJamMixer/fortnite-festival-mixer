@@ -1912,18 +1912,16 @@ function track(eventName, payload = {}){
       error: 'error'
     });
     const APP_BOOT_STATES = Object.freeze({
-      bootLoading: 'BOOT_LOADING',
+      authLoading: 'AUTH_LOADING',
       signedOut: 'SIGNED_OUT',
       signedInLoading: 'SIGNED_IN_LOADING',
       ready: 'READY',
-      fatal: 'FATAL_ERROR'
+      fatal: 'FATAL'
     });
     const DEFAULT_VIEW = 'browser';
-    let appBootState = APP_BOOT_STATES.bootLoading;
+    let appBootState = APP_BOOT_STATES.authLoading;
     let bootstrapFatalError = null;
-    const SYNC_TIMEOUT_MS = 6000;
-    const BOOT_DEADLINE_MS = 10000;
-    const BOOT_CALL_TIMEOUT_MS = 6000;
+    const SYNC_TIMEOUT_MS = 10000;
     const PROFILE_SAVE_DEBOUNCE_MS = 400;
     let syncState = {
       state: SYNC_STATES.idle,
@@ -1985,15 +1983,12 @@ function track(eventName, payload = {}){
         errorStep: null
       });
     }
-    function withTimeout(promise, timeoutMs, step){
+    function withSyncTimeout(promise, { step } = {}){
       let timer;
       const timeoutPromise = new Promise((_, reject)=>{
-        timer = setTimeout(() => reject({ code: 'timeout', step, message: `${step || 'Operation'} timed out` }), timeoutMs);
+        timer = setTimeout(() => reject({ code: 'timeout', step }), SYNC_TIMEOUT_MS);
       });
       return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
-    }
-    function withSyncTimeout(promise, { step, timeoutMs = SYNC_TIMEOUT_MS } = {}){
-      return withTimeout(promise, timeoutMs, step);
     }
     async function awaitAuthReady(){
       if(!firebaseEnabled) return null;
@@ -2026,8 +2021,7 @@ function track(eventName, payload = {}){
       initialOwnedCount: 0,
       errors: [],
       logs: [],
-      lastError: null,
-      startedAt: Date.now()
+      lastError: null
     };
     const BOOT_LOG_LIMIT = 50;
     function recordBootStep(step){
@@ -2037,10 +2031,6 @@ function track(eventName, payload = {}){
         boot.logs.shift();
       }
       window.__BOOT_LOGS__ = boot.logs;
-      if(!window.__BOOT__){
-        window.__BOOT__ = { steps: [], lastError: null, startedAt: boot.startedAt };
-      }
-      window.__BOOT__.steps = boot.logs.slice();
       return entry;
     }
     function recordBootError(error){
@@ -2048,11 +2038,6 @@ function track(eventName, payload = {}){
       boot.errors.push(message);
       boot.lastError = message;
       window.__BOOT_LAST_ERROR__ = message;
-      if(!window.__BOOT__){
-        window.__BOOT__ = { steps: boot.logs.slice(), lastError: message, startedAt: boot.startedAt };
-      } else {
-        window.__BOOT__.lastError = message;
-      }
       return message;
     }
     let profileSyncOutcome = { cloudMissing: false, syncError: false, migrationApplied: false };
@@ -4667,7 +4652,7 @@ function track(eventName, payload = {}){
         currentUser = profile;
         await persistProfileRobust(profile, { force: true, reason: 'system' });
         enforcePostLoginDefaults();
-        await bootstrapApp({ showBootScreen: true, allowProfileAutoOpen: false });
+        await bootstrapApp();
       }catch(err){
         console.error('[auth] enter failed', err);
         setLocalAuthError('Couldn’t enter the mix. Check console for details.');
@@ -5082,49 +5067,9 @@ function track(eventName, payload = {}){
       showLoginScreen();
     }
 
-    function resolvePostAuthLanding(){
-      return DEFAULT_VIEW;
-    }
-
-    function resolveInitialAuthState(){
-      return new Promise((resolve) => {
-        if(!firebaseAuth){
-          resolve(null);
-          return;
-        }
-        const unsub = firebaseAuth.onAuthStateChanged((user) => {
-          if(unsub) unsub();
-          resolve(user || null);
-        });
-      });
-    }
-
-    async function hydrateSignedInProfile({ uid, email, legacyOwnedTracks = [] } = {}){
-      recordBootStep('BOOT: hydration started');
-      try{
-        const localProfile = await withTimeout(hydrateFromLocalCacheOnly(), BOOT_CALL_TIMEOUT_MS, 'local cache');
-        if(localProfile){
-          await applyProfileToState(localProfile, { loadEpic: false, loadOverrides: true, skipPersist: true });
-        }
-      }catch(err){
-        console.warn('[profile] local cache hydrate failed', err);
-        setSyncError({ code: err?.code || 'local_cache_failed', step: err?.step || 'localCache', message: 'Local cache failed to load.' });
-      }
-      try{
-        const merged = await withTimeout(
-          hydrateProfileFromCloudThenMergeLocal(uid, email, { legacyOwnedTracks }),
-          BOOT_CALL_TIMEOUT_MS,
-          'cloud profile'
-        );
-        await applyProfileToState(merged, { loadEpic: true, loadOverrides: true, skipPersist: true });
-      }catch(err){
-        console.warn('[profile] cloud hydrate failed', err);
-        setSyncError({ code: err?.code || 'cloud_hydrate_failed', step: err?.step || 'cloudProfile', message: 'Cloud sync failed.' });
-      }finally{
-        recordBootStep('BOOT: hydration finished');
-        render();
-        setupEventListeners();
-      }
+    function resolvePostAuthLanding({ explicitView } = {}){
+      const resolved = resolveExplicitView(explicitView);
+      return resolved || DEFAULT_VIEW;
     }
 
     async function migrateLegacyOwnedTracks(uid, legacyIds = []){
@@ -5183,11 +5128,9 @@ function track(eventName, payload = {}){
         recordBootStep(`AUTH: resolved ${user.uid}`);
         if (authSettledUser === user.uid && appBootState === APP_BOOT_STATES.ready) return;
         authSettledUser = user.uid;
-        startBootDeadline();
-        recordBootStep('BOOT: auth change');
         setAppBootState(APP_BOOT_STATES.signedInLoading);
         enforcePostLoginDefaults();
-        updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Sync: Loading…', errorCode: null, errorStep: null });
+        updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Syncing your profile…', errorCode: null, errorStep: null });
         const savedUsername = getSavedUsername();
         const emailPrefix = user.email ? user.email.split('@')[0] : '';
         const defaultUsername = savedUsername || user.displayName || emailPrefix || `user_${user.uid.slice(0,6)}`;
@@ -5197,26 +5140,23 @@ function track(eventName, payload = {}){
           username: defaultUsername,
           djName: defaultUsername
         }, user.uid);
-        view = resolvePostAuthLanding();
+        const legacyIds = [currentUser?.username, user.email, emailPrefix, user.displayName]
+          .filter((value) => value && value !== user.uid);
+        let migrationOwned = [];
         try{
-          await bootstrapApp({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: true, allowProfileAutoOpen: false });
+          migrationOwned = await migrateLegacyOwnedTracks(user.uid, legacyIds) || [];
+        }catch(err){
+          console.warn('[owned-library] legacy migration failed', err);
+        }
+        try{
+          await bootstrapApp({ loadSongs: !songs.length, loadProfile: true, preferCache: false, legacyOwnedTracks: migrationOwned });
         }catch(err){
           return;
         }
+        view = resolvePostAuthLanding({ explicitView: viewParam });
         setAppBootState(APP_BOOT_STATES.ready);
         render();
         setupEventListeners();
-        const legacyIds = [currentUser?.username, user.email, emailPrefix, user.displayName]
-          .filter((value) => value && value !== user.uid);
-        void (async () => {
-          let migrationOwned = [];
-          try{
-            migrationOwned = await withTimeout(migrateLegacyOwnedTracks(user.uid, legacyIds), BOOT_CALL_TIMEOUT_MS, 'legacy owned migration') || [];
-          }catch(err){
-            console.warn('[owned-library] legacy migration failed', err);
-          }
-          await hydrateSignedInProfile({ uid: user.uid, email: user.email || '', legacyOwnedTracks: migrationOwned });
-        })();
         if(syncState.state !== SYNC_STATES.error){
           setSyncedState('Synced ✅');
         }
@@ -6253,12 +6193,6 @@ function track(eventName, payload = {}){
               <div><span class="text-gray-400">Last hash:</span> ${escapeHtml(syncDebug.lastSyncHash || '—')}</div>
               <div><span class="text-gray-400">Last error:</span> ${escapeHtml(syncDebug.lastErrorMessage || syncDebug.errorCode || '—')}</div>
               <div><span class="text-gray-400">Error step:</span> ${escapeHtml(syncDebug.errorStep || '—')}</div>
-              <div><span class="text-gray-400">Boot started:</span> ${window.__BOOT__?.startedAt ? new Date(window.__BOOT__.startedAt).toLocaleTimeString() : '—'}</div>
-              <div><span class="text-gray-400">Boot last step:</span> ${escapeHtml(window.__BOOT__?.steps?.length ? window.__BOOT__.steps[window.__BOOT__.steps.length - 1].step : '—')}</div>
-              <div class="sm:col-span-2"><span class="text-gray-400">Boot last error:</span> ${escapeHtml(window.__BOOT__?.lastError || '—')}</div>
-            </div>
-            <div class="text-xs text-gray-300 space-y-1">
-              ${(window.__BOOT__?.steps || []).slice(-6).map(entry => `<div class="flex items-start justify-between gap-3"><span>${escapeHtml(entry.step)}</span><span class="text-gray-500">${escapeHtml(entry.at)}</span></div>`).join('') || '<div>No boot steps recorded.</div>'}
             </div>
           </div>`
         : '';
@@ -6439,27 +6373,7 @@ function renderBootstrapGate(message){
         <div class="text-sm text-cyan-200">${text}</div>
       </div>
     </div>
-`;
-}
-
-let bootDeadlineTimer = null;
-function startBootDeadline(){
-  if(bootDeadlineTimer) clearTimeout(bootDeadlineTimer);
-  boot.startedAt = Date.now();
-  window.__BOOT__ = { steps: boot.logs.slice(), lastError: boot.lastError, startedAt: boot.startedAt };
-  bootDeadlineTimer = setTimeout(() => {
-    if([APP_BOOT_STATES.signedOut, APP_BOOT_STATES.ready, APP_BOOT_STATES.fatal].includes(appBootState)) return;
-    const lastStep = boot.logs?.length ? boot.logs[boot.logs.length - 1].step : 'Unknown';
-    const error = new Error(`Boot timed out after ${BOOT_DEADLINE_MS / 1000}s (last step: ${lastStep})`);
-    setAppBootState(APP_BOOT_STATES.fatal, { error });
-  }, BOOT_DEADLINE_MS);
-}
-
-function clearBootDeadline(){
-  if(bootDeadlineTimer){
-    clearTimeout(bootDeadlineTimer);
-    bootDeadlineTimer = null;
-  }
+  `;
 }
 
 let bootDebugOpen = false;
@@ -6517,7 +6431,6 @@ function setAppBootState(state, { error } = {}){
   appBootState = state;
   bootstrapFatalError = error || null;
   if(state === APP_BOOT_STATES.fatal){
-    clearBootDeadline();
     if(bootstrapFatalError){
       recordBootError(bootstrapFatalError);
     }
@@ -6525,10 +6438,7 @@ function setAppBootState(state, { error } = {}){
     renderBootstrapFatal(bootstrapFatalError?.message || String(bootstrapFatalError || 'Startup failed'));
     return;
   }
-  if(state === APP_BOOT_STATES.ready || state === APP_BOOT_STATES.signedOut){
-    clearBootDeadline();
-  }
-  if(state === APP_BOOT_STATES.bootLoading || state === APP_BOOT_STATES.signedInLoading){
+  if(state === APP_BOOT_STATES.authLoading || state === APP_BOOT_STATES.signedInLoading){
     renderBootstrapGate();
   }
 }
@@ -6577,7 +6487,7 @@ function syncAllHeaderCountsAndButtons(){
   updateStickyCTA();
 }
 
-async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache = false, legacyOwnedTracks = [], showBootScreen = true, allowProfileAutoOpen = true } = {}){
+async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache = false, legacyOwnedTracks = [] } = {}){
   try{
     boot.phase = 'init';
     boot.profileLoaded = false;
@@ -6585,9 +6495,8 @@ async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache 
     boot.usedFallbackSongs = false;
     boot.usedSnapshotProfile = false;
     boot.errors = [];
-    if(showBootScreen){
-      renderBootScreen('Loading Festival Jam Tracks…');
-    }
+
+    renderBootScreen('Loading Festival Jam Tracks…');
 
     if(loadProfile){
       boot.phase = 'loadingProfile';
@@ -6596,9 +6505,7 @@ async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache 
         : await hydrateProfileRobust();
       resetUiDefaults();
       await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
-      if(allowProfileAutoOpen){
-        await maybeLoadSharedProfile();
-      }
+      await maybeLoadSharedProfile();
       boot.profileLoaded = true;
     } else {
       boot.profileLoaded = false;
@@ -8739,74 +8646,17 @@ function render(){
     }
     initCommunityMetrics();
     async function bootApp(){
-      boot.logs = [];
-      boot.errors = [];
-      boot.lastError = null;
-      startBootDeadline();
-      recordBootStep('BOOT: start');
-      setAppBootState(APP_BOOT_STATES.bootLoading);
+      setAppBootState(APP_BOOT_STATES.authLoading);
       renderBootstrapGate('Checking sign-in…');
       if (firebaseEnabled && firebaseAuth) {
         try{
-          await withTimeout(ensureFirebasePersistence(), BOOT_CALL_TIMEOUT_MS, 'auth persistence');
+          await ensureFirebasePersistence();
           recordBootStep('BOOT: persistence set');
         }catch(err){
           setAppBootState(APP_BOOT_STATES.fatal, { error: err });
           return;
         }
-        let initialUser = null;
-        try{
-          initialUser = await withTimeout(resolveInitialAuthState(), BOOT_CALL_TIMEOUT_MS, 'auth state');
-        }catch(err){
-          setAppBootState(APP_BOOT_STATES.fatal, { error: err });
-          return;
-        }
-        recordBootStep(`AUTH: resolved ${initialUser?.uid || 'signedOut'}`);
         setupFirebaseAuthListener();
-        if(!initialUser){
-          enterSignedOutState();
-          return;
-        }
-        if(!initialUser.uid){
-          console.warn('[auth] missing uid');
-          setSyncError({ code: 'missing_uid', step: 'checkingAuth', message: 'Sign in again to restore sync.' });
-          await firebaseAuth.signOut();
-          enterSignedOutState();
-          return;
-        }
-        authSettledUser = initialUser.uid;
-        setAppBootState(APP_BOOT_STATES.signedInLoading);
-        enforcePostLoginDefaults();
-        updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Sync: Loading…', errorCode: null, errorStep: null });
-        const savedUsername = getSavedUsername();
-        const emailPrefix = initialUser.email ? initialUser.email.split('@')[0] : '';
-        const defaultUsername = savedUsername || initialUser.displayName || emailPrefix || `user_${initialUser.uid.slice(0,6)}`;
-        currentUser = normalizeProfileShape({
-          uid: initialUser.uid,
-          email: initialUser.email || '',
-          username: defaultUsername,
-          djName: defaultUsername
-        }, initialUser.uid);
-        view = resolvePostAuthLanding();
-        try{
-          await bootstrapApp({ loadSongs: !songs.length, loadProfile: false, preferCache: false, showBootScreen: true, allowProfileAutoOpen: false });
-        }catch(err){
-          return;
-        }
-        setAppBootState(APP_BOOT_STATES.ready);
-        render();
-        setupEventListeners();
-        const legacyIds = [currentUser?.username, initialUser.email, emailPrefix, initialUser.displayName]
-          .filter((value) => value && value !== initialUser.uid);
-        void (async () => {
-          let migrationOwned = [];
-          try{
-            migrationOwned = await withTimeout(migrateLegacyOwnedTracks(initialUser.uid, legacyIds), BOOT_CALL_TIMEOUT_MS, 'legacy owned migration') || [];
-          }catch(err){
-            console.warn('[owned-library] legacy migration failed', err);
-          }
-          await hydrateSignedInProfile({ uid: initialUser.uid, email: initialUser.email || '', legacyOwnedTracks: migrationOwned });
-        })();
         return;
       }
       const savedUsername = getSavedUsername();
@@ -8816,8 +8666,7 @@ function render(){
         currentUser = profile;
         enforcePostLoginDefaults();
         try{
-          setAppBootState(APP_BOOT_STATES.signedInLoading);
-          await bootstrapApp({ loadSongs: true, loadProfile: true, preferCache: false, showBootScreen: true, allowProfileAutoOpen: false });
+          await bootstrapApp({ loadSongs: true, loadProfile: true, preferCache: false });
         }catch(err){
           return;
         }
