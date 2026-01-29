@@ -190,8 +190,36 @@
     @media (min-width: 768px) {
       .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
+    .live-carousel { scroll-snap-type: x mandatory; scroll-behavior: smooth; }
+    .live-carousel > * { scroll-snap-align: start; }
+    .live-carousel.dragging { cursor: grabbing; }
+    .live-carousel::-webkit-scrollbar { height: 6px; }
+    .live-carousel::-webkit-scrollbar-thumb { background: rgba(79,70,229,0.6); border-radius: 999px; }
+    .rating-star { color: rgba(255,255,255,0.35); transition: transform 0.15s ease, color 0.15s ease; }
+    .rating-star.active { color: #fbbf24; transform: translateY(-1px) scale(1.05); }
+    .rating-star-display { color: #fbbf24; }
+    .profile-accent-border { border-color: var(--profile-accent, #ff6b9d); }
+    .profile-accent-glow { box-shadow: 0 0 18px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
+    .profile-accent-pill { background: rgba(255,255,255,0.06); border: 1px solid var(--profile-accent, #ff6b9d); color: #fff; }
+    .profile-avatar-action { cursor: pointer; }
+    .profile-avatar-action:focus-visible { outline: 2px solid var(--profile-accent, #ff6b9d); outline-offset: 4px; }
+    .profile-avatar-overlay { pointer-events: none; }
     #profileView { position: relative; z-index: 10; }
     .profile-hit-target { min-height: 44px; }
+    .profile-decor-layer { pointer-events: none; }
+    .persona-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
+    .persona-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); transform: scale(1.04); }
+    .persona-option:hover { box-shadow: 0 0 16px rgba(255,255,255,0.2); transform: translateY(-1px) scale(1.02); }
+    .persona-badge { position: relative; display: inline-flex; align-items: center; justify-content: center; }
+    .persona-badge svg { display: block; }
+    .persona-energy { position: absolute; right: -4px; bottom: -4px; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 10px rgba(255,255,255,0.2); }
+    .persona-ring { animation: personaPulse 3s ease-in-out infinite; }
+    .persona-spark { animation: personaSpark 2.2s ease-in-out infinite; }
+    .persona-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .persona-card:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 16px rgba(56,189,248,0.3); }
+    @keyframes personaPulse { 0%,100% { opacity: 0.85; } 50% { opacity: 0.55; } }
+    @keyframes personaSpark { 0%,100% { transform: translateY(0); opacity: 0.8; } 50% { transform: translateY(-3px); opacity: 1; } }
+    .profile-toggle { accent-color: var(--profile-accent, #ff6b9d); }
 
     /* Help modal */
     #helpModal {
@@ -655,7 +683,7 @@ function applyBrandingCopy(){
   const helpTitle = document.querySelector('[data-brand="help-title"]');
   if(helpTitle) helpTitle.textContent = `${BRAND.APP_NAME} Help`;
   const helpIntro = document.querySelector('[data-brand="help-intro"]');
-  if(helpIntro) helpIntro.textContent = `A fast guide to the working features in ${BRAND.APP_NAME}. Open this help anytime with the ❓ button in the header.`;
+  if(helpIntro) helpIntro.textContent = `A complete, beginner-to-pro guide for every tool in ${BRAND.APP_NAME}. Open this help anytime with the ❓ button in the header.`;
   const camelotAnchor = document.querySelector('[data-brand="help-anchor-camelot"]');
   if(camelotAnchor) camelotAnchor.textContent = `How ${BRAND.APP_NAME} uses Camelot`;
   const priorityDesc = document.querySelector('[data-brand="priority-desc"]');
@@ -1679,6 +1707,7 @@ function track(eventName, payload = {}){
     let selectedGenre = 'All';
     let bandMembers = [];
     let viewingProfile = null;
+    let profileOwnedSearch = '';
     let friendSearchTerm = '';
     let socialFriendSearchTerm = '';
     let socialFriendSearchDebounce = null;
@@ -1696,6 +1725,7 @@ function track(eventName, payload = {}){
     let friendsError = '';
     let friendLookupError = '';
     let friendLookupResults = [];
+    let profileOwnedPagerOwnerKey = '';
     let liveNowUsers = [];
     let liveNowLoading = false;
     let liveNowLoadedAt = 0;
@@ -1754,7 +1784,7 @@ function track(eventName, payload = {}){
     const TOUR_STEPS = [
       { id: 'browse', selector: '#searchInput', title: 'Browse Tracks', copy: 'Scroll or search to find songs you want to mix.', route: 'browser', routeLabel: 'Go to Browse' },
       { id: 'setlist', selector: '#setlistBtn', title: 'Build Your Setlist', copy: 'Tap a track to add it, then open Setlist to review your picks.', route: 'browser' },
-      { id: 'profile', selector: '#profileBtn', title: 'Profile Overview', copy: 'Check your owned count and bandmates from Profile.', route: 'profile', routeLabel: 'Go to Profile' }
+      { id: 'go-live', selector: '#profileStreamUrl', title: 'Go Live (Optional)', copy: 'Add your stream link, then turn on LIVE. The green pill opens your stream.', route: 'profile', routeLabel: 'Go to Profile' }
     ];
     const tourState = {
       isOpen: false,
@@ -1774,6 +1804,7 @@ function track(eventName, payload = {}){
     const mobileViewportQuery = window.matchMedia ? window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`) : null;
     let friendPanelTab = 'friends';
     let mainPager = null;
+    let profileOwnedPager = null;
     let priorityStrength = 'medium';
     let profileSyncState = { syncing: false, message: '' };
     let profileSyncTimeout = null;
@@ -2051,7 +2082,9 @@ function track(eventName, payload = {}){
       targetEl.appendChild(container);
     }
     mainPager = createPaginationState();
+    profileOwnedPager = createPaginationState();
     loadPaginationPreferences(mainPager);
+    profileOwnedPager.pageSize = mainPager.pageSize;
     function cloneProfile(profile){
       if(!profile) return null;
       try { return structuredClone(profile); } catch(_) { return JSON.parse(JSON.stringify(profile)); }
@@ -3222,6 +3255,13 @@ function track(eventName, payload = {}){
       }, { action: 'ui-debug-click' }), true);
     }
 
+    function setEditMode(next){
+      const normalized = !!next;
+      if(profileUiState.isEditMode === normalized) return;
+      profileUiState.isEditMode = normalized;
+      debugProfileLog('edit mode set', { isEditMode: profileUiState.isEditMode });
+    }
+
     function setProfileSaving(next, context = ''){
       profileUiState.isSaving = !!next;
       if(next){
@@ -3230,6 +3270,24 @@ function track(eventName, payload = {}){
         debugProfileLog('profile saving end', { context });
       }
     }
+
+    function openProfileEditor(){
+      if(viewingProfile){
+        view = 'profile';
+        render();
+        setupEventListeners();
+        renderProfile();
+        debugProfileLog('profile editor open blocked (view-only)');
+        return;
+      }
+      setEditMode(true);
+      view = 'profile';
+      render();
+      setupEventListeners();
+      renderProfile();
+      debugProfileLog('profile editor opened');
+    }
+    window.openProfileEditor = openProfileEditor;
 
     function bindProfileHandlers(){
       if(profileHandlersBound || window.__profileEventsBound) return;
@@ -3487,6 +3545,8 @@ function track(eventName, payload = {}){
     function openFriendProfile(profile){
       if(!profile) return;
       viewingProfile = normalizeProfileShape(profile, profile.uid || profile.username || '');
+      profileOwnedSearch = '';
+      resetPage(profileOwnedPager);
       setProfileQueryParam(viewingProfile?.username || viewingProfile?.uid || '');
       friendLookupResults = [];
       friendLookupError = '';
@@ -3659,6 +3719,9 @@ function track(eventName, payload = {}){
     }
     function clearViewedProfile(){
       viewingProfile = null;
+      profileOwnedSearch = '';
+      resetPage(profileOwnedPager);
+      profileOwnedPagerOwnerKey = '';
       friendLookupResults = [];
       friendLookupError = '';
       friendSearchTerm = '';
@@ -5181,84 +5244,658 @@ function track(eventName, payload = {}){
       if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
         refreshDraftProfileFromCurrentUser();
       }
+      const profileEditable = !viewOnly && profileUiState.isEditMode;
       const profileOwner = viewingProfile || currentUser || {};
-      const usernameVal = profileOwner?.username || '';
-      const djVal = profileOwner?.djName || usernameVal || 'DJ';
-      const handleLabel = usernameVal ? `@${escapeHtml(usernameVal)}` : '@guest';
-      const storageNote = !viewOnly
-        ? `Offline-ready • Stored on this device${firebaseAuth?.currentUser ? ' (and cloud when signed in)' : ''}`
-        : '';
-      const ownedIds = normalizeOwnedList(profileOwner?.ownedTracks || []);
-      const songIdSet = new Set((songs || []).map(song => song.id));
-      const ownedIntersect = ownedIds.filter(id => songIdSet.has(id));
-      const ownedCount = ownedIntersect.length;
-      const ownedTotal = songs.length;
-      const ownedEmptyState = ownedCount === 0
-        ? '<div class="text-xs text-gray-300">Start marking tracks as Owned in Browse.</div>'
-        : '';
-      const fallbackBanner = boot.usedFallbackSongs
-        ? '<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Track list failed to load — using fallback list</div>'
-        : '';
-      const viewBanner = viewOnly
-        ? `<div class="panel border border-purple-400/40 bg-purple-500/10 text-purple-100 text-sm flex items-center justify-between gap-3 flex-wrap">
-            <span>Viewing: ${escapeHtml(djVal)} (read-only)</span>
-            <button data-action="profile.exitViewMode" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg profile-hit-target text-sm">Back to My Profile</button>
-          </div>`
-        : '';
-      const bandmateList = (viewOnly ? (profileOwner?.bandMembers || []) : (bandMembers || []))
-        .filter(Boolean);
-      const bandmatePills = bandmateList.length
-        ? `<div class="flex flex-wrap gap-2">
-            ${bandmateList.map(member => {
-              const name = escapeHtml(member?.djName || member?.username || 'Bandmate');
-              const handle = escapeHtml(member?.username || '');
-              const label = handle ? `${name} • @${handle}` : name;
-              return `<button type="button" data-action="profile.viewBandmate" data-username="${escapeHtml(member?.username || member?.uid || '')}" class="px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-sm font-semibold profile-hit-target">${label}</button>`;
-            }).join('')}
-          </div>`
-        : '<div class="text-sm text-gray-400">No bandmates yet.</div>';
-      const bandmateForm = !viewOnly
-        ? `<div class="flex flex-col sm:flex-row gap-2">
-            <input id="bandmateInput" placeholder="Add bandmate username" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
-            <button type="button" data-action="profile.addBandmate" class="px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-semibold profile-hit-target">+ Add Bandmate</button>
-          </div>`
-        : '';
-      profileEl.innerHTML = `
-        <div class="space-y-4 max-w-4xl mx-auto">
-          ${fallbackBanner}
-          ${viewBanner}
-          <div class="panel space-y-3">
-            <div>
-              <div class="text-3xl font-bold text-white">${escapeHtml(djVal)}</div>
-              <div class="text-sm text-gray-300">${handleLabel}</div>
-              ${storageNote ? `<div class="text-xs text-cyan-200 mt-1">${storageNote}</div>` : ''}
+      const editableProfile = viewOnly ? profileOwner : (draftProfile || profileOwner);
+      const email = (firebaseAuth && firebaseAuth.currentUser && firebaseAuth.currentUser.email) ? firebaseAuth.currentUser.email : (viewingProfile ? 'Shared profile view' : 'Offline mode (local storage)');
+      const usernameVal = editableProfile?.username || '';
+      const djVal = editableProfile?.djName || usernameVal;
+      const persona = ensurePersona(editableProfile);
+      const bio = (editableProfile?.bio || '').slice(0, PROFILE_BIO_MAX);
+      const themeAccentId = editableProfile?.themeAccent || THEME_ACCENTS[0].id;
+      const accentColor = resolveThemeAccent(themeAccentId);
+      const accentGlow = hexToRgba(accentColor, 0.45);
+      const themeLabel = THEME_ACCENTS.find(item=>item.id === themeAccentId)?.label || 'Custom';
+      const isPublicProfile = editableProfile?.isPublic !== false;
+      const allowFriendRequests = editableProfile?.allowFriendRequests !== false;
+      const profileAccentStyle = `--profile-accent:${accentColor}; --profile-accent-glow:${accentGlow};`;
+      const friendsAccess = getFriendsOnlineStatus();
+      const friendsEnabled = friendsAccess.online && !viewOnly;
+      const friendsGateMessage = !viewOnly ? getFriendsGateMessage(friendsAccess) : '';
+      const personaTheme = getPersonaTheme(persona.personaTheme);
+      const editDisabledAttr = profileEditable ? '' : 'disabled';
+      const editDisabledClass = profileEditable ? '' : 'opacity-60 cursor-not-allowed';
+      const editBadgeLabel = profileEditable ? 'On' : 'Off';
+      const editBadgeClass = profileEditable
+        ? 'bg-cyan-500/20 border border-cyan-400/40 text-cyan-100'
+        : 'bg-gray-600/20 border border-gray-400/40 text-gray-200';
+      const streamUrlValue = editableProfile?.streamUrl || '';
+      const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlValue);
+      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
+      const liveActive = streamUrlValid && profileOwner?.isLive === true;
+      let liveSinceLabel = '';
+      if(profileOwner?.liveStartedAt){
+        const liveDate = new Date(profileOwner.liveStartedAt);
+        if(!Number.isNaN(liveDate.getTime())) liveSinceLabel = liveDate.toLocaleString();
+      }
+      if(!viewOnly){
+        ensureLiveNowLoaded();
+        if(friendsEnabled) refreshFriendsData();
+      }
+      const profileOwnerKey = profileOwner?.uid || profileOwner?.username || '';
+      if(profileOwnerKey && profileOwnedPagerOwnerKey !== profileOwnerKey){
+        profileOwnedPagerOwnerKey = profileOwnerKey;
+        resetPage(profileOwnedPager);
+      }
+      if(viewOnly && profileOwnerKey){
+        ensureRatingLoaded(profileOwnerKey);
+      }
+      const ownedIds = profileOwner?.ownedTracks || [];
+      const epicLink = profileOwner?.oauth?.epic || null;
+      const epicLinked = !!epicLink?.linked;
+      const epicDisplay = epicLink?.displayName || epicLink?.epicAccountId || '';
+      const showConnectedAccounts = !!firebaseAuth?.currentUser && !viewOnly;
+      const friendError = friendLookupError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-500/40 rounded px-3 py-2">${friendLookupError}</div>` : '';
+      const friendList = friendLookupResults.length ? `<div class="space-y-2">
+        <div class="text-xs text-gray-300">Multiple matches found. Pick one:</div>
+        ${friendLookupResults.map(p=>`<button data-action="profile.selectFriendProfile" data-username="${p.username || p.uid || ''}" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between profile-hit-target"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
+      </div>` : '';
+      const ownedFiltered = songs
+        .filter(s=>ownedIds.includes(s.id))
+        .filter(s=>{
+          const term = (profileOwnedSearch||'').toLowerCase();
+          return !term || s.title.toLowerCase().includes(term) || s.artist.toLowerCase().includes(term);
+        })
+        .sort((a,b)=> a.title.localeCompare(b.title));
+      const ownedPagination = paginate(ownedFiltered, profileOwnedPager.pageIndex, profileOwnedPager.pageSize);
+      if(ownedPagination.pageIndex !== profileOwnedPager.pageIndex) profileOwnedPager.pageIndex = ownedPagination.pageIndex;
+      const ownedCards = ownedPagination.pageItems.map(song=>{
+        const camelotColor = camelotColors[song.camelot] || '#4b5563';
+        return `<div class="flex gap-3 bg-black/40 border border-white/10 rounded-xl p-3 hover:border-cyan-500/40 transition">
+          ${song.albumArt ? `<img src="${song.albumArt}" class="w-16 h-16 rounded-lg object-cover" alt="${song.title} cover"/>` : `<div class="w-16 h-16 rounded-lg bg-white/5 flex items-center justify-center text-xl">🎵</div>`}
+          <div class="flex-1 space-y-1">
+            <div class="font-bold text-white">${song.title}</div>
+            <div class="text-sm text-gray-300">${song.artist}</div>
+            <div class="flex flex-wrap gap-2 items-center text-xs">
+              <span class="px-2 py-1 rounded font-mono font-semibold text-white" style="background:${camelotColor};">${song.camelot}</span>
+              <span class="px-2 py-1 bg-white/10 border border-white/10 rounded text-white">${song.bpm} BPM</span>
+              <span class="px-2 py-1 bg-emerald-500/20 border border-emerald-400/40 rounded text-emerald-100">${song.genre}</span>
             </div>
-          </div>
-          <div class="panel space-y-4">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <div class="text-lg font-bold text-white">Owned Tracks</div>
-                <p class="text-sm text-gray-300">Epic doesn’t share ownership—mark your tracks manually.</p>
-              </div>
-              <div class="text-3xl font-bold text-white">Owned: ${ownedCount} <span class="text-base text-gray-300">/ ${ownedTotal}</span></div>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <button type="button" data-action="profile.viewOwned" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target">View Owned</button>
-            </div>
-            ${ownedEmptyState}
-          </div>
-          <div class="panel space-y-4">
-            <div>
-              <div class="text-lg font-bold text-white">Bandmates</div>
-              <p class="text-sm text-gray-300">Bandmates are read-only; you can view their collections.</p>
-            </div>
-            ${bandmatePills}
-            ${bandmateForm}
-            <div id="profileStatus" class="text-sm text-cyan-200"></div>
           </div>
         </div>`;
+      }).join('');
+      const ownedEmpty = `<div class="text-sm text-gray-400">${profileOwnedSearch ? 'No owned songs match your search.' : 'No owned songs yet.'}</div>`;
+      const livePill = liveActive
+        ? `<a id="liveStatusPill" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-1 rounded-full text-xs font-bold bg-green-400 text-black border border-green-200/80" style="box-shadow: 0 0 14px rgba(34,197,94,0.8);">LIVE</a>`
+        : `<span id="liveStatusPill" class="px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70">OFFLINE</span>`;
+      const liveToggleLabel = liveActive ? 'End Live' : 'Go Live';
+      const streamHelperText = streamUrlValid ? '' : (viewOnly ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
+      const ratingBreakdown = normalizeRatingBreakdown(profileOwner?.ratingBreakdown);
+      const ratingDisplay = getProfileRatingDisplay(profileOwner);
+      const ratingCountLabel = ratingDisplay.ratingCount === 1 ? '1 rating' : `${ratingDisplay.ratingCount} ratings`;
+      const ratingStatusClass = ratingStatusTone === 'error'
+        ? 'bg-red-500/20 border-red-400/50 text-red-100'
+        : ratingStatusTone === 'success'
+          ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100'
+          : 'bg-white/10 border-white/20 text-gray-200';
+      const ratingSummaryBlock = `
+          <div class="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <div class="text-lg font-bold text-white">Ratings</div>
+              <p class="text-sm text-gray-300">Community feedback for this DJ</p>
+            </div>
+            <div class="text-right">
+              <div class="text-2xl font-bold text-white">${ratingDisplay.avgRating ? ratingDisplay.avgRating.toFixed(1) : '0.0'}</div>
+              <div class="text-xs text-gray-400">${ratingCountLabel}</div>
+            </div>
+          </div>
+          <div class="text-xl rating-star-display">${ratingDisplay.stars}</div>
+          ${ratingDisplay.ratingCount ? renderRatingBreakdownBars(ratingBreakdown, ratingDisplay.ratingCount) : `<div class="text-sm text-gray-400">No ratings yet.</div>`}
+      `;
+      const ratingInputBlock = viewOnly ? `
+          <div class="mt-4 border-t border-white/10 pt-4 space-y-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="text-base font-semibold text-white">Rate this DJ</div>
+              ${ratingLoading ? `<div class="text-xs text-gray-400">Loading your rating…</div>` : ''}
+            </div>
+            ${currentUser ? `
+              <div id="ratingStarRow" class="flex items-center gap-2">
+                ${[1,2,3,4,5].map(star=>`
+                  <button type="button" data-action="profile.setRatingStar" data-star="${star}" class="rating-star text-2xl ${ratingDraft.stars >= star ? 'active' : ''}" aria-label="${star} star" aria-pressed="${ratingDraft.stars >= star}">${star <= ratingDraft.stars ? '★' : '☆'}</button>
+                `).join('')}
+              </div>
+              <div id="ratingTagRow" class="flex flex-wrap gap-2">
+                ${RATING_TAGS.map(tag=>`
+                  <button type="button" data-action="profile.toggleRatingTag" data-tag="${tag}" class="px-3 py-1 rounded-full border text-xs font-semibold profile-hit-target ${ratingDraft.tags.includes(tag) ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-white/10 bg-white/5 text-gray-200'}" aria-pressed="${ratingDraft.tags.includes(tag)}">${tag}</button>
+                `).join('')}
+              </div>
+              <div>
+                <textarea id="ratingCommentInput" maxlength="${RATING_MAX_COMMENT}" rows="3" class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white" placeholder="Optional comment (max ${RATING_MAX_COMMENT} chars)">${ratingDraft.comment || ''}</textarea>
+                <div class="text-xs text-gray-400 text-right mt-1" id="ratingCommentCount">${(ratingDraft.comment || '').length}/${RATING_MAX_COMMENT}</div>
+              </div>
+              <div class="flex items-center gap-3 flex-wrap">
+                <button type="button" data-action="profile.submitRating" class="px-4 py-2 rounded-lg font-semibold profile-hit-target ${ratingSubmitting ? 'bg-gray-600/40 text-gray-200 cursor-not-allowed' : 'bg-amber-500/30 border border-amber-400/50 text-amber-100'}" ${ratingSubmitting ? 'disabled' : ''}>${ratingDraft.hasExisting ? 'Update Rating' : 'Submit Rating'}</button>
+                ${ratingStatusMessage ? `<div class="text-sm px-3 py-2 rounded-lg border ${ratingStatusClass}">${ratingStatusMessage}</div>` : ''}
+              </div>
+            ` : `<div class="text-sm text-gray-300">Sign in to rate this DJ.</div>`}
+          </div>
+      ` : '';
+      const liveNowCards = liveNowUsers.map(profile=>{
+        const username = profile?.username || profile?.uid || '';
+        const djName = profile?.djName || username || 'DJ';
+        const platform = getStreamPlatformInfo(profile.streamUrl);
+        const rating = getProfileRatingDisplay(profile);
+        return `<button type="button" data-action="profile.viewLiveProfile" data-username="${username}" class="min-w-[240px] text-left cursor-pointer bg-black/40 border border-white/10 rounded-xl p-4 hover:border-emerald-400/60 transition profile-hit-target">
+          <div class="flex items-center gap-3">
+            ${renderPersonaBadge(profile, 48)}
+            <div class="flex-1">
+              <div class="font-bold text-white">${djName}</div>
+              <div class="text-xs text-gray-400">@${username}</div>
+            </div>
+            <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-green-400 text-black border border-green-200/80 glow-perfect">LIVE</span>
+          </div>
+          <div class="mt-3 flex items-center justify-between text-xs text-gray-300">
+            <span class="px-2 py-1 rounded-full border border-white/10 bg-white/5">${platform.icon} ${platform.label}</span>
+            <span class="text-amber-200 font-semibold">${rating.avgRating ? rating.avgRating.toFixed(1) : '0.0'}★ (${rating.ratingCount})</span>
+          </div>
+          <span class="mt-3 w-full px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold inline-flex justify-center">View Profile</span>
+        </button>`;
+      }).join('');
+      const liveNowPanel = !viewOnly ? `
+          <div class="panel space-y-3">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="flex items-center gap-2">
+                <div class="text-lg font-bold text-white">🔴 Live Now</div>
+                <span class="px-2 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">(${liveNowUsers.length})</span>
+              </div>
+              <button type="button" data-action="profile.refreshLiveNow" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs profile-hit-target">Refresh</button>
+            </div>
+            ${liveNowLoading ? `<div class="text-sm text-gray-300">Loading live profiles…</div>` : ''}
+            ${liveNowError ? `<div class="text-sm text-red-200">${liveNowError}</div>` : ''}
+            ${!liveNowLoading && !liveNowUsers.length
+              ? `<div class="text-sm text-gray-400">No one is live right now. Add your stream link and go live!</div>`
+              : `<div id="liveNowCarousel" class="live-carousel flex gap-3 overflow-x-auto pb-2 cursor-grab">
+                ${liveNowCards}
+              </div>`}
+          </div>
+      ` : '';
+      const ratingPanel = `
+          <div class="panel space-y-3">
+            ${ratingSummaryBlock}
+            ${ratingInputBlock}
+          </div>
+      `;
+      const bioDisplay = bio
+        ? `<p class="text-sm text-gray-200">${escapeHtml(bio)}</p>`
+        : `<p class="text-sm text-gray-400">Add a short bio to show your vibe.</p>`;
+      const personaThemeButtons = PERSONA_THEMES.map(item=>`
+        <button type="button" data-action="profile.setPersonaTheme" data-persona-theme="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold profile-hit-target ${persona.personaTheme === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${persona.personaTheme === item.id}">
+          ${item.label}
+        </button>
+      `).join('');
+      const personaButtons = PERSONA_LIST.map(item=>`
+        <button type="button" data-action="profile.setPersonaId" data-persona-id="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option persona-card w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-semibold ${persona.personaId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${persona.personaId === item.id}">
+          ${renderPersonaSVG({ personaId: item.id, themeId: persona.personaTheme, seed: persona.personaSeed, size: 48 })}
+          <span>${item.name}</span>
+        </button>
+      `).join('');
+      const themeButtons = THEME_ACCENTS.map(item=>`
+        <button type="button" data-action="profile.setThemeAccent" data-theme-accent="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold profile-hit-target ${themeAccentId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${themeAccentId === item.id}">
+          ${item.label}
+        </button>
+      `).join('');
+      const profileHero = `
+          <div class="flex flex-col md:flex-row gap-4 items-start md:items-center bg-black/40 border rounded-xl p-4 profile-accent-border profile-accent-glow">
+            <div class="flex items-center gap-4">
+              <button type="button" class="profile-avatar-action flex flex-col items-center gap-2 profile-hit-target bg-transparent border-0" data-action="profile.openEditor" aria-label="Edit Profile">
+                <div id="profilePersonaPreview" class="persona-badge w-24 h-24">
+                  ${renderPersonaSVG({ personaId: persona.personaId, themeId: persona.personaTheme, seed: persona.personaSeed, size: 96 })}
+                  <span class="persona-energy">${(PERSONAS[persona.personaId] || PERSONAS.turntablist).energy || '⚡'}</span>
+                </div>
+                <span class="profile-accent-pill px-4 py-1.5 rounded-full text-xs font-semibold shadow-sm">Edit Profile</span>
+              </button>
+            </div>
+            <div class="flex-1 space-y-2">
+              <div>
+                <div class="text-xl font-bold text-white">${escapeHtml(djVal || usernameVal || 'DJ')}</div>
+                <div class="text-sm text-gray-300">@${escapeHtml(usernameVal || '')}</div>
+              </div>
+              ${bioDisplay}
+              <div class="flex flex-wrap gap-2">
+                <span id="profileThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Theme: ${themeLabel}</span>
+                <span id="profilePersonaThemeLabel" class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Energy: ${personaTheme.label}</span>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">Myspace vibes</span>
+              </div>
+            </div>
+          </div>
+      `;
+      const customizePanel = !viewOnly ? `
+          <details class="panel space-y-3" open>
+            <summary class="cursor-pointer text-lg font-bold text-white">Customize</summary>
+            <div class="space-y-4">
+              <div class="space-y-3">
+                <div class="text-sm font-semibold text-white">Choose Your Energy</div>
+                <div class="flex flex-wrap gap-3 items-center">
+                  <div class="flex items-center gap-3">
+                    <div id="personaBuilderPreview" class="persona-badge w-20 h-20">
+                      ${renderPersonaSVG({ personaId: persona.personaId, themeId: persona.personaTheme, seed: persona.personaSeed, size: 80 })}
+                    </div>
+                    <div class="text-xs text-gray-400">Seed: <span id="personaSeedLabel" class="text-white font-semibold">${escapeHtml(persona.personaSeed)}</span></div>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button type="button" data-action="profile.randomizePersonaSeed" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold profile-hit-target ${editDisabledClass}">Randomize Seed</button>
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <div class="text-xs text-gray-400">Theme</div>
+                  <div class="flex flex-wrap gap-2">${personaThemeButtons}</div>
+                </div>
+                <div class="space-y-2">
+                  <div class="text-xs text-gray-400">Icons</div>
+                  <div class="flex flex-wrap gap-3">${personaButtons}</div>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Bio</div>
+                <textarea id="profileBioInput" maxlength="${PROFILE_BIO_MAX}" rows="3" ${editDisabledAttr} class="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white ${editDisabledClass}" placeholder="Add a short bio...">${escapeHtml(bio)}</textarea>
+                <div id="profileBioCounter" class="text-xs text-gray-400 text-right">${bio.length}/${PROFILE_BIO_MAX}</div>
+              </div>
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Theme Accent</div>
+                <div class="flex flex-wrap gap-2">${themeButtons}</div>
+              </div>
+              <div class="space-y-2">
+                <div class="text-sm font-semibold text-white">Privacy</div>
+                <div class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                  <div>
+                    <div class="text-sm font-semibold text-white">Public Profile</div>
+                    <div class="text-xs text-gray-400">Hide from search when off.</div>
+                  </div>
+                  <input id="profilePublicToggle" type="checkbox" class="profile-toggle" ${isPublicProfile ? 'checked' : ''} ${editDisabledAttr} />
+                </div>
+                <div class="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                  <div>
+                    <div class="text-sm font-semibold text-white">Allow Friend Requests</div>
+                    <div class="text-xs text-gray-400">Block new requests when off.</div>
+                  </div>
+                  <input id="profileFriendRequestsToggle" type="checkbox" class="profile-toggle" ${allowFriendRequests ? 'checked' : ''} ${editDisabledAttr} />
+                </div>
+              </div>
+            </div>
+          </details>
+      ` : '';
+      const friendSearchResultsHtml = socialFriendSearchResults.map(profile=>{
+        const uid = profile.uid || profile.username || '';
+        const status = getFriendStatus(firebaseAuth?.currentUser?.uid, uid);
+        const incomingReq = friendRequestsIncoming.find(req=>req.fromUid === uid);
+        const outgoingReq = friendRequestsOutgoing.find(req=>req.toUid === uid);
+        const liveBadge = profile.isLive ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>` : '';
+        let actionMarkup = '';
+        if(status === 'friends'){
+          actionMarkup = `<span class="px-3 py-1 rounded-full text-xs bg-white/10 border border-white/20 text-gray-200">Friends</span>`;
+        } else if(status === 'outgoing_pending'){
+          actionMarkup = `<div class="flex gap-2 items-center">
+            <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Request sent</span>
+            ${outgoingReq ? `<button data-action="profile.cancelFriendRequest" data-request-id="${outgoingReq.id}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold profile-hit-target">Cancel</button>` : ''}
+          </div>`;
+        } else if(status === 'incoming_pending'){
+          actionMarkup = `<div class="flex gap-2">
+            <button data-action="profile.acceptFriendRequest" data-request-id="${incomingReq?.id || ''}" data-from-uid="${incomingReq?.fromUid || ''}" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold profile-hit-target">Accept</button>
+            <button data-action="profile.rejectFriendRequest" data-request-id="${incomingReq?.id || ''}" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold profile-hit-target">Decline</button>
+          </div>`;
+        } else if(profile.allowFriendRequests === false){
+          actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
+        } else {
+          actionMarkup = `<button data-action="profile.sendFriendRequest" data-uid="${uid}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold profile-hit-target">Add</button>`;
+        }
+        return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
+          <div class="flex items-center gap-3">
+            ${renderPersonaBadge(profile, 40)}
+            <div>
+              <div class="font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || uid || '')}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            ${liveBadge}
+            ${actionMarkup}
+          </div>
+        </div>`;
+      }).join('');
+      const incomingRequestsHtml = friendRequestsIncoming.map(req=>{
+        const profile = req.fromProfile || { username: req.fromUid, djName: req.fromUid };
+        return `<div class="flex items-center justify-between gap-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+          <div class="flex items-center gap-2">
+            ${renderPersonaBadge(profile, 32)}
+            <div>
+              <div class="text-sm font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || req.fromUid || '')}</div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button data-action="profile.acceptFriendRequest" data-request-id="${req.id}" data-from-uid="${req.fromUid}" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold profile-hit-target">Accept</button>
+            <button data-action="profile.rejectFriendRequest" data-request-id="${req.id}" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold profile-hit-target">Decline</button>
+          </div>
+        </div>`;
+      }).join('');
+      const outgoingRequestsHtml = friendRequestsOutgoing.map(req=>{
+        const profile = req.toProfile || { username: req.toUid, djName: req.toUid };
+        return `<div class="flex items-center justify-between gap-3 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+          <div class="flex items-center gap-2">
+            ${renderPersonaBadge(profile, 32)}
+            <div>
+              <div class="text-sm font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || req.toUid || '')}</div>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-500/20 border border-purple-400/40 text-purple-100">Pending</span>
+            <button data-action="profile.cancelFriendRequest" data-request-id="${req.id}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold profile-hit-target">Cancel</button>
+          </div>
+        </div>`;
+      }).join('');
+      const friendsListHtml = friendsList.map(item=>{
+        const profile = item.profile || { username: item.friendUid, djName: item.friendUid };
+        const liveBadge = profile.isLive ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>` : '';
+        const watchBtn = profile.streamUrl && profile.isLive ? `<button data-action="profile.viewLiveProfile" data-username="${profile.username || profile.uid || ''}" class="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs font-semibold profile-hit-target">Watch</button>` : '';
+        return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
+          <div class="flex items-center gap-3">
+            ${renderPersonaBadge(profile, 40)}
+            <div>
+              <div class="font-semibold text-white">${escapeHtml(profile.djName || profile.username || 'DJ')}</div>
+              <div class="text-xs text-gray-400">@${escapeHtml(profile.username || item.friendUid || '')}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            ${liveBadge}
+            ${watchBtn}
+            <button data-action="profile.viewLiveProfile" data-username="${profile.username || profile.uid || item.friendUid || ''}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold profile-hit-target">View Profile</button>
+            <button data-action="profile.removeFriend" data-uid="${item.friendUid}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold profile-hit-target">Remove</button>
+          </div>
+        </div>`;
+      }).join('');
+      const friendNoticeClass = socialFriendSearchNoticeTone === 'warn'
+        ? 'bg-amber-500/20 border border-amber-400/40 text-amber-100'
+        : socialFriendSearchNoticeTone === 'error'
+          ? 'bg-red-500/20 border border-red-400/40 text-red-100'
+          : 'bg-white/10 border border-white/20 text-gray-200';
+      const friendsGateClass = friendsGateMessage ? 'bg-white/5 border border-white/10 text-gray-200' : '';
+      const friendSearchButtonLabel = socialFriendSearchLoading ? 'Searching…' : 'Search';
+      const friendsPanel = !viewOnly ? `
+          <div class="panel space-y-4">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <div class="text-lg font-bold text-white">Friends / Bandmates</div>
+                <p class="text-sm text-gray-300">Search DJs and manage requests.</p>
+              </div>
+              <span class="profile-accent-pill px-3 py-1 rounded-full text-xs font-semibold">Social-lite</span>
+            </div>
+            ${friendsGateMessage ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendsGateClass}">${friendsGateMessage}</div>` : ''}
+            <form id="socialFriendSearchForm" class="flex flex-col sm:flex-row gap-2" onsubmit="handleFriendSearch(event)">
+              <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+              <button id="socialFriendSearchButton" type="submit" data-action="profile.logFriendSearchClick" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
+            </form>
+            ${socialFriendSearchNotice ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendNoticeClass}">${socialFriendSearchNotice}</div>` : ''}
+            ${socialFriendSearchError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-400/40 rounded-lg px-3 py-2">${socialFriendSearchError}</div>` : ''}
+            ${friendSearchResultsHtml ? `<div class="space-y-2 max-h-64 overflow-y-auto pr-1">${friendSearchResultsHtml}</div>` : (socialFriendSearchQuery && !socialFriendSearchLoading ? `<div class="text-sm text-gray-400">No DJs found for ‘${escapeHtml(socialFriendSearchQuery)}’.</div>` : '')}
+            <div class="flex items-center gap-2 text-xs">
+              <button data-action="profile.setFriendPanelTab" data-tab="friends" class="px-3 py-1 rounded-full border profile-hit-target ${friendPanelTab==='friends'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Friends (${friendsList.length})</button>
+              <button data-action="profile.setFriendPanelTab" data-tab="requests" class="px-3 py-1 rounded-full border profile-hit-target ${friendPanelTab==='requests'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Requests (${friendRequestsIncoming.length + friendRequestsOutgoing.length})</button>
+            </div>
+            ${friendPanelTab === 'requests' ? `
+              <div class="grid md:grid-cols-2 gap-3">
+                <div class="space-y-2">
+                  <div class="text-sm font-semibold text-white">Incoming Requests</div>
+                  ${friendsLoading ? `<div class="text-xs text-gray-400">Loading requests…</div>` : ''}
+                  ${incomingRequestsHtml || `<div class="text-xs text-gray-400">No incoming requests.</div>`}
+                </div>
+                <div class="space-y-2">
+                  <div class="text-sm font-semibold text-white">Outgoing Requests</div>
+                  ${outgoingRequestsHtml || `<div class="text-xs text-gray-400">No outgoing requests.</div>`}
+                </div>
+              </div>
+            ` : `
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="text-sm font-semibold text-white">Friends List</div>
+                  ${friendsError ? `<span class="text-xs text-red-200">${friendsError}</span>` : ''}
+                </div>
+                <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  ${friendsListHtml || `<div class="text-xs text-gray-400">No friends yet.</div>`}
+                </div>
+              </div>
+            `}
+          </div>
+      ` : '';
+      const profileErrorBanner = `<div id="profileErrorBanner" class="panel border border-red-400/40 bg-red-500/10 text-red-100 text-sm" style="display:${profileScriptError ? 'block' : 'none'};">Profile scripts failed. Open console.</div>`;
+      profileEl.innerHTML = `
+        <div class="space-y-4 max-w-5xl mx-auto relative z-10" style="${profileAccentStyle}">
+          ${profileErrorBanner}
+          <div class="panel space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-2xl font-bold text-white">Profile</div>
+                <p class="text-sm text-gray-300">Update your DJ identity without leaving the mixer. Username changes migrate your data safely.</p>
+              </div>
+              ${viewOnly
+                ? `<div class="text-sm px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100">View only</div>`
+                : `<button id="profileEditToggle" data-action="profile.toggleEditMode" class="text-sm px-3 py-1 rounded-full ${editBadgeClass} hover:brightness-110 transition profile-hit-target" aria-pressed="${profileEditable}">Edit Mode: ${editBadgeLabel}</button>`
+              }
+            </div>
+            ${viewOnly ? `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Viewing ${djVal || usernameVal}'s public profile. Editing is disabled.</div>` : ''}
+            ${profileHero}
+            <div class="grid gap-4 md:grid-cols-2">
+              <div>
+                <label class="text-sm text-gray-300">Email</label>
+                <div class="px-4 py-3 bg-black/40 border border-gray-700 rounded-lg text-white">${email}</div>
+              </div>
+              <div>
+                <label class="text-sm text-gray-300">Username</label>
+                <input id="profileUsername" value="${usernameVal}" ${editDisabledAttr} class="w-full px-4 py-3 bg-black/40 border border-cyan-500/30 rounded-lg text-white ${editDisabledClass}" />
+                <p class="text-xs text-gray-400 mt-1">3–20 characters, letters/numbers/underscore only. No logout needed.</p>
+              </div>
+              <div>
+                <label class="text-sm text-gray-300">DJ Name</label>
+                <input id="profileDjName" value="${djVal}" ${editDisabledAttr} class="w-full px-4 py-3 bg-black/40 border border-purple-500/30 rounded-lg text-white ${editDisabledClass}" />
+                <p class="text-xs text-gray-400 mt-1">Shown in headers and shared views.</p>
+              </div>
+              <div class="md:col-span-2">
+                <label class="text-sm text-gray-300">Stream URL</label>
+                <input id="profileStreamUrl" value="${streamUrlValue}" ${editDisabledAttr} placeholder="https://twitch.tv/yourname" class="w-full px-4 py-3 bg-black/40 border border-green-500/30 rounded-lg text-white ${editDisabledClass}" />
+                <p class="text-xs text-gray-400 mt-1">Examples: twitch.tv/yourname, youtube.com/@you/live, kick.com/yourname</p>
+                <p id="streamUrlHelper" class="text-xs text-amber-200 mt-1" ${streamHelperText ? '' : 'style="display:none;"'}>${streamHelperText}</p>
+              </div>
+              <div class="md:col-span-2">
+                <div class="flex items-center gap-2">
+                  <label class="text-sm text-gray-300">Live Status</label>
+                  <button type="button" class="helpIconBtn profile-hit-target" data-action="profile.openHelpModal" data-source="live_icon" data-target="live" aria-label="Open help: Live streaming" title="How Live status works">?</button>
+                </div>
+                <div class="flex items-center gap-3 flex-wrap">
+                  <button id="liveToggleBtn" data-action="profile.toggleLiveStatus" class="px-4 py-2 rounded-lg font-semibold profile-hit-target ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" aria-pressed="${liveActive}" ${!profileEditable || !streamUrlValid ? 'disabled' : ''}>${liveToggleLabel}</button>
+                  <a id="watchStreamBtn" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-lg bg-blue-500/20 border border-blue-400/40 text-blue-100 text-sm font-semibold" style="display:${streamUrlValid ? 'inline-flex' : 'none'};">Watch Stream</a>
+                  ${livePill}
+                  ${liveSinceLabel && liveActive ? `<span class="text-xs text-gray-400">Live since ${liveSinceLabel}</span>` : ''}
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-3 flex-wrap">
+              ${viewOnly ? '' : `<button data-action="profile.saveProfile" ${profileEditable ? '' : 'disabled'} class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold profile-accent-glow profile-hit-target ${editDisabledClass}">Save Profile</button>`}
+              <button data-action="switchView" data-view="browser" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg profile-hit-target">Back to Mixer</button>
+              ${viewOnly ? `<button data-action="profile.exitViewMode" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg profile-hit-target">Back to My Profile</button>` : ''}
+            </div>
+            <div id="profileStatus" class="text-sm text-cyan-200"></div>
+          </div>
+
+          ${liveNowPanel}
+          ${ratingPanel}
+          ${customizePanel}
+          ${friendsPanel}
+
+          ${showConnectedAccounts ? `
+          <div class="panel space-y-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <div class="text-lg font-bold text-white">Connected Accounts</div>
+                <p class="text-sm text-gray-300">Link Epic to get ready for Epic account login later.</p>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-3 flex-wrap bg-white/5 border border-white/10 rounded-lg p-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xl">🎮</div>
+                <div>
+                  <div class="font-semibold text-white">Epic Games</div>
+                  <div class="text-xs text-gray-300">${epicLinked ? `Linked${epicDisplay ? ` • ${epicDisplay}` : ''}` : 'Not linked yet'}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold px-2 py-1 rounded-full ${epicLinked ? 'bg-emerald-500/20 text-emerald-100 border border-emerald-400/40' : 'bg-white/10 text-gray-200 border border-white/20'}">${epicLinked ? 'Linked' : 'Not linked'}</span>
+                ${epicLinked ? `<button data-action="profile.unlinkOAuth" data-provider="epic" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-sm profile-hit-target">Unlink</button>` : `<button data-action="profile.startOAuth" data-provider="epic" class="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg text-sm font-semibold profile-hit-target">Link Epic</button>`}
+              </div>
+            </div>
+            <p class="text-xs text-gray-400">Redirects through Epic, then returns here to store a link in your profile. Firebase email/password stays your primary sign-in.</p>
+          </div>
+          ` : ''}
+
+          <div class="panel space-y-4">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div class="text-lg font-bold text-white">Owned Songs</div>
+                <p class="text-sm text-gray-300">Songs you’ve marked as owned</p>
+              </div>
+              <div class="text-sm text-cyan-200 font-semibold">${ownedIds.length} / ${songs.length}</div>
+            </div>
+            <div class="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+              <div class="flex-1 flex flex-col gap-2">
+                <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                  <input id="friendSearchInput" value="${friendSearchTerm || ''}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search DJ name…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
+                  <button data-action="profile.viewFriendProfile" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 bg-purple-500/40 hover:bg-purple-500/50 border border-purple-400/50 rounded-lg font-semibold profile-hit-target ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">View</button>
+                </div>
+                <div class="text-xs text-gray-400">${friendsEnabled ? 'Shows their owned songs (read-only)' : (friendsGateMessage || 'Friends require Online mode.')}</div>
+                ${friendError}
+                ${friendList}
+              </div>
+              <div class="flex-1 flex flex-col gap-2">
+                <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                  <input id="ownedSearchInput" value="${profileOwnedSearch || ''}" placeholder="Search owned songs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
+                  <div class="text-xs text-gray-400 sm:w-40">Live filter by title or artist</div>
+                </div>
+                ${viewOnly ? `<button data-action="profile.exitViewMode" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg profile-hit-target">Back to My Profile</button>` : ''}
+              </div>
+            </div>
+            <div id="profileOwnedList" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              ${ownedCards || ownedEmpty}
+            </div>
+            <div id="profileOwnedPagination"></div>
+          </div>
+        </div>`;
+      const ownedPaginationEl = document.getElementById('profileOwnedPagination');
+      const ownedListEl = document.getElementById('profileOwnedList');
+      if(ownedPaginationEl){
+        renderPaginationBar(ownedPaginationEl, profileOwnedPager, {
+          onPageChange: (nextIndex)=>{
+            profileOwnedPager.pageIndex = Math.max(0, nextIndex);
+            persistPageSizePreference(profileOwnedPager);
+            renderProfile();
+            if(ownedListEl) ownedListEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          },
+          onPageSizeChange: (nextSize)=>{
+            setPageSize(profileOwnedPager, nextSize);
+            persistPageSizePreference(profileOwnedPager);
+            setPageSize(mainPager, nextSize);
+            persistMainPagerState();
+            renderProfile();
+            if(ownedListEl) ownedListEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, { totalItems: ownedFiltered.length, totalPages: ownedPagination.totalPages, from: ownedPagination.from, to: ownedPagination.to });
+      }
       updateTourUI();
     }
+
+    function updateStreamControlsFromInput(){
+      const input = document.getElementById('profileStreamUrl');
+      if(!input) return;
+      const normalized = normalizeStreamUrlInput(input.value || '');
+      const valid = isValidStreamUrl(normalized);
+      const helper = document.getElementById('streamUrlHelper');
+      if(helper){
+        helper.textContent = valid ? '' : (viewingProfile ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
+        helper.style.display = valid ? 'none' : 'block';
+      }
+      const toggleBtn = document.getElementById('liveToggleBtn');
+      if(toggleBtn){
+        if(viewingProfile || !profileUiState.isEditMode){
+          toggleBtn.disabled = true;
+          toggleBtn.style.opacity = '0.6';
+          toggleBtn.style.cursor = 'not-allowed';
+        } else {
+          toggleBtn.disabled = !valid;
+          toggleBtn.style.opacity = valid ? '1' : '0.6';
+          toggleBtn.style.cursor = valid ? 'pointer' : 'not-allowed';
+        }
+      }
+      const pill = document.getElementById('liveStatusPill');
+      if(pill && valid && pill.tagName === 'A'){
+        pill.setAttribute('href', normalized);
+      }
+      if(pill && !valid){
+        pill.removeAttribute('href');
+        pill.removeAttribute('target');
+        pill.removeAttribute('rel');
+        pill.textContent = 'OFFLINE';
+        pill.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70';
+        pill.style.boxShadow = '';
+      }
+      const watchBtn = document.getElementById('watchStreamBtn');
+      if(watchBtn){
+        if(valid){
+          watchBtn.setAttribute('href', normalized);
+          watchBtn.style.display = 'inline-flex';
+        } else {
+          watchBtn.style.display = 'none';
+        }
+      }
+    }
+
+    window.toggleLiveStatus = async () => {
+      if(viewingProfile) return;
+      if(!currentUser) return;
+      if(!profileUiState.isEditMode) return;
+      if(profileUiState.isSaving){
+        debugProfileLog('live toggle ignored (already saving)');
+        return;
+      }
+      profileUiState.lastError = null;
+      const status = document.getElementById('profileStatus');
+      const input = document.getElementById('profileStreamUrl');
+      const normalizedStreamUrl = normalizeStreamUrlInput(input?.value || currentUser.streamUrl || '');
+      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
+      if(!streamUrlValid){
+        if(status) status.textContent = 'Add a valid stream link to enable Live.';
+        updateStreamControlsFromInput();
+        return;
+      }
+      draftProfile = draftProfile || cloneProfile(currentUser) || {};
+      const nextIsLive = !(draftProfile.isLive ?? currentUser.isLive ?? false);
+      const nextLiveStartedAt = nextIsLive ? (draftProfile.liveStartedAt || currentUser.liveStartedAt || currentUser.liveSince || new Date().toISOString()) : null;
+      draftProfile.streamUrl = normalizedStreamUrl;
+      draftProfile.isLive = nextIsLive;
+      draftProfile.liveStartedAt = nextLiveStartedAt;
+      const previousProfile = currentUser;
+      currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt });
+      await persistAdminFlagIfNeeded(previousProfile, currentUser);
+      try{
+        if(status) status.textContent = nextIsLive ? 'Going live...' : 'Ending live...';
+        await persistCurrentUserProfile();
+        refreshLiveNowUsers();
+        renderProfile();
+        setupEventListeners();
+        if(status) status.textContent = nextIsLive ? 'Live ✅' : 'Offline ✅';
+      }catch(err){
+        profileUiState.lastError = err?.message || String(err);
+        if(status) status.textContent = 'Live toggle failed ❌: ' + (err.message || err);
+        console.error('[profile] live toggle failed', err);
+      }
+    };
 
     function renderAuditView(){
       const auditEl = document.getElementById('auditView');
@@ -5327,6 +5964,72 @@ function track(eventName, payload = {}){
       `;
       bindGenreEditors(auditEl);
     }
+
+    function updateBandReferencesLocal(oldUsername,newUsername,newDj){
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      Object.keys(profiles).forEach(key=>{
+        const memberList = profiles[key].bandMembers || [];
+        const updated = memberList.map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDj } : m);
+        profiles[key].bandMembers = updated;
+      });
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      bandMembers = (bandMembers||[]).map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDj } : m);
+      currentUser.bandMembers = bandMembers;
+    }
+
+    async function saveProfileSettings(){
+      if(viewingProfile){ const status = document.getElementById('profileStatus'); if(status) status.textContent = 'View-only mode: cannot save this profile.'; return; }
+      if(!currentUser) return;
+      if(!profileUiState.isEditMode) return;
+      if(profileUiState.isSaving){
+        debugProfileLog('save ignored (already saving)');
+        return;
+      }
+      profileUiState.lastError = null;
+      const status = document.getElementById('profileStatus');
+      const newUsername = (document.getElementById('profileUsername')?.value || '').trim();
+      const newDjName = (document.getElementById('profileDjName')?.value || '').trim() || newUsername;
+      const streamUrlInput = (document.getElementById('profileStreamUrl')?.value || '').trim();
+      const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlInput);
+      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
+      const existingLiveStartedAt = draftProfile?.liveStartedAt || currentUser.liveStartedAt || currentUser.liveSince || null;
+      const nextIsLive = streamUrlValid ? (draftProfile?.isLive ?? currentUser.isLive ?? false) : false;
+      const nextLiveStartedAt = nextIsLive ? (existingLiveStartedAt || new Date().toISOString()) : null;
+      if(!usernamePattern.test(newUsername)){
+        if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
+        alert('Username must be 3-20 chars, letters/numbers/underscore only');
+        return;
+      }
+      draftProfile = draftProfile || cloneProfile(currentUser) || {};
+      draftProfile.username = newUsername;
+      draftProfile.djName = newDjName;
+      draftProfile.streamUrl = normalizedStreamUrl;
+      draftProfile.isLive = nextIsLive;
+      draftProfile.liveStartedAt = nextLiveStartedAt;
+      currentUser = { ...currentUser, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt };
+      const previousUsername = currentUser.username;
+      const usernameChanged = newUsername !== currentUser.username;
+      const djChanged = newDjName !== currentUser.djName;
+      try{
+        if(status) status.textContent = 'Saving profile...';
+        const previousProfile = currentUser;
+        currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, username:newUsername, djName:newDjName });
+        await persistAdminFlagIfNeeded(previousProfile, currentUser);
+        if(usernameChanged || djChanged) updateBandReferencesLocal(previousUsername, newUsername, newDjName);
+        console.log('[profile-save] streamUrl=', currentUser.streamUrl);
+        await persistCurrentUserProfile();
+        refreshLiveNowUsers();
+        render(); setupEventListeners();
+        const statusEl = document.getElementById('profileStatus');
+        if(statusEl) statusEl.textContent = 'Saved ✅';
+      }catch(e){
+        profileUiState.lastError = e?.message || String(e);
+        const statusEl = document.getElementById('profileStatus');
+        if(statusEl) statusEl.textContent = 'Save failed ❌: ' + (e.message||e);
+        console.error('[profile] save failed', e);
+      }
+    }
+
 
 function renderCommunityStat(id, label, icon, value, caption=''){
   return `<div class="flex items-center justify-between px-3 py-2 rounded-lg border border-white/10 bg-white/5">
@@ -5894,11 +6597,41 @@ function render(){
           }, 170);
         }
         if(target.id === 'auditSearchInput'){ auditSearch = target.value; renderAuditView(); }
-        if(target.id === 'bandmateInput' && !viewingProfile){
-          if(target.value.trim()){
-            const status = document.getElementById('profileStatus');
-            if(status) status.textContent = '';
+        if(target.id === 'ownedSearchInput'){
+          profileOwnedSearch = target.value;
+          resetPage(profileOwnedPager);
+          renderProfile();
+        }
+        if(target.id === 'profileUsername' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.username = target.value; }
+        if(target.id === 'profileDjName' && !viewingProfile){ draftProfile = draftProfile || cloneProfile(currentUser) || {}; draftProfile.djName = target.value; }
+        if(target.id === 'profileStreamUrl' && !viewingProfile){
+          draftProfile = draftProfile || cloneProfile(currentUser) || {};
+          draftProfile.streamUrl = target.value;
+          updateStreamControlsFromInput();
+        }
+        if(target.id === 'profileBioInput' && !viewingProfile){
+          const draft = updateDraftProfile({ bio: target.value.slice(0, PROFILE_BIO_MAX) });
+          if(draft) updateBioCounter(draft.bio || '');
+        }
+        if(target.id === 'socialFriendSearchInput'){
+          socialFriendSearchTerm = target.value;
+          socialFriendSearchQuery = target.value.trim();
+          socialFriendSearchError = '';
+          if(socialFriendSearchNotice) setFriendSearchNotice('');
+          if(socialFriendSearchDebounce) clearTimeout(socialFriendSearchDebounce);
+          if(!socialFriendSearchQuery){
+            socialFriendSearchResults = [];
+            socialFriendSearchLoading = false;
+            renderProfile();
+            setupEventListeners();
+            return;
           }
+          socialFriendSearchDebounce = setTimeout(()=>{ handleFriendSearch(null, { explicit: false }); }, 300);
+        }
+        if(target.id === 'ratingCommentInput'){
+          ratingDraft.comment = target.value;
+          const countEl = document.getElementById('ratingCommentCount');
+          if(countEl) countEl.textContent = `${ratingDraft.comment.length}/${RATING_MAX_COMMENT}`;
         }
         if(target.id === 'semitoneRangeInput'){ setMaxSemitoneRange(target.value); }
       }, { action: 'app-input' }));
@@ -5907,6 +6640,12 @@ function render(){
         if(!target) return;
         if(target.id === 'keyMatchModeSelect'){ setKeyMatchMode(target.value); }
         if(target.id === 'includeOppositeModeToggle'){ toggleIncludeOppositeMode(target.checked); }
+        if(target.id === 'profilePublicToggle' && !viewingProfile){
+          updateDraftProfile({ isPublic: target.checked });
+        }
+        if(target.id === 'profileFriendRequestsToggle' && !viewingProfile){
+          updateDraftProfile({ allowFriendRequests: target.checked });
+        }
       }, { action: 'app-change' }));
       app.addEventListener('focusin', safeOn('focusin', (e)=>{
         const target = getEventElement(e);
@@ -5925,7 +6664,7 @@ function render(){
       app.addEventListener('keydown', safeOn('keydown', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
-        if(target.id === 'bandmateInput' && e.key === 'Enter'){ e.preventDefault(); addBandMember(); }
+        if(target.id === 'friendSearchInput' && e.key === 'Enter'){ e.preventDefault(); viewFriendProfile(); }
         if(e.key === 'Escape' && !stickyCtaDismissed){
           stickyCtaDismissed = true;
           localStorage.setItem('jamMixer.stickyCtaDismissed', 'true');
@@ -6077,25 +6816,128 @@ function render(){
       if(isActionDisabled(el)) return;
       const dataset = el.dataset || {};
       debugProfileLog('profile action', { action, dataset });
+      if(action === 'profile.toggleEditMode'){
+        if(viewingProfile || profileUiState.isSaving) return;
+        setEditMode(!profileUiState.isEditMode);
+        renderProfile();
+        setupEventListeners();
+        return;
+      }
+      if(action === 'profile.openEditor'){
+        openProfileEditor();
+        return;
+      }
+      if(action === 'profile.saveProfile'){
+        saveProfileSettings();
+        return;
+      }
       if(action === 'profile.exitViewMode'){
         exitProfileViewMode();
+        return;
+      }
+      if(action === 'profile.viewFriendProfile'){
+        viewFriendProfile();
+        return;
+      }
+      if(action === 'profile.selectFriendProfile'){
+        const username = dataset.username || '';
+        if(username && window.selectFriendProfile) window.selectFriendProfile(username);
+        return;
+      }
+      if(action === 'profile.viewLiveProfile'){
+        const username = dataset.username || '';
+        if(username && window.viewLiveProfile) window.viewLiveProfile(username);
+        return;
+      }
+      if(action === 'profile.refreshLiveNow'){
+        refreshLiveNowUsers();
+        return;
+      }
+      if(action === 'profile.setRatingStar'){
+        const value = Number(dataset.star);
+        if(value && window.setRatingStar) window.setRatingStar(value);
+        return;
+      }
+      if(action === 'profile.toggleRatingTag'){
+        const tag = dataset.tag;
+        if(tag && window.toggleRatingTag) window.toggleRatingTag(tag);
+        return;
+      }
+      if(action === 'profile.submitRating'){
+        if(window.submitRating) window.submitRating();
+        return;
+      }
+      if(action === 'profile.setPersonaTheme'){
+        const themeId = dataset.personaTheme;
+        if(themeId && window.setPersonaTheme) window.setPersonaTheme(themeId);
+        return;
+      }
+      if(action === 'profile.setPersonaId'){
+        const personaId = dataset.personaId;
+        if(personaId && window.setPersonaId) window.setPersonaId(personaId);
+        return;
+      }
+      if(action === 'profile.randomizePersonaSeed'){
+        if(window.randomizePersonaSeed) window.randomizePersonaSeed();
+        return;
+      }
+      if(action === 'profile.setThemeAccent'){
+        const accentId = dataset.themeAccent;
+        if(accentId && window.setThemeAccent) window.setThemeAccent(accentId);
+        return;
+      }
+      if(action === 'profile.toggleLiveStatus'){
+        if(window.toggleLiveStatus) window.toggleLiveStatus();
         return;
       }
       if(action === 'profile.openHelpModal'){
         openHelpModal({ source: dataset.source || 'profile', target: dataset.target || 'profile' });
         return;
       }
-      if(action === 'profile.viewOwned'){
-        viewOwnedFromProfile();
+      if(action === 'profile.startOAuth'){
+        const provider = dataset.provider;
+        if(provider && window.startOAuth) window.startOAuth(provider);
         return;
       }
-      if(action === 'profile.addBandmate'){
-        addBandMember();
+      if(action === 'profile.unlinkOAuth'){
+        const provider = dataset.provider;
+        if(provider && window.unlinkOAuth) window.unlinkOAuth(provider);
         return;
       }
-      if(action === 'profile.viewBandmate'){
-        const username = dataset.username || '';
-        if(username) viewBandMember(username);
+      if(action === 'profile.setFriendPanelTab'){
+        const tab = dataset.tab;
+        if(tab && window.setFriendPanelTab) window.setFriendPanelTab(tab);
+        return;
+      }
+      if(action === 'profile.logFriendSearchClick'){
+        if(window.logFriendSearchClick) window.logFriendSearchClick();
+        handleFriendSearch(null, { explicit: true });
+        return;
+      }
+      if(action === 'profile.sendFriendRequest'){
+        const uid = dataset.uid;
+        if(uid && window.sendFriendRequest) window.sendFriendRequest(uid);
+        return;
+      }
+      if(action === 'profile.acceptFriendRequest'){
+        const requestId = dataset.requestId;
+        const fromUid = dataset.fromUid;
+        if(requestId && fromUid && window.acceptFriendRequest) window.acceptFriendRequest(requestId, fromUid);
+        return;
+      }
+      if(action === 'profile.rejectFriendRequest'){
+        const requestId = dataset.requestId;
+        if(requestId && window.rejectFriendRequest) window.rejectFriendRequest(requestId);
+        return;
+      }
+      if(action === 'profile.cancelFriendRequest'){
+        const requestId = dataset.requestId;
+        if(requestId && window.cancelFriendRequest) window.cancelFriendRequest(requestId);
+        return;
+      }
+      if(action === 'profile.removeFriend'){
+        const uid = dataset.uid;
+        if(uid && window.removeFriend) window.removeFriend(uid);
       }
     }
 
@@ -6256,22 +7098,6 @@ function render(){
       renderProfile();
     };
 
-    function viewOwnedFromProfile(){
-      showOwnedOnly = true;
-      searchTerm = '';
-      const searchInput = document.getElementById('searchInput');
-      const clearSearchBtn = document.getElementById('clearSearchBtn');
-      const searchStatus = document.getElementById('searchStatus');
-      if(searchInput) searchInput.value = '';
-      if(clearSearchBtn) clearSearchBtn.style.display = 'none';
-      if(searchStatus) searchStatus.style.display = 'none';
-      view = 'browser';
-      resetMainPagination();
-      updateMobileWindowState({ reset: true });
-      render();
-      setupEventListeners();
-    }
-
     window.toggleOwned = async (id) => {
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
       const store = ensureOwnedLibraryStore();
@@ -6398,58 +7224,17 @@ function render(){
     };
 
     async function addBandMember(){
-      if(viewingProfile) return;
-      const status = document.getElementById('profileStatus');
-      const input = document.getElementById('bandmateInput');
-      const raw = (input?.value || '').trim();
-      const normalized = raw.replace(/^@/, '');
-      if(!normalized){
-        if(status) status.textContent = 'Enter a bandmate username.';
-        return;
-      }
-      const lower = normalizeUsernameLower(normalized);
-      const currentName = normalizeUsernameLower(currentUser?.username || '');
-      if(currentName && lower === currentName){
-        if(status) status.textContent = 'You are already in your own band.';
-        return;
-      }
-      const existing = (bandMembers || []).some(member => normalizeUsernameLower(member?.username || '') === lower);
-      if(existing){
-        if(status) status.textContent = 'Bandmate already added.';
-        return;
-      }
-      let profile = null;
-      try{
-        profile = await loadUserProfile(normalized);
-      }catch(err){
-        profile = null;
-      }
-      const entry = profile
-        ? { username: profile.username || normalized, djName: profile.djName || profile.username || normalized, uid: profile.uid || '' }
-        : { username: normalized, djName: normalized, uid: '' };
-      bandMembers = [...(bandMembers || []), entry];
-      if(currentUser) currentUser.bandMembers = bandMembers;
-      if(draftProfile) draftProfile.bandMembers = bandMembers;
-      scheduleProfileCacheSync();
-      if(input) input.value = '';
-      if(status) status.textContent = 'Bandmate added.';
-      renderProfile();
-      setupEventListeners();
+      alert('Band Members is temporarily disabled.');
+      return;
     }
 
     async function viewBandMember(username){
-      if(!username) return;
-      const status = document.getElementById('profileStatus');
-      try{
-        const profile = await loadProfileForViewing(username);
-        if(profile){
-          openFriendProfile(profile);
-          return;
-        }
-      }catch(err){
-        console.warn('[bandmates] view failed', err);
-      }
-      if(status) status.textContent = 'Bandmate profile not available.';
+      alert('Band Members is temporarily disabled.');
+      return;
+    }
+    function backToMyProfile(){
+      alert('Band Members is temporarily disabled.');
+      return;
     }
 
     // --------------------- Preview & two-track (simple) ---------------
@@ -6479,22 +7264,19 @@ function render(){
     // -------------------- Help/What's New config ---------------------
     const HELP_SECTION_FEATURES = {
       setlist: 'hasSetlist',
-      owned: 'hasOwnedToggle',
-      owned_filter: 'hasOwnedToggle',
-      offline: 'hasOfflineMode'
+      live: 'hasLiveProfile',
+      offline: 'hasOfflineMode',
+      owned: 'hasOwnedToggle'
     };
     const HELP_SECTION_IDS = {
-      mixer_basics: 'help-mixer',
-      owned: 'ownedHelp',
-      owned_filter: 'ownedFilterHelp',
-      search: 'help-search',
       setlist: 'help-setlist',
-      camelot_bpm: 'help-camelot-bpm',
-      mixable: 'help-mixable',
-      bandmates: 'help-bandmates',
-      offline: 'offlineHelp'
+      live: 'help-live',
+      offline: 'offlineHelp',
+      owned: 'ownedHelp'
     };
     const HELP_FAQ_FEATURES = {
+      go_live_disabled: 'hasLiveProfile',
+      cant_see_setlist: 'hasSetlist',
       offline_mode: 'hasOfflineMode',
       owned_count_wrong: 'hasOwnedToggle'
     };
@@ -6817,8 +7599,8 @@ function render(){
     function syncHelpVersion(){
       const helpVersion = document.getElementById('helpVersion');
       if(!helpVersion) return;
-      const lastUpdated = window.HELP_LAST_UPDATED;
-      helpVersion.textContent = lastUpdated ? `Help updated: ${lastUpdated}` : '';
+      const appVersion = getAppVersion();
+      helpVersion.textContent = appVersion ? `Help updated for v${appVersion}` : '';
     }
 
     function syncHelpTabsA11y(){
@@ -6960,7 +7742,7 @@ function render(){
       const basicSectionRows = (basic.sections || []).map((section, index) => `
         <div class="mt-2 p-2 border border-white/10 rounded-lg space-y-2">
           <div class="text-xs text-cyan-200 font-semibold">Section ${index + 1}</div>
-          <input class="admin-editor-input" data-field="basic-section-id" data-index="${index}" value="${escapeHtml(section.id || '')}" placeholder="id (mixer_basics, owned, setlist...)" />
+          <input class="admin-editor-input" data-field="basic-section-id" data-index="${index}" value="${escapeHtml(section.id || '')}" placeholder="id (setlist, live, offline...)" />
           <input class="admin-editor-input" data-field="basic-section-title" data-index="${index}" value="${escapeHtml(section.title || '')}" placeholder="Title" />
           <textarea class="admin-editor-textarea" data-field="basic-section-bullets" data-index="${index}" placeholder="One line per bullet">${escapeHtml(((section.bullets || section.body) || []).join('\\n'))}</textarea>
           <textarea class="admin-editor-textarea" data-field="basic-section-steps" data-index="${index}" placeholder="Optional steps (one per line)">${escapeHtml((section.steps || []).join('\\n'))}</textarea>
@@ -6975,7 +7757,7 @@ function render(){
       const faqRows = (basic.faq || []).map((faq, index) => `
         <div class="mt-2 p-2 border border-white/10 rounded-lg space-y-2">
           <div class="text-xs text-cyan-200 font-semibold">FAQ ${index + 1}</div>
-          <input class="admin-editor-input" data-field="faq-id" data-index="${index}" value="${escapeHtml(faq.id || '')}" placeholder="id (owned_count_wrong...)" />
+          <input class="admin-editor-input" data-field="faq-id" data-index="${index}" value="${escapeHtml(faq.id || '')}" placeholder="id (go_live_disabled...)" />
           <input class="admin-editor-input" data-field="faq-q" data-index="${index}" value="${escapeHtml(faq.q || '')}" placeholder="Question" />
           <textarea class="admin-editor-textarea" data-field="faq-a" data-index="${index}" placeholder="Answer lines">${escapeHtml((faq.a || []).join('\\n'))}</textarea>
           <div class="admin-editor-inline-actions">
