@@ -1246,9 +1246,9 @@ function track(eventName, payload = {}){
     }
 
     function getProfileStorageKey(){
-      return currentUser?.uid
+      return currentUser?.username
+        || currentUser?.uid
         || firebaseAuth?.currentUser?.uid
-        || currentUser?.username
         || localStorage.getItem('currentUser')
         || getLocalDeviceId();
     }
@@ -1362,10 +1362,7 @@ function track(eventName, payload = {}){
       migrated.updatedAt = updatedAt;
       migrated.schemaVersion = 1;
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      const shouldStoreByUsername = !migrated.uid || migrated.uid.startsWith('local:') || migrated.mode === 'local';
-      if(migrated.username && shouldStoreByUsername){
-        profiles[migrated.username] = { ...(profiles[migrated.username] || {}), ...migrated };
-      }
+      if(migrated.username) profiles[migrated.username] = { ...(profiles[migrated.username] || {}), ...migrated };
       if(profileKey) profiles[profileKey] = { ...(profiles[profileKey] || {}), ...migrated };
       localStorage.setItem('userProfiles', JSON.stringify(profiles));
       if(profileKey){
@@ -2568,19 +2565,10 @@ function track(eventName, payload = {}){
         writeCache: (uid, snapshot) => window.profileStore?.writeOwnedTracksCache?.(uid, snapshot) || snapshot,
         readCloud: (uid) => window.profileStore?.readOwnedLibraryDoc?.(uid) || null,
         writeCloud: (uid, snapshot) => window.profileStore?.writeOwnedLibraryDoc?.(uid, snapshot),
-        readBackup: (uid) => window.profileStore?.readLatestOwnedLibraryBackup?.(uid) || null,
-        writeBackup: (uid, snapshot) => window.profileStore?.writeOwnedLibraryBackup?.(uid, snapshot),
-        cleanupBackups: (uid, keep) => window.profileStore?.cleanupOwnedLibraryBackups?.(uid, keep),
         buildPlan: window.profileStore?.buildOwnedLibraryPlan,
         normalizeSnapshot: window.profileStore?.normalizeOwnedLibrarySnapshot,
         getOnline: () => navigator.onLine,
         getCloudEnabled: () => firebaseEnabled && firestore,
-        readLastGoodCount: (uid) => window.profileStore?.readLastGoodOwnedCount?.(uid) || null,
-        writeLastGoodCount: (uid, value) => window.profileStore?.writeLastGoodOwnedCount?.(uid, value),
-        readLastSyncAt: (uid) => window.profileStore?.readLastSyncAt?.(uid) || null,
-        writeLastSyncAt: (uid, value) => window.profileStore?.writeLastSyncAt?.(uid, value),
-        readLastBackupAt: (uid) => window.profileStore?.readLastBackupAt?.(uid) || null,
-        writeLastBackupAt: (uid, value) => window.profileStore?.writeLastBackupAt?.(uid, value),
         onSnapshot: (snapshot) => {
           ownedTracks = snapshot.trackIds || [];
           updateOwnedCount();
@@ -2598,10 +2586,9 @@ function track(eventName, payload = {}){
     }
     function resolveOwnedLibraryStatusMessage(){
       if(ownedLibraryState?.message) return ownedLibraryState.message;
-      if(ownedLibraryState?.phase === 'syncing') return 'Syncing library…';
-      if(!navigator.onLine) return 'Offline — showing last saved library';
+      if(!navigator.onLine) return 'Saved to device ✓';
       if(!firebaseEnabled || !firestore) return 'Sync paused';
-      return 'Synced ✅';
+      return 'Saved ✓';
     }
     async function initOwnedLibraryForUser(uid, { legacyOwnedTracks = [], initialTrackIds = [], skipCloud = false } = {}){
       const store = ensureOwnedLibraryStore();
@@ -4033,9 +4020,7 @@ function track(eventName, payload = {}){
         return;
       }
       const username = getLocalDeviceId();
-      const localUid = `local:${username}`;
         const offlineProfile = {
-          uid: localUid,
           username,
           djName: username,
           ownedTracks: ownedTracks || [],
@@ -4059,17 +4044,11 @@ function track(eventName, payload = {}){
         djNameLower: normalizeUsernameLower(username),
         searchNameLower: normalizeUsernameLower(username),
         searchTokens: buildSearchTokens(username),
-        isAdmin: false,
-        mode: 'local'
+        isAdmin: false
       };
       currentUser = applyAdminFlag(offlineProfile);
       await persistAdminFlagIfNeeded(offlineProfile, currentUser);
-      if(currentUser?.uid || currentUser?.username){
-        localStorage.setItem('currentUser', currentUser.uid || currentUser.username);
-      }
-      if(currentUser?.uid){
-        localStorage.setItem('activeProfileUid', currentUser.uid);
-      }
+      localStorage.setItem('currentUser', currentUser.username);
       refreshDraftProfileFromCurrentUser();
       try { await persistProfileRobust(currentProfileFromState(), { force: true }); } catch(err){ console.warn('offline profile save failed', err); }
       await bootstrapApp();
@@ -4253,29 +4232,11 @@ function track(eventName, payload = {}){
       return null;
     }
 
-    function getLegacyProfileCandidates({ email } = {}){
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      const candidateKeys = new Set();
-      const storedKey = localStorage.getItem('currentUser');
-      if(storedKey) candidateKeys.add(storedKey);
-      const emailPrefix = (email || '').split('@')[0];
-      if(emailPrefix) candidateKeys.add(emailPrefix);
-      const candidates = [];
-      candidateKeys.forEach((key)=>{
-        if(profiles[key]) candidates.push(normalizeProfileShape(profiles[key], key));
-      });
-      return candidates;
-    }
-
-    function getLegacyProfileForMigration(uid, email){
+    function getLegacyProfileForMigration(uid){
       if(localStorage.getItem(PROFILE_MIGRATION_KEY) === uid){
         return { legacyProfile: {}, usedLegacy: false };
       }
-      let legacyProfile = readLegacyLocalProfile();
-      const legacyCandidates = getLegacyProfileCandidates({ email });
-      legacyCandidates.forEach((candidate)=>{
-        legacyProfile = mergeProfileSources({ localProfile: legacyProfile, snapshotProfile: null, remoteProfile: candidate });
-      });
+      const legacyProfile = readLegacyLocalProfile();
       const usedLegacyProfile = window.profileStore?.hasMeaningfulProfileData
         ? window.profileStore.hasMeaningfulProfileData(legacyProfile)
         : hasMeaningfulData(legacyProfile);
@@ -4298,7 +4259,7 @@ function track(eventName, payload = {}){
     async function hydrateProfileFromCloudThenMergeLocal(uid, email){
       profileSyncState = { syncing: true, message: 'Syncing your profile…' };
       const localCache = window.profileStore?.readLocalProfileCache?.() || {};
-      const { legacyProfile, usedLegacy } = getLegacyProfileForMigration(uid, email);
+      const { legacyProfile, usedLegacy } = getLegacyProfileForMigration(uid);
       const { ownedTracks: legacyOwnedTracks = [], ...legacyProfileFields } = legacyProfile || {};
       const cachedOwnedTracks = resolveOwnedTracksFromCacheCandidates([
         uid,
@@ -4319,12 +4280,7 @@ function track(eventName, payload = {}){
       bandMembers = localProfile.bandMembers || [];
       render(); setupEventListeners();
       await initOwnedLibraryForUser(uid, { legacyOwnedTracks, initialTrackIds: normalizeOwnedList(localProfile.ownedTracks || []) });
-      let cloudProfile = null;
-      try{
-        cloudProfile = await window.profileStore.readCloudProfile(uid);
-      }catch(err){
-        console.warn('[profile] cloud profile read failed', err);
-      }
+      const cloudProfile = await window.profileStore.readCloudProfile(uid);
       const plan = window.profileStore.buildSyncPlan({ cloud: cloudProfile, local: localProfile });
       const defaultProfile = {
         uid,
@@ -5573,9 +5529,7 @@ async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache 
 
   if(loadProfile){
     boot.phase = 'loadingProfile';
-    const profile = (firebaseEnabled && firebaseAuth?.currentUser)
-      ? await hydrateProfileFromCloudThenMergeLocal(firebaseAuth.currentUser.uid, firebaseAuth.currentUser.email)
-      : await hydrateProfileRobust();
+    const profile = await hydrateProfileRobust();
     await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
     await maybeLoadSharedProfile();
     boot.profileLoaded = true;
@@ -5609,7 +5563,7 @@ function render(){
   const isGuest = isGuestUser();
   const ownedLibraryStatusMessage = resolveOwnedLibraryStatusMessage();
   const ownedLibraryPhase = ownedLibraryState?.phase || 'idle';
-  const ownedLibraryBadgeClass = ownedLibraryPhase === 'restoring' || ownedLibraryPhase === 'saving' || ownedLibraryPhase === 'syncing'
+  const ownedLibraryBadgeClass = ownedLibraryPhase === 'restoring' || ownedLibraryPhase === 'saving'
     ? 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 border border-white/20 text-cyan-100'
     : 'text-[11px] text-cyan-100/90';
   const ownedLibraryBadge = ownedLibraryStatusMessage
