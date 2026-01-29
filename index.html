@@ -4283,17 +4283,36 @@ function track(eventName, payload = {}){
       return { legacyProfile, usedLegacy };
     }
 
+    function resolveOwnedTracksFromCacheCandidates(candidates){
+      const uniqueCandidates = Array.from(new Set((candidates || []).filter(Boolean)));
+      let best = null;
+      uniqueCandidates.forEach((candidate)=>{
+        const snapshot = readOwnedTracksCache(candidate);
+        if(snapshot?.trackIds?.length && (!best || snapshot.trackIds.length > best.trackIds.length)){
+          best = snapshot;
+        }
+      });
+      return best?.trackIds || [];
+    }
+
     async function hydrateProfileFromCloudThenMergeLocal(uid, email){
       profileSyncState = { syncing: true, message: 'Syncing your profile…' };
       const localCache = window.profileStore?.readLocalProfileCache?.() || {};
       const { legacyProfile, usedLegacy } = getLegacyProfileForMigration(uid, email);
       const { ownedTracks: legacyOwnedTracks = [], ...legacyProfileFields } = legacyProfile || {};
+      const cachedOwnedTracks = resolveOwnedTracksFromCacheCandidates([
+        uid,
+        localCache.uid,
+        localStorage.getItem('activeProfileUid'),
+        getLocalDeviceId()
+      ]);
       const localProfile = {
         ...localCache,
         ...legacyProfileFields,
         uid,
         email: email || localCache.email || '',
-        djName: localCache.djName || currentUser?.djName || ''
+        djName: localCache.djName || currentUser?.djName || '',
+        ownedTracks: normalizeOwnedList([...(localCache.ownedTracks || []), ...cachedOwnedTracks])
       };
       setlist = normalizeSetlistIds(localProfile.setlist || []);
       genreOverrides = localProfile.genreOverrides || {};
