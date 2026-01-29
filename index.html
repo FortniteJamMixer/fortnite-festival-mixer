@@ -1853,7 +1853,6 @@ function track(eventName, payload = {}){
     let ownedTracks = [];
     let activeSessionKey = null;
     let ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-    let firestoreAccessTestResult = null;
     let ownedStore = null;
     let logoutInProgress = false;
     let selectedSong = null;
@@ -2513,36 +2512,6 @@ function track(eventName, payload = {}){
         store.flush('retry').catch(()=>{});
       }
     }
-    function setFirestoreAccessTestResult(result){
-      firestoreAccessTestResult = result;
-      render();
-      setupEventListeners();
-    }
-    async function testFirestoreAccess(){
-      const user = firebaseAuth?.currentUser;
-      if(!user?.uid){
-        setFirestoreAccessTestResult({ status: 'error', message: '❌ No authenticated user.' });
-        return;
-      }
-      if(!firestore){
-        setFirestoreAccessTestResult({ status: 'error', message: '❌ Firestore unavailable.' });
-        return;
-      }
-      setFirestoreAccessTestResult({ status: 'pending', message: 'Testing Firestore access…' });
-      try{
-        const userDoc = firestore.collection('users').doc(user.uid);
-        await userDoc.get();
-        const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-        await userDoc.set({
-          lastDebugWriteAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
-        }, { merge: true });
-        setFirestoreAccessTestResult({ status: 'success', message: '✅ Firestore access ok.' });
-      }catch(err){
-        const code = err?.code || 'permission_denied';
-        const message = err?.message || 'Missing or insufficient permissions.';
-        setFirestoreAccessTestResult({ status: 'error', message: `❌ ${code}: ${message}` });
-      }
-    }
     function showSyncFailureModal(){
       return new Promise((resolve)=>{
         const modal = document.createElement('div');
@@ -3190,7 +3159,7 @@ function track(eventName, payload = {}){
         buildPlan: window.profileStore?.buildOwnedLibraryPlan,
         normalizeSnapshot: window.profileStore?.normalizeOwnedLibrarySnapshot,
         getOnline: () => navigator.onLine,
-        getCloudEnabled: () => firebaseEnabled && firestore && !!firebaseAuth?.currentUser,
+        getCloudEnabled: () => firebaseEnabled && firestore,
         readLastGoodCount: (uid) => window.profileStore?.readLastGoodOwnedCount?.(uid) || null,
         writeLastGoodCount: (uid, value) => window.profileStore?.writeLastGoodOwnedCount?.(uid, value),
         readLastSyncAt: (uid) => window.profileStore?.readLastSyncAt?.(uid) || null,
@@ -5240,7 +5209,11 @@ function track(eventName, payload = {}){
           { step: 'loadingRemote' }
         ))
       );
-      const candidates = legacySnapshots.filter(Boolean);
+      const legacyFromSubcollection = await withSyncTimeout(
+        window.profileStore?.readLegacyOwnedLibrarySubcollection?.(uid),
+        { step: 'loadingRemote' }
+      );
+      const candidates = [legacyFromSubcollection, ...legacySnapshots].filter(Boolean);
       if(!candidates.length) return null;
       const mergedIds = candidates.reduce((acc, snap) => {
         (snap?.trackIds || []).forEach((id) => acc.add(id));
@@ -6802,17 +6775,6 @@ function render(){
   const cloudSyncBadge = (firebaseEnabled && firebaseAuth?.currentUser)
     ? `<button onclick="${ownedSyncError ? 'retryCloudSync()' : 'void 0'}" class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline || ownedSyncError ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : ownedSyncSaving ? 'bg-sky-500/20 border border-sky-400/50 text-sky-100' : 'bg-emerald-500/20 border border-emerald-400/50 text-emerald-100'}" ${ownedSyncError ? '' : 'disabled'}>☁️ ${ownedSyncLabel}${ownedSyncError ? ' · Retry' : ''}</button>`
     : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
-  const firestoreDebugClass = firestoreAccessTestResult?.status === 'success'
-    ? 'text-emerald-200'
-    : firestoreAccessTestResult?.status === 'pending'
-      ? 'text-cyan-200'
-      : 'text-red-200';
-  const firestoreDebugStatus = (showSyncDebugPanel && firestoreAccessTestResult)
-    ? `<div class="mt-2 text-xs ${firestoreDebugClass}">${escapeHtml(firestoreAccessTestResult.message)}</div>`
-    : '';
-  const firestoreDebugButton = showSyncDebugPanel
-    ? '<button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="testFirestoreAccess()">Test Firestore Access</button>'
-    : '';
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const syncInProgress = [SYNC_STATES.checkingAuth, SYNC_STATES.loadingRemote, SYNC_STATES.merging, SYNC_STATES.savingRemote].includes(syncState.state);
   const syncBanner = syncState.state === SYNC_STATES.error
@@ -6821,7 +6783,7 @@ function render(){
       ? `<div class="inline-banner mt-2">🔄 ${syncState.message || 'Syncing your profile…'}</div>`
       : '');
   const ownedLibraryBanner = ownedLibraryState?.phase === 'error'
-    ? `<div class="inline-banner mt-2">⚠️ ${ownedLibraryState.message || 'Owned library sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button>${firestoreDebugButton}${firestoreDebugStatus}</div>`
+    ? `<div class="inline-banner mt-2">⚠️ ${ownedLibraryState.message || 'Owned library sync failed.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryCloudSync()">Retry</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="exportOwnedBackupJson()">Export Backup JSON</button></div>`
     : '';
   const recoveryBanner = recoveryBannerState?.visible
     ? `<div class="inline-banner mt-2">🛟 ${recoveryBannerState.message || 'Recovery mode active.'} <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryTracksNow()">Retry Tracks</button> <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="restoreLastKnownGoodProfile()">Restore Library</button></div>`
