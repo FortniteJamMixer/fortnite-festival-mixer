@@ -1800,7 +1800,7 @@ function track(eventName, payload = {}){
     let previewSong = null;
     let setlist = [];
     let searchTerm = '';
-    let view = DEFAULT_VIEW;
+    let view = 'browser';
     let showOwnedOnly = false;
     let showMixableOnly = false;
     let selectedGenre = 'All';
@@ -1918,7 +1918,8 @@ function track(eventName, payload = {}){
       ready: 'READY',
       fatal: 'FATAL'
     });
-    const DEFAULT_VIEW = 'browser';
+    const LAST_VIEW_KEY_PREFIX = 'ffjm:lastView';
+    const LAST_UID_KEY = 'ffjm:lastUid';
     let appBootState = APP_BOOT_STATES.authLoading;
     let bootstrapFatalError = null;
     const SYNC_TIMEOUT_MS = 10000;
@@ -2058,7 +2059,6 @@ function track(eventName, payload = {}){
     ].map(t=>({ ...t, flags: computeTrackFlags ? computeTrackFlags(t) : {} }));
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
     const profileParam = new URLSearchParams(window.location.search).get('profile');
-    const viewParam = new URLSearchParams(window.location.search).get('view');
     const showSyncDebugPanel = new URLSearchParams(window.location.search).get('debug') === '1';
     const pendingOAuthToast = sessionStorage.getItem('oauthSuccess');
     if(pendingOAuthToast){ sessionStorage.removeItem('oauthSuccess'); setTimeout(()=>alert(pendingOAuthToast), 500); }
@@ -5030,7 +5030,7 @@ function track(eventName, payload = {}){
       searchTerm = '';
       selectedGenre = 'All';
       selectedSong = null;
-      view = DEFAULT_VIEW;
+      view = 'browser';
     }
     function resetUiDefaults(){
       resetBrowseDefaults();
@@ -5067,9 +5067,10 @@ function track(eventName, payload = {}){
       showLoginScreen();
     }
 
-    function resolvePostAuthLanding({ explicitView } = {}){
-      const resolved = resolveExplicitView(explicitView);
-      return resolved || DEFAULT_VIEW;
+    function resolvePostAuthLanding({ uid, needsProfileSetup, syncError, migrationApplied } = {}){
+      if(!uid) return 'browser';
+      if(syncError || needsProfileSetup || migrationApplied) return 'profile';
+      return readLastView(uid) || 'browser';
     }
 
     async function migrateLegacyOwnedTracks(uid, legacyIds = []){
@@ -5128,6 +5129,7 @@ function track(eventName, payload = {}){
         recordBootStep(`AUTH: resolved ${user.uid}`);
         if (authSettledUser === user.uid && appBootState === APP_BOOT_STATES.ready) return;
         authSettledUser = user.uid;
+        localStorage.setItem(LAST_UID_KEY, user.uid);
         setAppBootState(APP_BOOT_STATES.signedInLoading);
         enforcePostLoginDefaults();
         updateSyncState({ state: SYNC_STATES.loadingRemote, message: 'Syncing your profile…', errorCode: null, errorStep: null });
@@ -5153,7 +5155,10 @@ function track(eventName, payload = {}){
         }catch(err){
           return;
         }
-        view = resolvePostAuthLanding({ explicitView: viewParam });
+        const needsProfileSetup = profileSyncOutcome.cloudMissing;
+        const syncError = profileSyncOutcome.syncError || syncState.state === SYNC_STATES.error || ownedLibraryState?.phase === 'error';
+        const migrationApplied = profileSyncOutcome.migrationApplied || (migrationOwned && migrationOwned.length > 0);
+        view = resolvePostAuthLanding({ uid: user.uid, needsProfileSetup, syncError, migrationApplied });
         setAppBootState(APP_BOOT_STATES.ready);
         render();
         setupEventListeners();
@@ -6356,11 +6361,21 @@ function renderBootScreen(message){
   `;
 }
 
-function resolveExplicitView(value){
-  if(!value) return null;
-  const normalized = String(value).trim().toLowerCase();
-  if(['browser', 'profile', 'setlist', 'audit'].includes(normalized)) return normalized;
-  return null;
+function getLastViewKey(uid){
+  return `${LAST_VIEW_KEY_PREFIX}:${uid}`;
+}
+
+function readLastView(uid){
+  if(!uid) return null;
+  const value = localStorage.getItem(getLastViewKey(uid));
+  return value === 'browser' || value === 'profile' || value === 'setlist' ? value : null;
+}
+
+function writeLastView(uid, nextView){
+  if(!uid) return;
+  if(nextView !== 'browser' && nextView !== 'profile' && nextView !== 'setlist') return;
+  localStorage.setItem(getLastViewKey(uid), nextView);
+  localStorage.setItem(LAST_UID_KEY, uid);
 }
 
 function renderBootstrapGate(message){
@@ -7431,6 +7446,8 @@ function render(){
 
     window.openProfileView = () => {
       view = 'profile';
+      const uid = firebaseAuth?.currentUser?.uid;
+      if(uid) writeLastView(uid, view);
       render();
       setupEventListeners();
       renderProfile();
@@ -7450,6 +7467,8 @@ function render(){
       if(clearSearchBtn) clearSearchBtn.style.display = 'none';
       if(searchStatus) searchStatus.style.display = 'none';
       view = 'browser';
+      const uid = firebaseAuth?.currentUser?.uid;
+      if(uid) writeLastView(uid, view);
       resetMainPagination();
       updateMobileWindowState({ reset: true });
       render();
@@ -7529,6 +7548,8 @@ function render(){
       adminMenuOpen = false;
       logEvent('view_switch', { from: view, to: newView });
       view = newView;
+      const uid = firebaseAuth?.currentUser?.uid;
+      if(uid) writeLastView(uid, view);
       if(view === 'browser'){ updateMobileWindowState({ reset: true }); }
       const browserView = document.getElementById('browserView');
       const setlistView = document.getElementById('setlistView');
