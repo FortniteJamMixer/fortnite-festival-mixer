@@ -2064,30 +2064,6 @@ function track(eventName, payload = {}){
       return currentUser?.isAdmin === true;
     }
 
-    function isGuestUser(){
-      return firebaseEnabled && !firebaseAuth?.currentUser;
-    }
-
-    function getOwnedCountInSongs(list){
-      const ids = normalizeOwnedList(list || []);
-      if(!ids.length || !songs.length) return 0;
-      const songIdSet = new Set(songs.map(song => song.id));
-      return ids.filter(id => songIdSet.has(id)).length;
-    }
-
-    function getHeaderTrackCountLabel(){
-      const total = songs.length;
-      if(!total){
-        return isGuestUser() && !viewingProfile ? 'Tracks: —' : 'Owned: — / —';
-      }
-      if(isGuestUser() && !viewingProfile){
-        return `Tracks: ${total}`;
-      }
-      const displayTracks = viewingProfile ? (viewingProfile.ownedTracks || []) : ownedTracks;
-      const ownedCount = getOwnedCountInSongs(displayTracks);
-      return `Owned: ${ownedCount}/${total}`;
-    }
-
     function handleAdminMenuOutsideClick(e){
       if(!adminMenuOpen) return;
       const menu = document.getElementById('adminToolsMenu');
@@ -2274,9 +2250,7 @@ function track(eventName, payload = {}){
     function readCachedSongsFromStorage(){
       try{
         const parsed = JSON.parse(localStorage.getItem(SONG_CACHE_KEY) || '[]');
-        if(Array.isArray(parsed) && parsed.length) return parsed;
-        const legacyParsed = JSON.parse(localStorage.getItem('cachedSongs') || '[]');
-        return Array.isArray(legacyParsed) ? legacyParsed : [];
+        return Array.isArray(parsed) ? parsed : [];
       }catch(err){
         return [];
       }
@@ -2284,9 +2258,7 @@ function track(eventName, payload = {}){
 
     function writeCachedSongsToStorage(list){
       try{
-        const payload = JSON.stringify(list || []);
-        localStorage.setItem(SONG_CACHE_KEY, payload);
-        localStorage.setItem('cachedSongs', payload);
+        localStorage.setItem(SONG_CACHE_KEY, JSON.stringify(list || []));
       }catch(err){
         console.warn('[songs] local cache write failed', err);
       }
@@ -4311,21 +4283,6 @@ function track(eventName, payload = {}){
       return merged;
     }
 
-    function enterGuestMode(){
-      authSettledUser = null;
-      authProcessing = false;
-      currentUser = null;
-      draftProfile = null;
-      ownedTracks = [];
-      setlist = [];
-      bandMembers = [];
-      viewingProfile = null;
-      genreOverrides = {};
-      ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-      ownedStore = null;
-      showOwnedOnly = false;
-    }
-
     function setupFirebaseAuthListener() {
       if (!firebaseAuth || firebaseAuthUnsub) return;
       firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
@@ -4335,11 +4292,9 @@ function track(eventName, payload = {}){
             userProfileUnsub();
             userProfileUnsub = null;
           }
-          enterGuestMode();
+          currentUser = null;
           profileSyncState = { syncing: false, message: '' };
-          render();
-          setupEventListeners();
-          syncAllHeaderCountsAndButtons();
+          showLoginScreen();
           return;
         }
         if (authSettledUser === user.uid) return;
@@ -4352,7 +4307,7 @@ function track(eventName, payload = {}){
           username: defaultUsername,
           djName: defaultUsername
         }, user.uid);
-        await bootstrapApp({ loadSongs: !songs.length, loadProfile: true, preferCache: true });
+        await bootstrapApp();
         profileSyncState = { syncing: false, message: '' };
         logEvent('auth_success', { uid: user.uid });
       });
@@ -4443,36 +4398,20 @@ function track(eventName, payload = {}){
     }
 
     // -------------------- Songs loading -----------------------
-    function applySongsSnapshot(nextSongs, { source = 'network', notice = '' } = {}){
-      songs = nextSongs;
-      songs.forEach(hydrateKeyInfo);
-      songsById = Object.fromEntries(songs.map(s => [s.id, s]));
-      refreshRegressionWarnings();
-      trackSource = source;
-      songsLoaded = true;
-      trackLoadNotice = notice;
-      trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
-    }
-
-    async function loadSongsRobust({ allowOneRetry = true, preferCache = false, onCacheApplied } = {}){
+    async function loadSongsRobust({ allowOneRetry = true } = {}){
       console.log('Loading tracks...');
       loadSongsStartTime = performance.now();
       firstListRenderLogged = false;
       maxCardsLogged = false;
       maxMobileCardsRendered = 0;
       logEvent('songs_fetch_start', { online: navigator.onLine });
+      trackLoadState = { status: 'loading', loaded: 0, total: 0, message: 'Loading tracks…' };
       trackLoadNotice = '';
       const cachedTracks = await readCachedTracks();
       const cachedStorage = readCachedSongsFromStorage();
       const cachedFallback = cachedTracks.length ? cachedTracks : cachedStorage;
       const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
       const canFetch = navigator.onLine;
-      const isRefreshing = preferCache && cachedFallback.length && canFetch;
-      trackLoadState = { status: isRefreshing ? 'refreshing' : 'loading', loaded: 0, total: 0, message: 'Loading tracks…' };
-      if(preferCache && cachedFallback.length){
-        applySongsSnapshot(cachedFallback, { source: 'cache', notice: canFetch ? 'Cached tracks loaded — refreshing from the API…' : 'Offline / API unreachable — showing cached tracks.' });
-        if(onCacheApplied) onCacheApplied({ source: 'cache' });
-      }
       const tryFetch = async () => {
         for(let i=0;i<endpoints.length;i++){
           try{
@@ -4500,8 +4439,16 @@ function track(eventName, payload = {}){
             }
             nextSongs.sort((a,b)=>a.title.localeCompare(b.title));
             if(nextSongs.length>0){
-              applySongsSnapshot(nextSongs, { source: 'network', notice: '' });
+              songs = nextSongs;
+              songsById = Object.fromEntries(songs.map(s => [s.id, s]));
+              regressionWarnings = knownCorrections.filter(kc=>{
+                const track = songs.find(s=>s.id===kc.id);
+                return track && track.camelot !== kc.expectedCamelot;
+              });
               if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
+              trackSource = 'network';
+              songsLoaded = true;
+              trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
               logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
               cacheTracks(songs);
               writeCachedSongsToStorage(songs);
@@ -4520,7 +4467,12 @@ function track(eventName, payload = {}){
       }
       if(cachedFallback.length){
         console.warn('Using cached track data');
-        applySongsSnapshot(cachedFallback, { source: 'cache', notice: 'Offline / API unreachable — showing cached tracks.' });
+        songs = cachedFallback;
+        songs.forEach(hydrateKeyInfo);
+        songsById = Object.fromEntries(songs.map(s => [s.id, s]));
+        trackSource = 'cache';
+        songsLoaded = true;
+        trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
         logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
         return { songs, usedFallback: true };
       }
@@ -4530,7 +4482,13 @@ function track(eventName, payload = {}){
         if(retryResult) return retryResult;
       }
       console.warn('endpoints failed, using fallback sample');
-      applySongsSnapshot(SAMPLE_TRACKS, { source: 'fallback', notice: 'Offline / API unreachable — showing fallback tracks.' });
+      songs = SAMPLE_TRACKS;
+      songs.forEach(hydrateKeyInfo);
+      songsById = Object.fromEntries(songs.map(s => [s.id, s]));
+      trackSource = 'fallback';
+      songsLoaded = true;
+      trackLoadNotice = 'Online source unavailable—showing sample tracks.';
+      trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
       logEvent('songs_fetch_fail', { message: 'network+cache miss; using fallback' });
       return { songs, usedFallback: true };
     }
@@ -4584,10 +4542,7 @@ function track(eventName, payload = {}){
 
     // ---------------------- Render list & setlist -----------------------
     function formatDuration(sec){ const m=Math.floor(sec/60); const s=sec%60; return `${m}:${s.toString().padStart(2,'0')}`; }
-    function updateOwnedCount(){
-      const el = document.getElementById('ownedCount');
-      if(el) el.textContent = getHeaderTrackCountLabel();
-    }
+    function updateOwnedCount(){ const el=document.getElementById('ownedCount'); if(el){ const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks; const ownerLabel = viewingProfile ? (viewingProfile.djName || viewingProfile.username || 'Profile') : 'You'; el.textContent = `${ownerLabel} own ${displayTracks.length}/${songs.length} tracks`; } }
 
     function scrollSongListToTop(){
       const list = document.getElementById('songList');
@@ -4654,13 +4609,8 @@ function track(eventName, payload = {}){
       if(star) star.style.display = isOwned ? 'block' : 'none';
       const button = card.querySelector('[data-song-action="toggle-owned"]');
       if(button){
-        if(isGuestUser() && !viewingProfile){
-          button.textContent = 'Sign in to mark owned';
-          button.className = 'px-3 py-2 bg-gray-700/60 rounded-lg text-sm font-medium transition';
-        } else {
-          button.textContent = isOwned ? '✓ Owned' : 'Mark Owned';
-          button.className = `px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition`;
-        }
+        button.textContent = isOwned ? '✓ Owned' : 'Mark Owned';
+        button.className = `px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition`;
       }
     }
 
@@ -4670,13 +4620,8 @@ function track(eventName, payload = {}){
       const isInSetlist = setlist.includes(songId);
       const button = card.querySelector('[data-song-action="toggle-setlist"]');
       if(button){
-        if(isGuestUser() && !viewingProfile){
-          button.textContent = 'Sign in to save setlists';
-          button.className = 'addSetBtn px-4 py-2 bg-purple-500/20 rounded-lg text-sm font-medium transition';
-        } else {
-          button.textContent = isInSetlist ? '✓ In Setlist' : '+ Set';
-          button.className = `addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition`;
-        }
+        button.textContent = isInSetlist ? '✓ In Setlist' : '+ Set';
+        button.className = `addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition`;
       }
     }
 
@@ -4701,9 +4646,6 @@ function track(eventName, payload = {}){
       if(!isMobileViewport()) return { visible: false };
       if(stickyCtaDismissed) return { visible: false };
       if(isSearchFocused) return { visible: false };
-      if(isGuestUser()){
-        return { visible: true, text: 'Sign in to save Owned + Setlist', action: 'sign-in' };
-      }
       const hasOwned = ownedTracks.length > 0;
       const hasSelected = !!selectedSong;
       if(hasOwned && hasSelected){
@@ -4812,10 +4754,6 @@ function track(eventName, payload = {}){
     }
 
     function openQuickStart(){
-      if(isGuestUser()){
-        setMixableInlineNotice('Sign in to mark owned tracks.');
-        return;
-      }
       if(quickStartDone) return;
       quickStartState.open = true;
       quickStartState.step = 0;
@@ -4936,7 +4874,6 @@ function track(eventName, payload = {}){
     function renderSongList(){
       listRenderCount += 1;
       const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
-      const isGuest = isGuestUser();
       const isMobile = isMobileViewport();
       if(!isMobile && mobileListObserver){
         mobileListObserver.disconnect();
@@ -5079,16 +5016,6 @@ function track(eventName, payload = {}){
           return `<span class="px-2 py-1 bg-blue-500/20 border border-blue-400/40 rounded text-xs text-blue-100 font-semibold">${deltaLabel} • ${modeLabel}</span>`;
         })() : '';
         if(showMixableOnly && selectedSong){ if(!isMixableWithCriteria(selectedSongCriteria, song)) return ''; }
-        const ownedDisabled = viewingProfile || (isGuest && !viewingProfile);
-        const ownedButtonLabel = (isGuest && !viewingProfile) ? 'Sign in to mark owned' : (isOwned ? '✓ Owned' : 'Mark Owned');
-        const ownedButtonClass = (isGuest && !viewingProfile)
-          ? 'bg-gray-700/60 cursor-not-allowed'
-          : (isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600');
-        const setlistDisabled = viewingProfile || (isGuest && !viewingProfile);
-        const setlistButtonLabel = (isGuest && !viewingProfile) ? 'Sign in to save setlists' : (isInSetlist ? '✓ In Setlist' : '+ Set');
-        const setlistButtonClass = (isGuest && !viewingProfile)
-          ? 'bg-purple-500/20 cursor-not-allowed'
-          : (isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500');
         const selectedStyles = isSelected ? 'selected-card' : '';
         const genrePill = adminUser
           ? `<button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
@@ -5117,8 +5044,8 @@ function track(eventName, payload = {}){
             <div class="flex flex-wrap gap-2 items-center">
               <button data-song-action="select" data-song-id="${song.id}" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
               <button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-song-action="preview" data-song-id="${song.id}">Preview</button>
-              <button data-song-action="toggle-owned" data-song-id="${song.id}" class="px-3 py-2 ${ownedButtonClass} rounded-lg text-sm font-medium transition" ${ownedDisabled ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${ownedButtonLabel}</button>
-              <button data-song-action="toggle-setlist" data-song-id="${song.id}" class="addSetBtn px-4 py-2 ${setlistButtonClass} rounded-lg text-sm font-medium transition" ${setlistDisabled ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${setlistButtonLabel}</button>
+              <button data-song-action="toggle-owned" data-song-id="${song.id}" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
+              <button data-song-action="toggle-setlist" data-song-id="${song.id}" class="addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isInSetlist ? '✓ In Setlist' : '+ Set'}</button>
               <button data-song-action="add-sandbox" data-song-id="${song.id}" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>+ Sandbox</button>
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
@@ -5143,17 +5070,11 @@ function track(eventName, payload = {}){
         ? `<div class="inline-banner">Refreshing tracks in the background…</div>`
         : '';
       const emptyOwnedCallout = (!viewingProfile && ownedTracks.length === 0 && !quickStartDone)
-        ? (isGuest
-          ? `<div class="panel p-4 bg-purple-500/10 border border-purple-400/30 text-sm text-purple-100 space-y-2">
-              <div class="font-semibold text-white">Sign in to track Owned songs</div>
-              <div class="text-xs text-purple-200">Owned tracks and setlists are saved to your profile.</div>
-              <button data-action="signInPrompt" class="px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-400/40 text-white font-semibold">Sign In</button>
-            </div>`
-          : `<div class="panel p-4 bg-cyan-500/10 border border-cyan-400/30 text-sm text-cyan-100 space-y-2">
-              <div class="font-semibold text-white">Step 1: Mark songs you own (start small)</div>
-              <div class="text-xs text-cyan-200">Quick Start marks a starter set so you can see mixes fast.</div>
-              <button data-action="openQuickStart" class="px-4 py-2 rounded-lg bg-cyan-500/20 border border-cyan-400/40 text-white font-semibold">Quick Start</button>
-            </div>`)
+        ? `<div class="panel p-4 bg-cyan-500/10 border border-cyan-400/30 text-sm text-cyan-100 space-y-2">
+            <div class="font-semibold text-white">Step 1: Mark songs you own (start small)</div>
+            <div class="text-xs text-cyan-200">Quick Start marks a starter set so you can see mixes fast.</div>
+            <button data-action="openQuickStart" class="px-4 py-2 rounded-lg bg-cyan-500/20 border border-cyan-400/40 text-white font-semibold">Quick Start</button>
+          </div>`
         : '';
       const matchHint = matchHintMessage ? `<div class="inline-banner">${matchHintMessage}</div>` : '';
       const listContent = loadingBlock || (scored.length
@@ -5212,15 +5133,6 @@ function track(eventName, payload = {}){
 
     function renderSetlist(){
       const setlistEl = document.getElementById('setlistContent'); if(!setlistEl) return;
-      if(isGuestUser() && !viewingProfile){
-        setlistEl.innerHTML = `<div class="text-center py-12 text-white space-y-4">
-          <div class="text-5xl">🔒</div>
-          <p class="text-xl font-semibold">Sign in to save setlists</p>
-          <p class="text-sm text-gray-300">Setlists sync to your profile after sign-in.</p>
-          <button data-action="signInPrompt" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Sign In</button>
-        </div>`;
-        return;
-      }
       if(setlist.length===0){
         setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button data-action="switchView" data-view="browser" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
         return;
@@ -5266,7 +5178,6 @@ function track(eventName, payload = {}){
       bindUiDebugging();
       bindProfileHandlers();
       const viewOnly = !!viewingProfile;
-      const isGuest = isGuestUser();
       if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
         refreshDraftProfileFromCurrentUser();
       }
@@ -5275,24 +5186,18 @@ function track(eventName, payload = {}){
       const djVal = profileOwner?.djName || usernameVal || 'DJ';
       const handleLabel = usernameVal ? `@${escapeHtml(usernameVal)}` : '@guest';
       const storageNote = !viewOnly
-        ? (isGuest ? 'Guest mode • Sign in to sync owned tracks, setlists, and bandmates.' : `Offline-ready • Stored on this device${firebaseAuth?.currentUser ? ' (and cloud when signed in)' : ''}`)
+        ? `Offline-ready • Stored on this device${firebaseAuth?.currentUser ? ' (and cloud when signed in)' : ''}`
         : '';
       const ownedIds = normalizeOwnedList(profileOwner?.ownedTracks || []);
       const songIdSet = new Set((songs || []).map(song => song.id));
       const ownedIntersect = ownedIds.filter(id => songIdSet.has(id));
       const ownedCount = ownedIntersect.length;
       const ownedTotal = songs.length;
-      const ownedEmptyState = ownedCount === 0 && !isGuest
+      const ownedEmptyState = ownedCount === 0
         ? '<div class="text-xs text-gray-300">Start marking tracks as Owned in Browse.</div>'
         : '';
       const fallbackBanner = boot.usedFallbackSongs
         ? '<div class="panel border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Track list failed to load — using fallback list</div>'
-        : '';
-      const guestBanner = (!viewOnly && isGuest)
-        ? `<div class="panel border border-purple-400/40 bg-purple-500/10 text-purple-100 text-sm flex items-center justify-between gap-3 flex-wrap">
-            <span>Guest profile — sign in to save owned tracks, setlists, and bandmates.</span>
-            <button data-action="signInPrompt" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg profile-hit-target text-sm">Sign In</button>
-          </div>`
         : '';
       const viewBanner = viewOnly
         ? `<div class="panel border border-purple-400/40 bg-purple-500/10 text-purple-100 text-sm flex items-center justify-between gap-3 flex-wrap">
@@ -5302,19 +5207,17 @@ function track(eventName, payload = {}){
         : '';
       const bandmateList = (viewOnly ? (profileOwner?.bandMembers || []) : (bandMembers || []))
         .filter(Boolean);
-      const bandmatePills = (isGuest && !viewOnly)
-        ? '<div class="text-sm text-gray-400">Sign in to manage bandmates.</div>'
-        : (bandmateList.length
-          ? `<div class="flex flex-wrap gap-2">
-              ${bandmateList.map(member => {
-                const name = escapeHtml(member?.djName || member?.username || 'Bandmate');
-                const handle = escapeHtml(member?.username || '');
-                const label = handle ? `${name} • @${handle}` : name;
-                return `<button type="button" data-action="profile.viewBandmate" data-username="${escapeHtml(member?.username || member?.uid || '')}" class="px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-sm font-semibold profile-hit-target">${label}</button>`;
-              }).join('')}
-            </div>`
-          : '<div class="text-sm text-gray-400">No bandmates yet.</div>');
-      const bandmateForm = (!viewOnly && !isGuest)
+      const bandmatePills = bandmateList.length
+        ? `<div class="flex flex-wrap gap-2">
+            ${bandmateList.map(member => {
+              const name = escapeHtml(member?.djName || member?.username || 'Bandmate');
+              const handle = escapeHtml(member?.username || '');
+              const label = handle ? `${name} • @${handle}` : name;
+              return `<button type="button" data-action="profile.viewBandmate" data-username="${escapeHtml(member?.username || member?.uid || '')}" class="px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-sm font-semibold profile-hit-target">${label}</button>`;
+            }).join('')}
+          </div>`
+        : '<div class="text-sm text-gray-400">No bandmates yet.</div>';
+      const bandmateForm = !viewOnly
         ? `<div class="flex flex-col sm:flex-row gap-2">
             <input id="bandmateInput" placeholder="Add bandmate username" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
             <button type="button" data-action="profile.addBandmate" class="px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-semibold profile-hit-target">+ Add Bandmate</button>
@@ -5323,7 +5226,6 @@ function track(eventName, payload = {}){
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-4xl mx-auto">
           ${fallbackBanner}
-          ${guestBanner}
           ${viewBanner}
           <div class="panel space-y-3">
             <div>
@@ -5338,10 +5240,10 @@ function track(eventName, payload = {}){
                 <div class="text-lg font-bold text-white">Owned Tracks</div>
                 <p class="text-sm text-gray-300">Epic doesn’t share ownership—mark your tracks manually.</p>
               </div>
-              <div class="text-3xl font-bold text-white">${isGuest ? `Tracks: ${ownedTotal}` : `Owned: ${ownedCount} <span class="text-base text-gray-300">/ ${ownedTotal}</span>`}</div>
+              <div class="text-3xl font-bold text-white">Owned: ${ownedCount} <span class="text-base text-gray-300">/ ${ownedTotal}</span></div>
             </div>
             <div class="flex flex-wrap gap-2">
-              ${isGuest ? '<button type="button" data-action="signInPrompt" class="px-4 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 font-semibold profile-hit-target">Sign in to manage Owned</button>' : '<button type="button" data-action="profile.viewOwned" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target">View Owned</button>'}
+              <button type="button" data-action="profile.viewOwned" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold profile-hit-target">View Owned</button>
             </div>
             ${ownedEmptyState}
           </div>
@@ -5496,7 +5398,7 @@ function syncAllHeaderCountsAndButtons(){
   updateStickyCTA();
 }
 
-async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache = false } = {}){
+async function bootstrapApp(){
   boot.phase = 'init';
   boot.profileLoaded = false;
   boot.songsLoaded = false;
@@ -5506,38 +5408,19 @@ async function bootstrapApp({ loadSongs = true, loadProfile = true, preferCache 
 
   renderBootScreen('Loading Festival Jam Tracks…');
 
-  if(loadSongs){
-    boot.phase = 'loadingSongs';
-    const songResult = await loadSongsRobust({
-      allowOneRetry: true,
-      preferCache,
-      onCacheApplied: () => {
-        boot.songsLoaded = true;
-        render();
-        setupEventListeners();
-        syncAllHeaderCountsAndButtons();
-      }
-    });
-    songs = songResult.songs;
-    boot.usedFallbackSongs = songResult.usedFallback;
-    boot.songsLoaded = true;
-  } else {
-    boot.songsLoaded = songs.length > 0;
-  }
-
+  boot.phase = 'loadingProfile';
+  const profile = await hydrateProfileRobust();
+  await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
+  await maybeLoadSharedProfile();
   await loadRemoteConfig();
+  boot.profileLoaded = true;
+  boot.initialOwnedCount = Array.isArray(ownedTracks) ? ownedTracks.length : 0;
 
-  if(loadProfile){
-    boot.phase = 'loadingProfile';
-    const profile = await hydrateProfileRobust();
-    await applyProfileToState(profile, { loadEpic: true, loadOverrides: true, skipPersist: true });
-    await maybeLoadSharedProfile();
-    boot.profileLoaded = true;
-    boot.initialOwnedCount = getOwnedCountInSongs(ownedTracks);
-  } else {
-    boot.profileLoaded = false;
-    boot.initialOwnedCount = 0;
-  }
+  boot.phase = 'loadingSongs';
+  const songResult = await loadSongsRobust({ allowOneRetry: true });
+  songs = songResult.songs;
+  boot.usedFallbackSongs = songResult.usedFallback;
+  boot.songsLoaded = true;
 
   boot.phase = boot.usedFallbackSongs ? 'degraded' : 'ready';
 
@@ -5559,8 +5442,7 @@ function render(){
   }
   syncAdminGlobals();
   const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
-  const ownedCount = getOwnedCountInSongs(displayTracks);
-  const isGuest = isGuestUser();
+  const ownedCount = displayTracks.length;
   const ownedLibraryStatusMessage = resolveOwnedLibraryStatusMessage();
   const ownedLibraryPhase = ownedLibraryState?.phase || 'idle';
   const ownedLibraryBadgeClass = ownedLibraryPhase === 'restoring' || ownedLibraryPhase === 'saving'
@@ -5610,9 +5492,7 @@ function render(){
       </div>
     </div>`;
   const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
-  const signedLabel = viewingProfile
-    ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}`
-    : `${isGuest ? 'Guest Mode' : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}`}${adminLabel}`;
+  const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}${adminLabel}`;
   const authButtonLabel = firebaseAuth?.currentUser
     ? (logoutInProgress ? 'Saving…' : 'Logout')
     : 'Sign In';
@@ -5621,8 +5501,6 @@ function render(){
     : 'showLoginScreen()';
   const authButtonDisabled = firebaseAuth?.currentUser && logoutInProgress;
   const stickyCtaActive = getStickyCtaConfig().visible;
-  const setlistLabel = isGuest ? 'Setlist (Sign in)' : 'Setlist';
-  const profileLabel = isGuest ? 'Profile (Sign in)' : 'Profile';
   document.getElementById('app').innerHTML = `
     <div class="min-h-screen ${stickyCtaActive ? 'sticky-cta-active' : ''}" id="appRoot">
       <header class="bg-black/70 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg safe-header">
@@ -5650,7 +5528,7 @@ function render(){
           </div>
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
             <div class="flex items-center flex-wrap gap-2">
-              <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">${getHeaderTrackCountLabel()}</p>
+              <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>
               ${ownedLibraryBadge}
               ${networkBadge}
               ${trackSourceBadge}
@@ -5664,13 +5542,13 @@ function render(){
 
       <main class="max-w-[1400px] mx-auto px-4 py-6 space-y-4" style="padding-bottom: calc(6rem + var(--safe-bottom));">
         <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="flex gap-2 flex-wrap">
+          <div class="flex gap-2 flex-wrap">
             <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
             <div class="flex items-center gap-1">
-              <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">${setlistLabel} (<span id="setlistCount">${setlist.length}</span>)</button>
+              <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
               <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
-            <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">${profileLabel}</button>
+            <button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>
           </div>
           ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
         </div>
@@ -5690,7 +5568,7 @@ function render(){
               <div class="panel space-y-2 dim-when-sticky">
                 <div class="flex items-center justify-between">
                   <div class="font-bold text-white">Controls</div>
-                  <span class="text-xs text-gray-300">${viewingProfile ? 'Shared profile (view only)' : (isGuest ? 'Guest mode' : 'Your library')}</span>
+                  <span class="text-xs text-gray-300">${viewingProfile ? 'Shared profile (view only)' : 'Your library'}</span>
                 </div>
                 <div class="relative">
                   <input type="text" id="searchInput" value="${searchTerm || ''}" placeholder="🔍 Search songs" class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
@@ -5699,11 +5577,11 @@ function render(){
                 <div id="searchStatus" class="text-xs text-cyan-200" style="display:none;">Filtering…</div>
                 <div class="grid grid-cols-2 gap-2">
                   <button id="mixableFilterBtn" class="w-full min-h-[44px] px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
-                  <button id="ownedFilterBtn" class="w-full min-h-[44px] px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}" ${isGuest && !viewingProfile ? 'disabled style="opacity:0.55;cursor:not-allowed;" title="Sign in to filter by owned"' : ''}>${isGuest && !viewingProfile ? 'Sign in for Owned' : (showOwnedOnly ? '✓ Owned Only' : 'Show All')}</button>
+                  <button id="ownedFilterBtn" class="w-full min-h-[44px] px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                   <button id="controlClearSelectionBtn" onclick="clearSelection()" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100 ${viewingProfile ? 'col-span-2' : ''}" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
-                  ${!viewingProfile?`<button id="clearAllBtn" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-semibold text-cyan-100">${isGuest ? 'Clear Filters' : 'Clear All'}</button>`:''}
+                  ${!viewingProfile?`<button id="clearAllBtn" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-semibold text-cyan-100">Clear All</button>`:''}
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
                 <div class="bg-black/40 border border-white/10 rounded-lg p-3 space-y-3">
@@ -5922,7 +5800,6 @@ function render(){
         if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
         if(closestFromEvent(e, '#clearSearchBtn', { within: app }) || closestFromEvent(e, '#panelClearSearchBtn', { within: app })){ clearSearch(); return; }
         if(closestFromEvent(e, '[data-action="clearFilters"]', { within: app })){ clearFilters(); return; }
-        if(closestFromEvent(e, '[data-action="signInPrompt"]', { within: app })){ showLoginScreen(); return; }
         if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: app })){ openQuickStart(); return; }
         if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: app })){ closeQuickStart(); return; }
         if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: app })){ void completeQuickStart({ skipped: true }); return; }
@@ -5974,10 +5851,6 @@ function render(){
           }
           if(action === 'mixable-warning'){
             setMixableInlineNotice('Select a song before enabling Mixable Only.');
-            return;
-          }
-          if(action === 'sign-in'){
-            showLoginScreen();
             return;
           }
         }
@@ -6384,10 +6257,6 @@ function render(){
     };
 
     function viewOwnedFromProfile(){
-      if(isGuestUser() && !viewingProfile){
-        setMixableInlineNotice('Sign in to filter by owned tracks.');
-        return;
-      }
       showOwnedOnly = true;
       searchTerm = '';
       const searchInput = document.getElementById('searchInput');
@@ -6405,10 +6274,6 @@ function render(){
 
     window.toggleOwned = async (id) => {
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
-      if(isGuestUser()){
-        setMixableInlineNotice('Sign in to mark owned tracks.');
-        return;
-      }
       const store = ensureOwnedLibraryStore();
       if(store){
         store.toggleOwned(id);
@@ -6439,10 +6304,6 @@ function render(){
 
     window.addToSetlist = (id) => {
       if(!id) return;
-      if(isGuestUser() && !viewingProfile){
-        setMixableInlineNotice('Sign in to save setlists.');
-        return;
-      }
       const exists = setlist.includes(id);
       if(exists){
         setlist = setlist.filter(x => x !== id);
@@ -6505,10 +6366,6 @@ function render(){
     };
 
     window.toggleOwnedFilter = () => {
-      if(isGuestUser() && !viewingProfile){
-        setMixableInlineNotice('Sign in to filter by owned tracks.');
-        return;
-      }
       showOwnedOnly = !showOwnedOnly;
       resetMainPagination();
       updateMobileWindowState({ reset: true });
@@ -6518,11 +6375,6 @@ function render(){
 
     window.clearAllOwned = async () => {
       if(viewingProfile) return;
-      if(isGuestUser()){
-        clearSelection();
-        clearFilters();
-        return;
-      }
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
       const store = ensureOwnedLibraryStore();
@@ -7579,15 +7431,16 @@ function render(){
     async function checkAuth(){
       if (firebaseEnabled && firebaseAuth) {
         setupFirebaseAuthListener();
-        await bootstrapApp({ loadSongs: true, loadProfile: false, preferCache: true });
-        return;
+        const fbUser = firebaseAuth.currentUser;
+        if (fbUser) return;
       }
       const cachedProfile = await hydrateFromLocalCacheOnly();
       if(cachedProfile){
         currentUser = cachedProfile;
-        await bootstrapApp({ loadSongs: true, loadProfile: true, preferCache: true });
+        await bootstrapApp();
         return;
       }
+      await loadRemoteConfig();
       showLoginScreen();
     }
 
