@@ -1,5 +1,4 @@
 const PROFILE_CACHE_KEY = 'ffjm_profile_cache_v1';
-const PROFILE_CACHE_KEY_PREFIX = 'ffjm:profile';
 const OWNED_TRACKS_CACHE_VERSION = 'v1';
 const OWNED_TRACKS_CACHE_KEY_PREFIX = 'ffjm:owned';
 const OWNED_TRACKS_META_KEY_PREFIX = 'ownedTracksMeta';
@@ -114,8 +113,6 @@ const getLegacyOwnedTracksCacheKey = (uid) => `ownedTracks:${OWNED_TRACKS_CACHE_
 const getOwnedTracksMetaKey = (uid, field) => `${OWNED_TRACKS_META_KEY_PREFIX}:${field}:${uid || 'anonymous'}`;
 const getOwnedTracksBackupKey = (uid) => `${OWNED_TRACKS_LOCAL_BACKUP_KEY_PREFIX}:${uid || 'anonymous'}`;
 
-const getProfileCacheKey = (uid) => `${PROFILE_CACHE_KEY_PREFIX}:${uid || 'anonymous'}`;
-
 const readLocalProfileCache = () => {
   if (typeof localStorage === 'undefined') return {};
   const raw = localStorage.getItem(PROFILE_CACHE_KEY);
@@ -134,27 +131,6 @@ const writeLocalProfileCache = (profile) => {
   const existing = readLocalProfileCache();
   const merged = normalizeProfile({ ...existing, ...profile });
   localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(merged));
-};
-
-const readProfileCache = (uid) => {
-  if (typeof localStorage === 'undefined' || !uid) return {};
-  const raw = localStorage.getItem(getProfileCacheKey(uid)) || localStorage.getItem(PROFILE_CACHE_KEY);
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw);
-    const normalized = normalizeProfile(parsed);
-    localStorage.setItem(getProfileCacheKey(uid), JSON.stringify(normalized));
-    return normalized;
-  } catch (err) {
-    console.warn('[profileStore] Failed to parse per-user cache', err);
-    return {};
-  }
-};
-
-const writeProfileCache = (uid, profile) => {
-  if (typeof localStorage === 'undefined' || !uid) return;
-  const normalized = normalizeProfile(profile);
-  localStorage.setItem(getProfileCacheKey(uid), JSON.stringify(normalized));
 };
 
 const readOwnedTracksCache = (uid) => {
@@ -475,7 +451,6 @@ const buildOwnedLibraryPlan = ({ cache = null, cloud = null, backup = null } = {
 
 export {
   PROFILE_CACHE_KEY,
-  PROFILE_CACHE_KEY_PREFIX,
   OWNED_TRACKS_CACHE_VERSION,
   PROFILE_SCHEMA_VERSION,
   OWNED_LIBRARY_SCHEMA_VERSION,
@@ -527,7 +502,6 @@ export {
 if (typeof window !== 'undefined') {
   window.profileStore = {
     PROFILE_CACHE_KEY,
-    PROFILE_CACHE_KEY_PREFIX,
     OWNED_TRACKS_CACHE_VERSION,
     PROFILE_SCHEMA_VERSION,
     OWNED_LIBRARY_SCHEMA_VERSION,
@@ -576,9 +550,3 @@ if (typeof window !== 'undefined') {
     writeOwnedTracksBackup
   };
 }
-  getProfileCacheKey,
-  readProfileCache,
-  writeProfileCache,
-    getProfileCacheKey,
-    readProfileCache,
-    writeProfileCache,

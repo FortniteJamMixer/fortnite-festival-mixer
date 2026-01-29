@@ -35,7 +35,7 @@ const HELP_CONTENT = {
         title: 'Mark Owned',
         bullets: [
           'Click the Owned toggle on any track card to save it.',
-          'Owned tracks are stored on this device when signed out, and synced to cloud when signed in.',
+          'Owned tracks are stored locally and sync to cloud when signed in.',
           'Epic doesn’t share ownership, so you must mark tracks manually.'
         ]
       },
