@@ -576,3 +576,9 @@ if (typeof window !== 'undefined') {
     writeOwnedTracksBackup
   };
 }
+  getProfileCacheKey,
+  readProfileCache,
+  writeProfileCache,
+    getProfileCacheKey,
+    readProfileCache,
+    writeProfileCache,
