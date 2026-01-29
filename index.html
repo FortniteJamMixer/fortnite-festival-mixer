@@ -6089,7 +6089,7 @@ function render(){
         <div id="browserView" style="display:${view==='browser'?'block':'none'}">
           <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
             <div class="space-y-4">
-              <div class="panel space-y-2 dim-when-sticky">
+              <div class="panel space-y-3 dim-when-sticky">
                 <div class="flex items-center justify-between">
                   <div class="font-bold text-white">Controls</div>
                   <span class="text-xs text-gray-300">${viewingProfile ? 'Shared profile (view only)' : 'Your library'}</span>
@@ -6099,15 +6099,16 @@ function render(){
                   <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
                 </div>
                 <div id="searchStatus" class="text-xs text-cyan-200" style="display:none;">Filtering…</div>
-                <div class="grid grid-cols-2 gap-2">
-                  <button id="mixableFilterBtn" class="w-full min-h-[44px] px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
-                  <button id="ownedFilterBtn" class="w-full min-h-[44px] px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <button id="controlClearSelectionBtn" onclick="clearSelection()" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100 ${viewingProfile ? 'col-span-2' : ''}" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
-                  ${!viewingProfile?`<button id="clearAllBtn" class="w-full min-h-[44px] px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-semibold text-cyan-100">Clear All</button>`:''}
+                <div class="flex flex-wrap gap-2">
+                  <button id="mixableFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
+                  <button id="ownedFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
+                  <button id="controlClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
+                ${!viewingProfile?`<div class="flex flex-wrap gap-2">
+                  <button id="markAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
+                  <button id="clearAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
+                </div>`:''}
                 <div class="bg-black/40 border border-white/10 rounded-lg p-3 space-y-3">
                   <div class="flex items-center justify-between flex-wrap gap-2">
                     <div class="text-sm font-semibold text-white">Key Mode</div>
@@ -6378,6 +6379,7 @@ function render(){
             return;
           }
         }
+        if(closestFromEvent(e, '#markAllBtn', { within: app }) && !viewingProfile){ markAllOwned(); return; }
         if(closestFromEvent(e, '#clearAllBtn', { within: app }) && !viewingProfile){ clearAllOwned(); return; }
         const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: app });
         if(genreBtn && isAdmin()){
@@ -6864,6 +6866,18 @@ function render(){
       updateMobileWindowState({ reset: true });
       render();
       setupEventListeners();
+    };
+
+    window.markAllOwned = async () => {
+      if(viewingProfile) return;
+      if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
+      ownedTracks = songs.map(s=>s.id);
+      scheduleProfileCacheSync();
+      updateOwnedCount();
+      updateMobileWindowState({ reset: true });
+      scheduleSongListRender('mark-all-owned');
+      updateStickyCTA();
+      alert(`✅ Marked all ${songs.length} songs as owned!`);
     };
 
     window.clearAllOwned = async () => {
