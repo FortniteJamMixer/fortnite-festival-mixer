@@ -1,7 +1,5 @@
 const PROFILE_CACHE_KEY = 'ffjm_profile_cache_v1';
 const OWNED_TRACKS_CACHE_VERSION = 'v1';
-const OWNED_TRACKS_CACHE_KEY_PREFIX = 'ownedTracksCache';
-const OWNED_TRACKS_META_KEY_PREFIX = 'ownedTracksMeta';
 const OWNED_LIBRARY_SCHEMA_VERSION = 1;
 
 const normalizeArray = (value) => {
@@ -34,7 +32,7 @@ const normalizeProfile = (profile = {}) => ({
 });
 
 const normalizeOwnedTrackIds = (value) => {
-  const arr = Array.isArray(value) ? value.filter(Boolean).map((item) => String(item)) : [];
+  const arr = Array.isArray(value) ? value.filter(Boolean) : [];
   return Array.from(new Set(arr)).sort();
 };
 
@@ -54,16 +52,12 @@ const normalizeOwnedLibrarySnapshot = (snapshot = {}) => {
   const schemaVersion = snapshot.schemaVersion || OWNED_LIBRARY_SCHEMA_VERSION;
   const updatedAt = snapshot.updatedAt ?? null;
   const hash = snapshot.hash || computeOwnedTracksHash(trackIds);
-  const libraryVersion = Number.isFinite(snapshot.libraryVersion)
-    ? snapshot.libraryVersion
-    : Number(snapshot.libraryVersion) || 0;
   return {
     trackIds,
     count,
     schemaVersion,
     updatedAt,
-    hash,
-    libraryVersion
+    hash
   };
 };
 
@@ -85,9 +79,7 @@ const parseUpdatedAt = (value) => {
   return null;
 };
 
-const getOwnedTracksCacheKey = (uid) => `${OWNED_TRACKS_CACHE_KEY_PREFIX}:${uid || 'anonymous'}`;
-const getLegacyOwnedTracksCacheKey = (uid) => `ownedTracks:${OWNED_TRACKS_CACHE_VERSION}:${uid || 'anonymous'}`;
-const getOwnedTracksMetaKey = (uid, field) => `${OWNED_TRACKS_META_KEY_PREFIX}:${field}:${uid || 'anonymous'}`;
+const getOwnedTracksCacheKey = (uid) => `ownedTracks:${OWNED_TRACKS_CACHE_VERSION}:${uid || 'anonymous'}`;
 
 const readLocalProfileCache = () => {
   if (typeof localStorage === 'undefined') return {};
@@ -111,14 +103,11 @@ const writeLocalProfileCache = (profile) => {
 
 const readOwnedTracksCache = (uid) => {
   if (typeof localStorage === 'undefined' || !uid) return null;
-  const key = getOwnedTracksCacheKey(uid);
-  const raw = localStorage.getItem(key) || localStorage.getItem(getLegacyOwnedTracksCacheKey(uid));
+  const raw = localStorage.getItem(getOwnedTracksCacheKey(uid));
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    const normalized = normalizeOwnedLibrarySnapshot(parsed);
-    localStorage.setItem(key, JSON.stringify(normalized));
-    return normalized;
+    return normalizeOwnedLibrarySnapshot(parsed);
   } catch (err) {
     console.warn('[profileStore] Failed to parse owned tracks cache', err);
     return null;
@@ -131,26 +120,6 @@ const writeOwnedTracksCache = (uid, snapshot) => {
   localStorage.setItem(getOwnedTracksCacheKey(uid), JSON.stringify(normalized));
   return normalized;
 };
-
-const readOwnedTracksMetaField = (uid, field) => {
-  if (typeof localStorage === 'undefined' || !uid) return null;
-  const raw = localStorage.getItem(getOwnedTracksMetaKey(uid, field));
-  if (!raw) return null;
-  const parsed = Number(raw);
-  return Number.isNaN(parsed) ? raw : parsed;
-};
-
-const writeOwnedTracksMetaField = (uid, field, value) => {
-  if (typeof localStorage === 'undefined' || !uid) return;
-  localStorage.setItem(getOwnedTracksMetaKey(uid, field), String(value ?? ''));
-};
-
-const readLastGoodOwnedCount = (uid) => readOwnedTracksMetaField(uid, 'lastGoodOwnedCount');
-const writeLastGoodOwnedCount = (uid, value) => writeOwnedTracksMetaField(uid, 'lastGoodOwnedCount', value);
-const readLastSyncAt = (uid) => readOwnedTracksMetaField(uid, 'lastSyncAt');
-const writeLastSyncAt = (uid, value) => writeOwnedTracksMetaField(uid, 'lastSyncAt', value);
-const readLastBackupAt = (uid) => readOwnedTracksMetaField(uid, 'lastBackupAt');
-const writeLastBackupAt = (uid, value) => writeOwnedTracksMetaField(uid, 'lastBackupAt', value);
 
 let firestoreRef = null;
 let firebaseRef = null;
@@ -196,58 +165,12 @@ const writeOwnedLibraryDoc = async (uid, snapshot) => {
     trackIds: normalized.trackIds,
     count: normalized.trackIds.length,
     schemaVersion: OWNED_LIBRARY_SCHEMA_VERSION,
-    libraryVersion: normalized.libraryVersion || 0,
     hash: normalized.hash,
     updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
     ...(meta ? { meta } : {})
   };
   await firestoreRef.collection('users').doc(uid).collection('library').doc('owned').set(payload, { merge: true });
   return payload;
-};
-
-const writeOwnedLibraryBackup = async (uid, snapshot) => {
-  if (!firestoreRef || !uid) return null;
-  const normalized = normalizeOwnedLibrarySnapshot(snapshot);
-  const serverTimestamp = firebaseRef?.firestore?.FieldValue?.serverTimestamp;
-  const payload = {
-    trackIds: normalized.trackIds,
-    count: normalized.trackIds.length,
-    schemaVersion: OWNED_LIBRARY_SCHEMA_VERSION,
-    libraryVersion: normalized.libraryVersion || 0,
-    hash: normalized.hash,
-    createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
-    updatedAt: normalized.updatedAt ?? null
-  };
-  const docId = `${Date.now()}`;
-  await firestoreRef.collection('users').doc(uid).collection('backups').doc(docId).set(payload);
-  return payload;
-};
-
-const readLatestOwnedLibraryBackup = async (uid) => {
-  if (!firestoreRef || !uid) return null;
-  const snapshot = await firestoreRef.collection('users').doc(uid)
-    .collection('backups')
-    .orderBy('createdAt', 'desc')
-    .limit(1)
-    .get();
-  const doc = snapshot.docs[0];
-  if (!doc?.exists) return null;
-  return normalizeOwnedLibrarySnapshot(doc.data());
-};
-
-const cleanupOwnedLibraryBackups = async (uid, keep = 10) => {
-  if (!firestoreRef || !uid) return;
-  const snapshot = await firestoreRef.collection('users').doc(uid)
-    .collection('backups')
-    .orderBy('createdAt', 'desc')
-    .get();
-  const docsToDelete = snapshot.docs.slice(keep);
-  if (!docsToDelete.length) return;
-  const batch = firestoreRef.batch();
-  docsToDelete.forEach((doc) => batch.delete(doc.ref));
-  if (docsToDelete.length) {
-    await batch.commit();
-  }
 };
 
 const union = (primary = [], secondary = []) => {
@@ -355,51 +278,109 @@ const buildSyncPlan = ({ cloud = null, local = {} } = {}) => {
   };
 };
 
-const buildOwnedLibraryPlan = ({ cache = null, cloud = null, backup = null } = {}) => {
+const buildOwnedLibraryPlan = ({ cache = null, cloud = null } = {}) => {
   const normalizedCache = cache ? normalizeOwnedLibrarySnapshot(cache) : null;
   const normalizedCloud = cloud ? normalizeOwnedLibrarySnapshot(cloud) : null;
-  const normalizedBackup = backup ? normalizeOwnedLibrarySnapshot(backup) : null;
-  const cacheIds = normalizedCache?.trackIds || [];
-  const cloudIds = normalizedCloud?.trackIds || [];
-  const backupIds = normalizedBackup?.trackIds || [];
-  const cacheHasData = cacheIds.length > 0;
-  const cloudHasData = cloudIds.length > 0;
-  const backupHasData = backupIds.length > 0;
+  const cacheHasData = !!(normalizedCache && normalizedCache.trackIds.length);
+  const cloudHasData = !!(normalizedCloud && normalizedCloud.trackIds.length);
 
-  if (!normalizedCloud && !normalizedCache && !normalizedBackup) {
+  if (!normalizedCloud && normalizedCache) {
+    return {
+      chosen: normalizedCache,
+      source: 'cache',
+      shouldSeedCloud: cacheHasData,
+      shouldUpdateCache: false,
+      shouldWriteCloud: cacheHasData
+    };
+  }
+
+  if (normalizedCloud && !normalizedCache) {
+    return {
+      chosen: normalizedCloud,
+      source: 'cloud',
+      shouldSeedCloud: false,
+      shouldUpdateCache: cloudHasData,
+      shouldWriteCloud: false
+    };
+  }
+
+  if (!normalizedCloud && !normalizedCache) {
     return {
       chosen: normalizeOwnedLibrarySnapshot({ trackIds: [] }),
       source: 'none',
       shouldSeedCloud: false,
       shouldUpdateCache: false,
-      shouldWriteCloud: false,
-      recovered: false
+      shouldWriteCloud: false
     };
   }
 
-  const mergedIds = union(cloudIds, union(cacheIds, backupIds));
-  const mergedSnapshot = normalizeOwnedLibrarySnapshot({
-    trackIds: mergedIds,
-    updatedAt: normalizedCloud?.updatedAt || normalizedCache?.updatedAt || normalizedBackup?.updatedAt || new Date().toISOString(),
-    libraryVersion: Math.max(
-      normalizedCloud?.libraryVersion || 0,
-      normalizedCache?.libraryVersion || 0,
-      normalizedBackup?.libraryVersion || 0
-    )
-  });
+  if (!cloudHasData && cacheHasData) {
+    return {
+      chosen: normalizedCache,
+      source: 'cache',
+      shouldSeedCloud: true,
+      shouldUpdateCache: false,
+      shouldWriteCloud: true
+    };
+  }
 
-  const recovered = (!cloudHasData && (cacheHasData || backupHasData)) || (!cacheHasData && backupHasData);
-  const shouldWriteCloud = mergedIds.length > 0 && JSON.stringify(cloudIds) !== JSON.stringify(mergedIds);
-  const shouldUpdateCache = mergedIds.length > 0 && JSON.stringify(cacheIds) !== JSON.stringify(mergedIds);
-  const source = cloudHasData ? 'cloud' : cacheHasData ? 'cache' : backupHasData ? 'backup' : 'none';
+  if (cloudHasData && !cacheHasData) {
+    return {
+      chosen: normalizedCloud,
+      source: 'cloud',
+      shouldSeedCloud: false,
+      shouldUpdateCache: true,
+      shouldWriteCloud: false
+    };
+  }
+
+  const cacheStamp = parseUpdatedAt(normalizedCache?.updatedAt);
+  const cloudStamp = parseUpdatedAt(normalizedCloud?.updatedAt);
+  let chosen = normalizedCloud;
+  let source = 'cloud';
+  let shouldUpdateCache = false;
+  let shouldWriteCloud = false;
+
+  if (cacheStamp && cloudStamp) {
+    if (cacheStamp > cloudStamp) {
+      chosen = normalizedCache;
+      source = 'cache';
+      shouldWriteCloud = true;
+    } else if (cloudStamp > cacheStamp) {
+      chosen = normalizedCloud;
+      source = 'cloud';
+      shouldUpdateCache = true;
+    }
+  } else if (cacheStamp && !cloudStamp) {
+    chosen = normalizedCache;
+    source = 'cache';
+    shouldWriteCloud = true;
+  } else if (!cacheStamp && cloudStamp) {
+    chosen = normalizedCloud;
+    source = 'cloud';
+    shouldUpdateCache = true;
+  } else if (normalizedCache.trackIds.length > normalizedCloud.trackIds.length) {
+    chosen = normalizedCache;
+    source = 'cache';
+    shouldWriteCloud = true;
+  } else if (normalizedCloud.trackIds.length > normalizedCache.trackIds.length) {
+    chosen = normalizedCloud;
+    source = 'cloud';
+    shouldUpdateCache = true;
+  }
+
+  const idsMatch = JSON.stringify(normalizedCache.trackIds) === JSON.stringify(normalizedCloud.trackIds);
+  if (idsMatch) {
+    shouldUpdateCache = false;
+    shouldWriteCloud = false;
+  }
 
   return {
-    chosen: mergedSnapshot,
+    chosen,
     source,
-    shouldSeedCloud: !cloudHasData && (cacheHasData || backupHasData),
+    shouldSeedCloud: false,
     shouldUpdateCache,
-    shouldWriteCloud,
-    recovered
+    shouldWriteCloud
   };
 };
 
@@ -415,9 +396,6 @@ export {
   writeCloudProfile,
   readOwnedLibraryDoc,
   writeOwnedLibraryDoc,
-  writeOwnedLibraryBackup,
-  readLatestOwnedLibraryBackup,
-  cleanupOwnedLibraryBackups,
   setFirestore,
   setFirebase,
   union,
@@ -432,14 +410,7 @@ export {
   normalizeOwnedLibrarySnapshot,
   computeOwnedTracksHash,
   parseUpdatedAt,
-  getOwnedTracksCacheKey,
-  getLegacyOwnedTracksCacheKey,
-  readLastGoodOwnedCount,
-  writeLastGoodOwnedCount,
-  readLastSyncAt,
-  writeLastSyncAt,
-  readLastBackupAt,
-  writeLastBackupAt
+  getOwnedTracksCacheKey
 };
 
 if (typeof window !== 'undefined') {
@@ -455,9 +426,6 @@ if (typeof window !== 'undefined') {
     writeCloudProfile,
     readOwnedLibraryDoc,
     writeOwnedLibraryDoc,
-    writeOwnedLibraryBackup,
-    readLatestOwnedLibraryBackup,
-    cleanupOwnedLibraryBackups,
     setFirestore,
     setFirebase,
     union,
@@ -472,13 +440,6 @@ if (typeof window !== 'undefined') {
     normalizeOwnedLibrarySnapshot,
     computeOwnedTracksHash,
     parseUpdatedAt,
-    getOwnedTracksCacheKey,
-    getLegacyOwnedTracksCacheKey,
-    readLastGoodOwnedCount,
-    writeLastGoodOwnedCount,
-    readLastSyncAt,
-    writeLastSyncAt,
-    readLastBackupAt,
-    writeLastBackupAt
+    getOwnedTracksCacheKey
   };
 }
