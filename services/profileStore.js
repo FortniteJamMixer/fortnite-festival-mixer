@@ -1,10 +1,9 @@
 const PROFILE_CACHE_KEY = 'ffjm_profile_cache_v1';
 const OWNED_TRACKS_CACHE_VERSION = 'v1';
-const OWNED_TRACKS_CACHE_KEY_PREFIX = 'ffjm:owned';
+const OWNED_TRACKS_CACHE_KEY_PREFIX = 'ownedTracksCache';
 const OWNED_TRACKS_META_KEY_PREFIX = 'ownedTracksMeta';
 const OWNED_TRACKS_LOCAL_BACKUP_KEY_PREFIX = 'ownedTracksBackup';
 const OWNED_LIBRARY_SCHEMA_VERSION = 1;
-const PROFILE_SCHEMA_VERSION = 2;
 
 const normalizeArray = (value) => {
   if (!Array.isArray(value)) return [];
@@ -40,26 +39,6 @@ const normalizeOwnedTrackIds = (value) => {
   return Array.from(new Set(arr)).sort();
 };
 
-const normalizeOwnedTrackIdsFromMap = (mapValue) => {
-  if (!mapValue || typeof mapValue !== 'object') return [];
-  return Object.keys(mapValue)
-    .filter((key) => mapValue[key])
-    .map((item) => String(item))
-    .sort();
-};
-
-const buildOwnedTrackIdsMap = (trackIds = [], removedTrackIds = [], deleteField) => {
-  const map = {};
-  normalizeOwnedTrackIds(trackIds).forEach((id) => {
-    map[id] = true;
-  });
-  (Array.isArray(removedTrackIds) ? removedTrackIds : []).forEach((id) => {
-    if (!id) return;
-    map[id] = typeof deleteField === 'function' ? deleteField() : false;
-  });
-  return map;
-};
-
 const computeOwnedTracksHash = (trackIds = []) => {
   const str = trackIds.join('|');
   let hash = 5381;
@@ -71,8 +50,7 @@ const computeOwnedTracksHash = (trackIds = []) => {
 };
 
 const normalizeOwnedLibrarySnapshot = (snapshot = {}) => {
-  const mapTrackIds = normalizeOwnedTrackIdsFromMap(snapshot.ownedTrackIdsMap || snapshot.ownedTrackMap || {});
-  const trackIds = normalizeOwnedTrackIds(snapshot.trackIds || snapshot.ownedTracks || mapTrackIds || []);
+  const trackIds = normalizeOwnedTrackIds(snapshot.trackIds || snapshot.ownedTracks || []);
   const count = Number.isFinite(snapshot.count) ? snapshot.count : trackIds.length;
   const schemaVersion = snapshot.schemaVersion || OWNED_LIBRARY_SCHEMA_VERSION;
   const updatedAt = snapshot.updatedAt ?? null;
@@ -220,39 +198,6 @@ const readCloudProfile = async (uid) => {
 
 const readOwnedLibraryDoc = async (uid) => {
   if (!firestoreRef || !uid) return null;
-  const doc = await firestoreRef.collection('users').doc(uid).get();
-  if (!doc.exists) return null;
-  const data = doc.data() || {};
-  return normalizeOwnedLibrarySnapshot({
-    trackIds: data.ownedTrackIds,
-    ownedTrackIdsMap: data.ownedTrackIdsMap,
-    ownedTracks: data.ownedTracks,
-    updatedAt: data.ownedTrackIdsUpdatedAt || data.ownedTracksUpdatedAt || data.updatedAt,
-    count: data.ownedTrackIdsCount,
-    hash: data.ownedTrackIdsHash,
-    libraryVersion: data.ownedLibraryVersion || data.libraryVersion || 0,
-    schemaVersion: data.ownedTrackIdsSchemaVersion || data.schemaVersion || OWNED_LIBRARY_SCHEMA_VERSION
-  });
-};
-
-const readLegacyOwnedLibraryDoc = async (legacyUid) => {
-  if (!firestoreRef || !legacyUid) return null;
-  const doc = await firestoreRef.collection('users').doc(legacyUid).get();
-  if (!doc.exists) return null;
-  const data = doc.data() || {};
-  return normalizeOwnedLibrarySnapshot({
-    trackIds: data.ownedTrackIds || data.trackIds,
-    ownedTrackIdsMap: data.ownedTrackIdsMap,
-    ownedTracks: data.ownedTracks,
-    updatedAt: data.ownedTrackIdsUpdatedAt || data.updatedAt,
-    count: data.ownedTrackIdsCount,
-    hash: data.ownedTrackIdsHash,
-    libraryVersion: data.ownedLibraryVersion || data.libraryVersion || 0
-  });
-};
-
-const readLegacyOwnedLibrarySubcollection = async (uid) => {
-  if (!firestoreRef || !uid) return null;
   const doc = await firestoreRef.collection('users').doc(uid).collection('library').doc('owned').get();
   if (!doc.exists) return null;
   return normalizeOwnedLibrarySnapshot(doc.data());
@@ -263,7 +208,6 @@ const writeCloudProfile = async (uid, patch) => {
   const serverTimestamp = firebaseRef?.firestore?.FieldValue?.serverTimestamp;
   const payload = {
     ...patch,
-    schemaVersion: PROFILE_SCHEMA_VERSION,
     updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
   };
   await firestoreRef.collection('users').doc(uid).set(payload, { merge: true });
@@ -272,29 +216,65 @@ const writeCloudProfile = async (uid, patch) => {
 const writeOwnedLibraryDoc = async (uid, snapshot) => {
   if (!firestoreRef || !uid) return null;
   const serverTimestamp = firebaseRef?.firestore?.FieldValue?.serverTimestamp;
-  const deleteField = firebaseRef?.firestore?.FieldValue?.delete;
   const normalized = normalizeOwnedLibrarySnapshot(snapshot);
   const meta = snapshot?.meta && typeof snapshot.meta === 'object' ? snapshot.meta : null;
-  const removedTrackIds = Array.isArray(snapshot?.removedTrackIds) ? snapshot.removedTrackIds : [];
-  const migratedAt = snapshot?.migratedAt || snapshot?.meta?.migratedAt || null;
   const payload = {
-    ownedTrackIdsMap: buildOwnedTrackIdsMap(normalized.trackIds, removedTrackIds, deleteField),
-    ownedTrackIdsCount: normalized.trackIds.length,
-    ownedTrackIdsSchemaVersion: OWNED_LIBRARY_SCHEMA_VERSION,
-    ownedLibraryVersion: normalized.libraryVersion || 0,
-    ownedTrackIdsHash: normalized.hash,
-    ownedTrackIdsUpdatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
-    schemaVersion: PROFILE_SCHEMA_VERSION,
-    ...(migratedAt ? { migratedAt } : {}),
+    trackIds: normalized.trackIds,
+    count: normalized.trackIds.length,
+    schemaVersion: OWNED_LIBRARY_SCHEMA_VERSION,
+    libraryVersion: normalized.libraryVersion || 0,
+    hash: normalized.hash,
+    updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
     ...(meta ? { meta } : {})
   };
-  await firestoreRef.collection('users').doc(uid).set(payload, { merge: true });
+  await firestoreRef.collection('users').doc(uid).collection('library').doc('owned').set(payload, { merge: true });
   return payload;
 };
 
-const writeOwnedLibraryBackup = async () => null;
-const readLatestOwnedLibraryBackup = async () => null;
-const cleanupOwnedLibraryBackups = async () => null;
+const writeOwnedLibraryBackup = async (uid, snapshot) => {
+  if (!firestoreRef || !uid) return null;
+  const normalized = normalizeOwnedLibrarySnapshot(snapshot);
+  const serverTimestamp = firebaseRef?.firestore?.FieldValue?.serverTimestamp;
+  const payload = {
+    trackIds: normalized.trackIds,
+    count: normalized.trackIds.length,
+    schemaVersion: OWNED_LIBRARY_SCHEMA_VERSION,
+    libraryVersion: normalized.libraryVersion || 0,
+    hash: normalized.hash,
+    createdAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
+    updatedAt: normalized.updatedAt ?? null
+  };
+  const docId = `${Date.now()}`;
+  await firestoreRef.collection('users').doc(uid).collection('backups').doc(docId).set(payload);
+  return payload;
+};
+
+const readLatestOwnedLibraryBackup = async (uid) => {
+  if (!firestoreRef || !uid) return null;
+  const snapshot = await firestoreRef.collection('users').doc(uid)
+    .collection('backups')
+    .orderBy('createdAt', 'desc')
+    .limit(1)
+    .get();
+  const doc = snapshot.docs[0];
+  if (!doc?.exists) return null;
+  return normalizeOwnedLibrarySnapshot(doc.data());
+};
+
+const cleanupOwnedLibraryBackups = async (uid, keep = 10) => {
+  if (!firestoreRef || !uid) return;
+  const snapshot = await firestoreRef.collection('users').doc(uid)
+    .collection('backups')
+    .orderBy('createdAt', 'desc')
+    .get();
+  const docsToDelete = snapshot.docs.slice(keep);
+  if (!docsToDelete.length) return;
+  const batch = firestoreRef.batch();
+  docsToDelete.forEach((doc) => batch.delete(doc.ref));
+  if (docsToDelete.length) {
+    await batch.commit();
+  }
+};
 
 const union = (primary = [], secondary = []) => {
   const seen = new Set();
@@ -452,7 +432,6 @@ const buildOwnedLibraryPlan = ({ cache = null, cloud = null, backup = null } = {
 export {
   PROFILE_CACHE_KEY,
   OWNED_TRACKS_CACHE_VERSION,
-  PROFILE_SCHEMA_VERSION,
   OWNED_LIBRARY_SCHEMA_VERSION,
   readLocalProfileCache,
   writeLocalProfileCache,
@@ -461,8 +440,6 @@ export {
   readCloudProfile,
   writeCloudProfile,
   readOwnedLibraryDoc,
-  readLegacyOwnedLibraryDoc,
-  readLegacyOwnedLibrarySubcollection,
   writeOwnedLibraryDoc,
   writeOwnedLibraryBackup,
   readLatestOwnedLibraryBackup,
@@ -478,8 +455,6 @@ export {
   hasMeaningfulProfileData,
   normalizeProfile,
   normalizeOwnedTrackIds,
-  normalizeOwnedTrackIdsFromMap,
-  buildOwnedTrackIdsMap,
   normalizeOwnedLibrarySnapshot,
   computeOwnedTracksHash,
   parseUpdatedAt,
@@ -503,7 +478,6 @@ if (typeof window !== 'undefined') {
   window.profileStore = {
     PROFILE_CACHE_KEY,
     OWNED_TRACKS_CACHE_VERSION,
-    PROFILE_SCHEMA_VERSION,
     OWNED_LIBRARY_SCHEMA_VERSION,
     readLocalProfileCache,
     writeLocalProfileCache,
@@ -512,8 +486,6 @@ if (typeof window !== 'undefined') {
     readCloudProfile,
     writeCloudProfile,
     readOwnedLibraryDoc,
-    readLegacyOwnedLibraryDoc,
-    readLegacyOwnedLibrarySubcollection,
     writeOwnedLibraryDoc,
     writeOwnedLibraryBackup,
     readLatestOwnedLibraryBackup,
@@ -529,8 +501,6 @@ if (typeof window !== 'undefined') {
     hasMeaningfulProfileData,
     normalizeProfile,
     normalizeOwnedTrackIds,
-    normalizeOwnedTrackIdsFromMap,
-    buildOwnedTrackIdsMap,
     normalizeOwnedLibrarySnapshot,
     computeOwnedTracksHash,
     parseUpdatedAt,
