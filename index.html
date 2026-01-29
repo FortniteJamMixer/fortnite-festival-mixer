@@ -2142,11 +2142,7 @@ function track(eventName, payload = {}){
     let adminMenuOpen = false;
     let adminMenuListenersBound = false;
     let isOffline = !navigator.onLine;
-    let trackSource = 'bundled';
-    let catalogTotalCount = 0;
-    const CATALOG_VERSION = 'v1';
-    const CATALOG_CACHE_KEY = `ffjm:catalog:${CATALOG_VERSION}`;
-    const CATALOG_META_KEY = `ffjm:catalog:meta:${CATALOG_VERSION}`;
+    let trackSource = 'network';
     const boot = {
       phase: 'init',
       profileLoaded: false,
@@ -2551,8 +2547,6 @@ function track(eventName, payload = {}){
         signedIn: !!user,
         firebaseReady: firebaseEnabled && !!firestore,
         online: navigator.onLine,
-        catalogSource: trackSource,
-        catalogCount: catalogTotalCount || songs.length,
         syncState: syncState.state,
         syncMessage: syncState.message,
         lastSyncedAt,
@@ -2841,7 +2835,7 @@ function track(eventName, payload = {}){
     }
 
     function getHeaderTrackCountLabel(){
-      const total = catalogTotalCount || songs.length;
+      const total = songs.length;
       if(!total){
         return isGuestUser() && !viewingProfile ? 'Tracks: —' : 'Owned: — / —';
       }
@@ -5618,7 +5612,7 @@ function track(eventName, payload = {}){
     }
 
     // -------------------- Songs loading -----------------------
-    function applySongsSnapshot(nextSongs, { source = 'bundled', notice = '', catalogTotal } = {}){
+    function applySongsSnapshot(nextSongs, { source = 'network', notice = '' } = {}){
       songs = nextSongs;
       songs.forEach(hydrateKeyInfo);
       songsById = Object.fromEntries(songs.map(s => [s.id, s]));
@@ -5627,108 +5621,6 @@ function track(eventName, payload = {}){
       songsLoaded = true;
       trackLoadNotice = notice;
       trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
-      if(typeof catalogTotal === 'number'){
-        catalogTotalCount = catalogTotal;
-      }else if(!catalogTotalCount && Array.isArray(nextSongs)){
-        catalogTotalCount = nextSongs.length;
-      }
-    }
-
-    function readCatalogCache(){
-      try{
-        const raw = localStorage.getItem(CATALOG_CACHE_KEY);
-        if(!raw) return null;
-        const payload = JSON.parse(raw);
-        const tracks = Array.isArray(payload) ? payload : payload?.tracks;
-        if(!Array.isArray(tracks) || !tracks.length) return null;
-        return { tracks, meta: payload?.meta || null };
-      }catch(err){
-        console.warn('[catalog] Failed to read cached catalog', err);
-        return null;
-      }
-    }
-
-    function writeCatalogCache(tracks, { source = 'bundled' } = {}){
-      try{
-        const meta = { version: CATALOG_VERSION, count: tracks.length, source, storedAt: new Date().toISOString() };
-        localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ version: CATALOG_VERSION, tracks, meta }));
-        localStorage.setItem(CATALOG_META_KEY, JSON.stringify(meta));
-        return meta;
-      }catch(err){
-        console.warn('[catalog] Failed to cache catalog', err);
-        return null;
-      }
-    }
-
-    function normalizeCatalogTrack(entry){
-      if(!entry) return null;
-      const id = entry.id || entry.trackId || entry.trackID;
-      if(!id) return null;
-      const title = entry.title || entry.tt || 'Unknown';
-      const artist = entry.artist || entry.an || 'Unknown';
-      const rawBpm = Number(entry.rawBpm ?? entry.bpm ?? 0) || 0;
-      const detectedGenre = entry.genre || detectGenre(artist, title);
-      const finalGenre = genreOverrides[id] || detectedGenre;
-      const camelotData = deriveCamelotForTrack({ ...entry, id, title, artist });
-      const camelotApplied = applyCamelotOverride({ ...entry, id, title, artist }, entry.camelot || camelotData.camelot);
-      const bpmApplied = applyBpmOverride({ ...entry, id, title, artist }, rawBpm);
-      const keyInfo = parseKey(entry.key || entry.rawKey || camelotData.keyLabel || '', entry.mode || entry.rawMode || camelotData.mode || '');
-      const enriched = {
-        id,
-        title,
-        artist,
-        bpm: bpmApplied.bpm,
-        rawBpm,
-        key: entry.key || keyInfo.label || camelotData.keyLabel || '?',
-        rawKey: entry.rawKey || '',
-        rawMode: entry.rawMode || '',
-        mode: entry.mode || camelotData.mode || '',
-        camelot: camelotApplied.camelot,
-        derivedCamelot: camelotData.camelot,
-        duration: Number(entry.duration ?? entry.dn ?? 0) || 0,
-        albumArt: entry.albumArt || entry.coverArt || entry.au || '',
-        genre: finalGenre,
-        camelotOverridden: camelotApplied.overridden,
-        bpmOverridden: bpmApplied.overridden,
-        keyInfo
-      };
-      enriched.flags = computeTrackFlags(enriched);
-      return enriched;
-    }
-
-    function normalizeCatalogTracks(tracks){
-      return (tracks || []).map(normalizeCatalogTrack).filter(Boolean).filter(track => track.bpm > 0);
-    }
-
-    async function loadTrackCatalog(){
-      const catalogFetch = async () => {
-        try{
-          const res = await fetch('/tracks.catalog.json', { cache: 'no-store' });
-          if(!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
-          const payload = await res.json();
-          const tracks = Array.isArray(payload) ? payload : payload?.tracks;
-          if(!Array.isArray(tracks) || !tracks.length){
-            throw new Error('Catalog payload missing tracks');
-          }
-          const normalized = normalizeCatalogTracks(tracks);
-          if(!normalized.length) throw new Error('Catalog contained no valid tracks');
-          writeCatalogCache(normalized, { source: 'bundled' });
-          return { tracks: normalized, source: 'bundled' };
-        }catch(err){
-          console.warn('[catalog] bundled fetch failed', err);
-          return null;
-        }
-      };
-      const bundled = await catalogFetch();
-      if(bundled) return bundled;
-      const cached = readCatalogCache();
-      if(cached){
-        const normalized = normalizeCatalogTracks(cached.tracks);
-        if(normalized.length){
-          return { tracks: normalized, source: 'cache' };
-        }
-      }
-      return null;
     }
 
     async function loadSongsRobust({ allowOneRetry = true, preferCache = false, onCacheApplied } = {}){
@@ -5739,19 +5631,60 @@ function track(eventName, payload = {}){
       maxMobileCardsRendered = 0;
       logEvent('songs_fetch_start', { online: navigator.onLine });
       trackLoadNotice = '';
+      const endpoints=[ 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
+      const canFetch = navigator.onLine;
       trackLoadState = { status: 'loading', loaded: 0, total: 0, message: 'Loading tracks…' };
-      const catalogResult = await loadTrackCatalog();
-      if(catalogResult){
-        const nextSongs = catalogResult.tracks.slice().sort((a,b)=>a.title.localeCompare(b.title));
-        applySongsSnapshot(nextSongs, { source: catalogResult.source, notice: '', catalogTotal: nextSongs.length });
-        if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
-        logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
-        return { songs, usedFallback: false };
+      const tryFetch = async () => {
+        for(let i=0;i<endpoints.length;i++){
+          try{
+            const res = await fetch(endpoints[i]);
+            if(!res.ok) continue;
+            const data = await res.json();
+            const entries = Object.entries(data).filter(([k])=>!k.startsWith('_'));
+            const nextSongs = [];
+            trackLoadState = { status: 'loading', loaded: 0, total: entries.length, message: 'Loading tracks…' };
+            for(let idx=0; idx<entries.length; idx+=1){
+              const [id,item] = entries[idx];
+              const track = item?.track || {};
+              if(!track?.tt) continue;
+              const detectedGenre = detectGenre(track.an||'', track.tt);
+              const finalGenre = genreOverrides[id] || detectedGenre;
+              const rawBpm = Number(track.mt) || 0;
+              const camelotData = deriveCamelotForTrack({ ...track, id });
+              const camelotApplied = applyCamelotOverride({ ...track, id, title: track.tt, artist: track.an }, camelotData.camelot);
+              const bpmApplied = applyBpmOverride({ ...track, id, title: track.tt, artist: track.an }, rawBpm);
+              const keyInfo = parseKey(track.mk || camelotData.keyLabel || track.key || '', track.mm || camelotData.mode || track.mode || '');
+              const enriched = { id, title: track.tt, artist: track.an || 'Unknown', bpm: bpmApplied.bpm, rawBpm, key: keyInfo.label || camelotData.keyLabel || (track.mk || '?'), rawKey: track.mk || '', rawMode: track.mm || '', mode: camelotData.mode || (track.mm||''), camelot: camelotApplied.camelot, derivedCamelot: camelotData.camelot, duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre, camelotOverridden: camelotApplied.overridden, bpmOverridden: bpmApplied.overridden, keyInfo };
+              enriched.flags = computeTrackFlags(enriched);
+              if(enriched.bpm>0) nextSongs.push(enriched);
+              trackLoadState.loaded = idx + 1;
+            }
+            nextSongs.sort((a,b)=>a.title.localeCompare(b.title));
+            if(nextSongs.length>0){
+              applySongsSnapshot(nextSongs, { source: 'network', notice: '' });
+              if(regressionWarnings.length) console.warn('Regression warnings', regressionWarnings);
+              logEvent('songs_fetch_success', { source: trackSource, count: songs.length });
+              return { songs, usedFallback: false };
+            }
+          }catch(e){
+            console.warn('endpoint err',e);
+            logEvent('songs_fetch_fail', { message: e?.message, step: 'network' });
+          }
+        }
+        return null;
+      };
+      if(canFetch){
+        const fetched = await tryFetch();
+        if(fetched) return fetched;
       }
-      console.warn('catalog load failed, using fallback sample');
-      trackLoadNotice = `Catalog failed to load. <button class="px-2 py-1 ml-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded" onclick="retryTracksNow()">Retry</button>`;
-      applySongsSnapshot(SAMPLE_TRACKS, { source: 'sample', notice: trackLoadNotice, catalogTotal: catalogTotalCount || SAMPLE_TRACKS.length });
-      logEvent('songs_fetch_fail', { message: 'catalog miss; using fallback' });
+      if(allowOneRetry && canFetch){
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const retryResult = await tryFetch();
+        if(retryResult) return retryResult;
+      }
+      console.warn('endpoints failed, using fallback sample');
+      applySongsSnapshot(SAMPLE_TRACKS, { source: 'fallback', notice: canFetch ? 'Track list unavailable — showing fallback tracks.' : 'Offline — track list unavailable.' });
+      logEvent('songs_fetch_fail', { message: 'network+cache miss; using fallback' });
       return { songs, usedFallback: true };
     }
 
@@ -6507,7 +6440,7 @@ function track(eventName, payload = {}){
       const songIdSet = new Set((songs || []).map(song => song.id));
       const ownedIntersect = ownedIds.filter(id => songIdSet.has(id));
       const ownedCount = ownedIntersect.length;
-      const ownedTotal = catalogTotalCount || songs.length;
+      const ownedTotal = songs.length;
       const ownedEmptyState = ownedCount === 0 && !isGuest
         ? '<div class="text-xs text-gray-300">Start marking tracks as Owned in Browse.</div>'
         : '';
@@ -6569,8 +6502,6 @@ function track(eventName, payload = {}){
               <div><span class="text-gray-400">Provider:</span> ${escapeHtml(syncDebug.provider)}</div>
               <div><span class="text-gray-400">Firestore:</span> ${syncDebug.firebaseReady ? 'Ready' : 'Unavailable'}</div>
               <div><span class="text-gray-400">Online:</span> ${syncDebug.online ? 'Yes' : 'No'}</div>
-              <div><span class="text-gray-400">Catalog source:</span> ${escapeHtml(syncDebug.catalogSource || '—')}</div>
-              <div><span class="text-gray-400">Catalog count:</span> ${syncDebug.catalogCount || '—'}</div>
               <div><span class="text-gray-400">Sync state:</span> ${escapeHtml(syncDebug.syncState)}</div>
               <div><span class="text-gray-400">Pending ops:</span> ${syncDebug.pendingOwnedOps}</div>
               <div><span class="text-gray-400">Last synced:</span> ${formatSyncTimestamp(syncDebug.lastSyncedAt)}</div>
@@ -7018,13 +6949,7 @@ function render(){
     ? `<span class="${ownedLibraryBadgeClass}">${ownedLibraryStatusMessage}</span>`
     : '';
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
-  const trackSourceLabel = trackSource === 'bundled'
-    ? 'Bundled catalog'
-    : trackSource === 'cache'
-      ? 'Cached catalog'
-      : trackSource === 'sample'
-        ? 'Sample tracks'
-        : 'Tracks';
+  const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
   const ownedSyncPhase = ownedLibraryState?.phase || 'idle';
   const ownedSyncError = ownedSyncPhase === 'error';
