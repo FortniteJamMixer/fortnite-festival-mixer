@@ -47,17 +47,19 @@ const computeOwnedTracksHash = (trackIds = []) => {
 };
 
 const normalizeOwnedLibrarySnapshot = (snapshot = {}) => {
-  const trackIds = normalizeOwnedTrackIds(snapshot.trackIds || snapshot.ownedTracks || []);
+  const trackIds = normalizeOwnedTrackIds(snapshot.trackIds || snapshot.ownedTrackIds || snapshot.ownedTracks || []);
   const count = Number.isFinite(snapshot.count) ? snapshot.count : trackIds.length;
   const schemaVersion = snapshot.schemaVersion || OWNED_LIBRARY_SCHEMA_VERSION;
   const updatedAt = snapshot.updatedAt ?? null;
   const hash = snapshot.hash || computeOwnedTracksHash(trackIds);
+  const source = snapshot.source || null;
   return {
     trackIds,
     count,
     schemaVersion,
     updatedAt,
-    hash
+    hash,
+    source
   };
 };
 
@@ -161,11 +163,14 @@ const writeOwnedLibraryDoc = async (uid, snapshot) => {
   const serverTimestamp = firebaseRef?.firestore?.FieldValue?.serverTimestamp;
   const normalized = normalizeOwnedLibrarySnapshot(snapshot);
   const meta = snapshot?.meta && typeof snapshot.meta === 'object' ? snapshot.meta : null;
+  const source = snapshot?.source || meta?.source || 'cloud';
   const payload = {
     trackIds: normalized.trackIds,
+    ownedTrackIds: normalized.trackIds,
     count: normalized.trackIds.length,
     schemaVersion: OWNED_LIBRARY_SCHEMA_VERSION,
     hash: normalized.hash,
+    source,
     updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString(),
     ...(meta ? { meta } : {})
   };
@@ -287,7 +292,7 @@ const buildOwnedLibraryPlan = ({ cache = null, cloud = null } = {}) => {
   if (!normalizedCloud && normalizedCache) {
     return {
       chosen: normalizedCache,
-      source: 'cache',
+      source: cacheHasData ? 'cache' : 'none',
       shouldSeedCloud: cacheHasData,
       shouldUpdateCache: false,
       shouldWriteCloud: cacheHasData
@@ -297,7 +302,7 @@ const buildOwnedLibraryPlan = ({ cache = null, cloud = null } = {}) => {
   if (normalizedCloud && !normalizedCache) {
     return {
       chosen: normalizedCloud,
-      source: 'cloud',
+      source: cloudHasData ? 'cloud' : 'none',
       shouldSeedCloud: false,
       shouldUpdateCache: cloudHasData,
       shouldWriteCloud: false
@@ -314,71 +319,33 @@ const buildOwnedLibraryPlan = ({ cache = null, cloud = null } = {}) => {
     };
   }
 
-  if (!cloudHasData && cacheHasData) {
-    return {
-      chosen: normalizedCache,
-      source: 'cache',
-      shouldSeedCloud: true,
-      shouldUpdateCache: false,
-      shouldWriteCloud: true
-    };
-  }
-
-  if (cloudHasData && !cacheHasData) {
-    return {
-      chosen: normalizedCloud,
-      source: 'cloud',
-      shouldSeedCloud: false,
-      shouldUpdateCache: true,
-      shouldWriteCloud: false
-    };
-  }
-
+  const mergedTrackIds = mergeOrder(normalizedCloud?.trackIds || [], normalizedCache?.trackIds || []);
   const cacheStamp = parseUpdatedAt(normalizedCache?.updatedAt);
   const cloudStamp = parseUpdatedAt(normalizedCloud?.updatedAt);
-  let chosen = normalizedCloud;
-  let source = 'cloud';
-  let shouldUpdateCache = false;
-  let shouldWriteCloud = false;
-
-  if (cacheStamp && cloudStamp) {
-    if (cacheStamp > cloudStamp) {
-      chosen = normalizedCache;
-      source = 'cache';
-      shouldWriteCloud = true;
-    } else if (cloudStamp > cacheStamp) {
-      chosen = normalizedCloud;
-      source = 'cloud';
-      shouldUpdateCache = true;
-    }
-  } else if (cacheStamp && !cloudStamp) {
-    chosen = normalizedCache;
-    source = 'cache';
-    shouldWriteCloud = true;
-  } else if (!cacheStamp && cloudStamp) {
-    chosen = normalizedCloud;
-    source = 'cloud';
-    shouldUpdateCache = true;
-  } else if (normalizedCache.trackIds.length > normalizedCloud.trackIds.length) {
-    chosen = normalizedCache;
-    source = 'cache';
-    shouldWriteCloud = true;
-  } else if (normalizedCloud.trackIds.length > normalizedCache.trackIds.length) {
-    chosen = normalizedCloud;
-    source = 'cloud';
-    shouldUpdateCache = true;
-  }
-
-  const idsMatch = JSON.stringify(normalizedCache.trackIds) === JSON.stringify(normalizedCloud.trackIds);
-  if (idsMatch) {
-    shouldUpdateCache = false;
-    shouldWriteCloud = false;
-  }
+  const mergedUpdatedAt = cacheStamp && cloudStamp
+    ? (cacheStamp > cloudStamp ? normalizedCache.updatedAt : normalizedCloud.updatedAt)
+    : (normalizedCloud?.updatedAt || normalizedCache?.updatedAt || null);
+  const idsMatchCloud = JSON.stringify(mergedTrackIds) === JSON.stringify(normalizedCloud?.trackIds || []);
+  const idsMatchCache = JSON.stringify(mergedTrackIds) === JSON.stringify(normalizedCache?.trackIds || []);
+  const idsMatchBoth = JSON.stringify(normalizedCloud?.trackIds || []) === JSON.stringify(normalizedCache?.trackIds || []);
+  const hasBoth = !!(normalizedCloud && normalizedCache);
+  const source = hasBoth && cloudHasData && cacheHasData && !idsMatchBoth
+    ? 'merge'
+    : (idsMatchCloud && cloudHasData ? 'cloud'
+      : (cacheHasData ? 'cache' : (cloudHasData ? 'cloud' : 'none')));
+  const chosen = normalizeOwnedLibrarySnapshot({
+    trackIds: mergedTrackIds,
+    updatedAt: mergedUpdatedAt,
+    source
+  });
+  const shouldUpdateCache = !idsMatchCache && mergedTrackIds.length > 0;
+  const shouldWriteCloud = !idsMatchCloud && mergedTrackIds.length > 0;
+  const shouldSeedCloud = !normalizedCloud && cacheHasData;
 
   return {
     chosen,
     source,
-    shouldSeedCloud: false,
+    shouldSeedCloud,
     shouldUpdateCache,
     shouldWriteCloud
   };
