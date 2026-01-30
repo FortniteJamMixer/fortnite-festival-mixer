@@ -1494,6 +1494,13 @@ function track(eventName, payload = {}){
     let ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
     let ownedLibraryRestoring = false;
     let ownedLibraryPendingWrite = null;
+    let ownedSyncDiagnostics = {
+      cloudReadable: null,
+      cloudWritable: null,
+      lastCloudSyncAt: null,
+      ownedCountLocal: 0,
+      ownedCountCloud: null
+    };
     let selectedSong = null;
     let sortMode = 'bpm';
     let previewSong = null;
@@ -2350,6 +2357,9 @@ function track(eventName, payload = {}){
       const snapshot = buildOwnedLibrarySnapshot(trackIds, new Date().toISOString(), meta);
       return window.profileStore.writeOwnedLibraryDoc(uid, snapshot);
     }
+    function updateOwnedSyncDiagnostics(patch = {}){
+      ownedSyncDiagnostics = { ...ownedSyncDiagnostics, ...patch };
+    }
     function setOwnedLibraryStatus({ phase = 'idle', source = 'none', message = '' } = {}){
       ownedLibraryState = { phase, source, message };
     }
@@ -2364,13 +2374,30 @@ function track(eventName, payload = {}){
       if(!uid || !firebaseEnabled || !firestore || !navigator.onLine) return;
       const payload = ownedLibraryPendingWrite;
       ownedLibraryPendingWrite = null;
+      if(!payload.trackIds?.length && payload.reason !== 'explicit_clear'){
+        console.warn('[owned-library] blocked empty pending write', { reason: payload.reason });
+        return;
+      }
       const meta = payload.reason === 'explicit_clear' ? { reason: payload.reason } : null;
-      await writeOwnedTracksCloud(uid, payload.trackIds, meta);
-      setOwnedLibraryStatus({
-        phase: 'ready',
-        source: 'cloud',
-        message: 'Library loaded (Cloud)'
-      });
+      try{
+        await writeOwnedTracksCloud(uid, payload.trackIds, { ...(meta || {}), source: 'cloud' });
+        updateOwnedSyncDiagnostics({
+          cloudWritable: true,
+          lastCloudSyncAt: new Date().toISOString(),
+          ownedCountCloud: payload.trackIds.length
+        });
+        setOwnedLibraryStatus({
+          phase: 'ready',
+          source: 'cloud',
+          message: 'Library loaded (Cloud)'
+        });
+      }catch(err){
+        console.warn('[owned-library] pending write failed', err);
+        updateOwnedSyncDiagnostics({ cloudWritable: false });
+      }
+    }
+    async function flushOwnedPendingWrites(){
+      await flushOwnedLibraryPendingWrite();
     }
     async function saveOwnedTracksSafe(nextTrackIds, { reason = 'update', allowEmpty = false, skipCloud = false } = {}){
       const normalized = normalizeOwnedList(nextTrackIds);
@@ -2386,14 +2413,27 @@ function track(eventName, payload = {}){
       ownedTracks = normalized;
       const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid;
       if(uid) writeOwnedTracksCache(uid, normalized);
+      updateOwnedSyncDiagnostics({ ownedCountLocal: normalized.length });
       if(skipCloud || ownedLibraryRestoring){
         ownedLibraryPendingWrite = { trackIds: normalized, reason };
         return { savedLocal: true, queued: true };
       }
       if(uid && firebaseEnabled && firestore && navigator.onLine){
-        const meta = explicitClear ? { reason } : null;
-        await writeOwnedTracksCloud(uid, normalized, meta);
-        return { savedCloud: true };
+        const meta = explicitClear ? { reason } : {};
+        try{
+          await writeOwnedTracksCloud(uid, normalized, { ...meta, source: 'cloud' });
+          updateOwnedSyncDiagnostics({
+            cloudWritable: true,
+            lastCloudSyncAt: new Date().toISOString(),
+            ownedCountCloud: normalized.length
+          });
+          return { savedCloud: true };
+        }catch(err){
+          console.warn('[owned-library] cloud write failed', err);
+          updateOwnedSyncDiagnostics({ cloudWritable: false });
+          ownedLibraryPendingWrite = { trackIds: normalized, reason };
+          return { savedLocal: true, queued: true };
+        }
       }
       ownedLibraryPendingWrite = { trackIds: normalized, reason };
       return { savedLocal: true, queued: true };
@@ -2408,6 +2448,7 @@ function track(eventName, payload = {}){
       let localSnapshot = cachedSnapshot || legacySnapshot || null;
       if(localSnapshot?.trackIds?.length){
         ownedTracks = normalizeOwnedList(localSnapshot.trackIds);
+        updateOwnedSyncDiagnostics({ ownedCountLocal: ownedTracks.length });
         setOwnedLibraryStatus({
           phase: 'restoring',
           source: 'cache',
@@ -2416,6 +2457,7 @@ function track(eventName, payload = {}){
         render();
         setupEventListeners();
       } else {
+        updateOwnedSyncDiagnostics({ ownedCountLocal: 0 });
         setOwnedLibraryStatus({
           phase: 'restoring',
           source: 'none',
@@ -2429,6 +2471,10 @@ function track(eventName, payload = {}){
           writeOwnedTracksCache(uid, localSnapshot.trackIds, localSnapshot.updatedAt);
         }
         ownedLibraryRestoring = false;
+        updateOwnedSyncDiagnostics({
+          cloudReadable: firebaseEnabled ? false : null,
+          cloudWritable: firebaseEnabled ? false : null
+        });
         setOwnedLibraryStatus({
           phase: 'ready',
           source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
@@ -2440,22 +2486,43 @@ function track(eventName, payload = {}){
         let cloudSnapshot = null;
         try{
           cloudSnapshot = await window.profileStore.readOwnedLibraryDoc(uid);
+          updateOwnedSyncDiagnostics({
+            cloudReadable: true,
+            lastCloudSyncAt: new Date().toISOString(),
+            ownedCountCloud: cloudSnapshot?.trackIds?.length ?? null
+          });
         }catch(err){
           console.warn('[owned-library] cloud read failed', err);
+          updateOwnedSyncDiagnostics({ cloudReadable: false });
         }
         const plan = window.profileStore.buildOwnedLibraryPlan({ cache: localSnapshot, cloud: cloudSnapshot });
         if(plan?.chosen?.trackIds){
           ownedTracks = normalizeOwnedList(plan.chosen.trackIds);
+          updateOwnedSyncDiagnostics({ ownedCountLocal: ownedTracks.length });
         }
         if(plan.shouldUpdateCache){
           writeOwnedTracksCache(uid, plan.chosen.trackIds, plan.chosen.updatedAt || new Date().toISOString());
         }
         if(plan.shouldSeedCloud || plan.shouldWriteCloud){
           if(plan.chosen.trackIds.length){
-            await writeOwnedTracksCloud(uid, plan.chosen.trackIds, { reason: plan.shouldSeedCloud ? 'seed_cache' : 'reconcile_cache' });
+            await writeOwnedTracksCloud(uid, plan.chosen.trackIds, {
+              reason: plan.shouldSeedCloud ? 'seed_cache' : 'reconcile_cache',
+              source: plan.source === 'merge' ? 'merge' : (plan.source === 'cache' ? 'local' : 'cloud')
+            });
+            updateOwnedSyncDiagnostics({
+              cloudWritable: true,
+              lastCloudSyncAt: new Date().toISOString(),
+              ownedCountCloud: plan.chosen.trackIds.length
+            });
           }
         }
-        const sourceLabel = plan.source === 'cloud' ? 'Cloud' : plan.source === 'cache' ? 'Cached' : 'Local';
+        const sourceLabel = plan.source === 'cloud'
+          ? 'Cloud'
+          : plan.source === 'cache'
+            ? 'Cached'
+            : plan.source === 'merge'
+              ? 'Merged'
+              : 'Local';
         setOwnedLibraryStatus({
           phase: 'ready',
           source: plan.source,
@@ -2464,6 +2531,7 @@ function track(eventName, payload = {}){
         await flushOwnedLibraryPendingWrite();
       } catch(err){
         console.warn('[owned-library] reconcile failed', err);
+        updateOwnedSyncDiagnostics({ cloudReadable: false });
         setOwnedLibraryStatus({
           phase: 'ready',
           source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
@@ -4437,13 +4505,27 @@ function track(eventName, payload = {}){
 
     async function logoutUser(){
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
+      try { await flushOwnedPendingWrites(); } catch(err){ console.warn('flush owned writes failed', err); }
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
       currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
       ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
       ownedLibraryRestoring = false;
       ownedLibraryPendingWrite = null;
+      ownedSyncDiagnostics = {
+        cloudReadable: null,
+        cloudWritable: null,
+        lastCloudSyncAt: null,
+        ownedCountLocal: 0,
+        ownedCountCloud: null
+      };
+      view = 'browser';
+      showOwnedOnly = false;
+      showMixableOnly = false;
+      headerMoreOpen = false;
       localStorage.removeItem('currentUser');
+      sessionStorage.removeItem(CURRENT_PAGE_KEY);
+      showLoginScreen();
     }
 
     // -------------------- Songs loading -----------------------
@@ -6051,9 +6133,15 @@ function render(){
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
   const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
-  const cloudSyncBadge = (firebaseEnabled && firebaseAuth?.currentUser)
-    ? `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${isOffline ? 'bg-amber-500/20 border border-amber-300/60 text-amber-100' : 'bg-sky-500/20 border border-sky-400/50 text-sky-100'}">☁️ ${isOffline ? 'Cloud Sync unavailable offline' : 'Cloud Sync: ON'}</span>`
-    : `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 border border-slate-300/40 text-slate-100">📦 Local Only</span>`;
+  const hasCloudUser = firebaseEnabled && firebaseAuth?.currentUser;
+  const cloudUnavailable = hasCloudUser && (isOffline || ownedSyncDiagnostics.cloudReadable === false || ownedSyncDiagnostics.cloudWritable === false);
+  const cloudStatusText = hasCloudUser
+    ? (cloudUnavailable ? 'Cloud unavailable — using local cache' : 'Cloud sync OK')
+    : (isOffline ? 'Offline' : 'Online');
+  const cloudStatusLine = `<span class="text-xs ${cloudUnavailable ? 'text-amber-200' : 'text-gray-300'}">${cloudStatusText}</span>`;
+  const cloudFallbackBanner = cloudUnavailable
+    ? `<div class="inline-banner mt-2">Offline / Cloud unavailable (using local cache)</div>`
+    : '';
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const configStatus = window.firebaseConfigStatus || {};
   const configWarningBanner = (!firebaseConfigValid && configStatus.reason === 'missing_env')
@@ -6069,6 +6157,41 @@ function render(){
     </div>`
     : '';
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
+  const lastCloudSyncLabel = ownedSyncDiagnostics.lastCloudSyncAt
+    ? new Date(ownedSyncDiagnostics.lastCloudSyncAt).toLocaleString()
+    : '—';
+  const ownedCountCloudLabel = ownedSyncDiagnostics.ownedCountCloud === null
+    ? '—'
+    : ownedSyncDiagnostics.ownedCountCloud;
+  const syncStatusPanel = `
+    <div class="panel bg-black/40 border border-cyan-500/20">
+      <div class="flex items-center justify-between mb-3">
+        <div class="font-bold text-white">Sync Status</div>
+        ${cloudStatusLine}
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs text-gray-300">
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+          <span>cloudReadable</span>
+          <span class="font-semibold text-white">${ownedSyncDiagnostics.cloudReadable === null ? '—' : String(ownedSyncDiagnostics.cloudReadable)}</span>
+        </div>
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+          <span>cloudWritable</span>
+          <span class="font-semibold text-white">${ownedSyncDiagnostics.cloudWritable === null ? '—' : String(ownedSyncDiagnostics.cloudWritable)}</span>
+        </div>
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+          <span>lastCloudSyncAt</span>
+          <span class="font-semibold text-white">${lastCloudSyncLabel}</span>
+        </div>
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+          <span>ownedCountLocal</span>
+          <span class="font-semibold text-white">${ownedSyncDiagnostics.ownedCountLocal}</span>
+        </div>
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+          <span>ownedCountCloud</span>
+          <span class="font-semibold text-white">${ownedCountCloudLabel}</span>
+        </div>
+      </div>
+    </div>`;
   const selectedPanel = `
     <div class="panel ${selectedSong ? 'selected-panel' : ''} space-y-3 dim-when-sticky">
       <div class="flex items-center justify-between">
@@ -6127,7 +6250,7 @@ function render(){
               ${ownedLibraryBadge}
               ${networkBadge}
               ${trackSourceBadge}
-              ${cloudSyncBadge}
+              ${cloudStatusLine}
               <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
             </div>
             ${communityStatsRow}
@@ -6153,13 +6276,15 @@ function render(){
         <div class="flex items-center gap-2 flex-wrap text-sm text-cyan-100">
           ${networkBadge}
           ${trackSourceBadge}
-          ${cloudSyncBadge}
+          ${cloudStatusLine}
           <span class="text-xs text-gray-300">Offline browsing pulls your last cached tracks.</span>
         </div>
 
         ${syncBanner}
+        ${cloudFallbackBanner}
         ${configWarningBanner}
         ${regressionBanner}
+        ${syncStatusPanel}
         <div id="browserView" style="display:${view==='browser'?'block':'none'}">
           <div class="grid lg:grid-cols-[350px,1fr] gap-4 items-start">
             <div class="space-y-4">
