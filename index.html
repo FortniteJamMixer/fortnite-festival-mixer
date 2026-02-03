@@ -142,6 +142,8 @@
       backdrop-filter: blur(8px);
       padding: 16px;
     }
+    .quickstart-modal[aria-hidden="true"] { display: none; pointer-events: none; }
+    .quickstart-modal[aria-hidden="false"] { display: flex; pointer-events: auto; }
     .quickstart-card {
       width: min(520px, 94vw);
       background: linear-gradient(180deg, rgba(8,13,30,0.98), rgba(16,10,32,0.98));
@@ -693,7 +695,7 @@ function runDelegationSelfTest(){
   if(delegationSelfTested || (!DEBUG_UI && !DEBUG_PROFILE)) return;
   delegationSelfTested = true;
   const helpersReady = typeof getEventElement === 'function' && typeof closestFromEvent === 'function' && typeof safeOn === 'function';
-  console.log('[delegation] hardened listeners active', { helpersReady, documentClick: dataActionDelegatesBound === true });
+  console.log('[delegation] hardened listeners active', { helpersReady, documentClick: actionDelegatesBound === true });
 }
 
 let interactionSelfTested = false;
@@ -1612,7 +1614,6 @@ function track(eventName, payload = {}){
     let helpOpenSource = 'other';
     let helpTabTracked = false;
     let profileEditMode = true;
-    let profileHandlersBound = false;
     let debugUiBound = false;
     let headerMoreOpen = false;
     let isLowPowerMode = false;
@@ -1638,7 +1639,6 @@ function track(eventName, payload = {}){
     let stickyCtaDismissed = localStorage.getItem('jamMixer.stickyCtaDismissed') === 'true';
     let quickStartDone = localStorage.getItem('jamMixer.quickStartDone') === 'true';
     let quickStartPrompted = false;
-    let quickStartDelegatesBound = false;
     let justEnteredProfile = false;
     let mobileWindowState = { start: 0, count: 40 };
     const TOUR_VERSION = 1;
@@ -3323,38 +3323,6 @@ function track(eventName, payload = {}){
       debugProfileLog('profile editor opened');
     }
     window.openProfileEditor = openProfileEditor;
-
-    function bindProfileHandlers(){
-      if(profileHandlersBound || window.__profileEventsBound) return;
-      const app = document.getElementById('app');
-      if(!app) return;
-      if(DEBUG_UI) console.log('[debug][profile] bindProfileHandlers');
-      window.__profileEventsBound = true;
-      app.addEventListener('click', safeOn('click', (e)=>{
-        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: app });
-        if(toggle){
-          if(viewingProfile) return;
-          profileEditMode = !profileEditMode;
-          renderProfile();
-          setupEventListeners();
-          return;
-        }
-        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
-        if(editTrigger){
-          debugProfileLog('persona edit click detected');
-          openProfileEditor();
-        }
-      }, { action: 'profile-click' }));
-      app.addEventListener('keydown', safeOn('keydown', (e)=>{
-        if(e.key !== 'Enter' && e.key !== ' ') return;
-        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
-        if(!trigger) return;
-        e.preventDefault();
-        debugProfileLog('persona edit keydown detected', { key: e.key });
-        openProfileEditor();
-      }, { action: 'profile-keydown' }));
-      profileHandlersBound = true;
-    }
 
     window.setPersonaTheme = (themeId)=>{
       const persona = updateDraftPersona({ personaTheme: themeId });
@@ -5290,7 +5258,7 @@ function track(eventName, payload = {}){
         if(showMixableOnly && selectedSong){ if(!isMixableWithCriteria(selectedSongCriteria, song)) return ''; }
         const selectedStyles = isSelected ? 'selected-card' : '';
         const genrePill = adminUser
-          ? `<button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
+          ? `<button data-action="edit-genre" data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
           : `<span class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-default">${song.genre}${hasOverride ? ' ✓' : ''}</span>`;
         return `
           <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" data-action="select-track" data-id="${song.id}" draggable="true">
@@ -5454,7 +5422,6 @@ function track(eventName, payload = {}){
       const profileEl = document.getElementById('profileView'); if(!profileEl) return;
       if(DEBUG_UI) console.log('[debug][profile] renderProfile');
       bindUiDebugging();
-      bindProfileHandlers();
       const viewOnly = !!viewingProfile;
       if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
         refreshDraftProfileFromCurrentUser();
@@ -5909,7 +5876,7 @@ function track(eventName, payload = {}){
               </div>
               ${viewOnly
                 ? `<div class="text-sm px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100">View only</div>`
-                : `<button id="profileEditToggle" data-profile-action="toggle-edit" class="text-sm px-3 py-1 rounded-full ${editBadgeClass} hover:brightness-110 transition">Edit Mode: ${editBadgeLabel}</button>`
+                : `<button id="profileEditToggle" data-action="toggle-profile-edit" class="text-sm px-3 py-1 rounded-full ${editBadgeClass} hover:brightness-110 transition">Edit Mode: ${editBadgeLabel}</button>`
               }
             </div>
             ${viewOnly ? `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Viewing ${djVal || usernameVal}'s public profile. Editing is disabled.</div>` : ''}
@@ -6367,7 +6334,7 @@ function render(){
       </div>
       <div class="flex flex-wrap gap-2">
         <button id="panelClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
-        <button id="panelClearSearchBtn" onclick="clearSearch()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
+        <button id="panelClearSearchBtn" data-action="clear-search" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
         <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
       </div>
     </div>`;
@@ -6454,20 +6421,20 @@ function render(){
                 </div>
                 <div class="relative">
                   <input type="text" id="searchInput" value="${searchTerm || ''}" placeholder="🔍 Search songs" class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
-                  <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
+                  <button id="clearSearchBtn" data-action="clear-search" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
                 </div>
                 <div id="searchStatus" class="text-xs text-cyan-200" style="display:none;">Filtering…</div>
                 <div class="flex flex-wrap gap-2">
-                  <button id="mixableFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
+                  <button id="mixableFilterBtn" data-action="toggle-mixable-filter" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
                   ${ownedSyncEnabled
-                    ? `<button id="ownedFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>`
+                    ? `<button id="ownedFilterBtn" data-action="toggle-owned-filter" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>`
                     : `<button class="px-3 py-2 rounded-lg font-medium transition bg-white/10 text-gray-300" ${disabledFeatureAttrs}>Show All</button>`}
                   <button id="controlClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
                 ${(!viewingProfile && ownedSyncEnabled)?`<div class="flex flex-wrap gap-2">
-                  <button id="markAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
-                  <button id="clearAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
+                  <button id="markAllBtn" data-action="mark-all-owned" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
+                  <button id="clearAllBtn" data-action="clear-all-owned" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
                 </div>`:''}
                 <div class="bg-black/40 border border-white/10 rounded-lg p-3 space-y-3">
                   <div class="flex items-center justify-between flex-wrap gap-2">
@@ -6691,92 +6658,6 @@ function render(){
       if(appDelegatesBound) return;
       const app = document.getElementById('app');
       if(!app) return;
-      app.addEventListener('click', safeOn('click', (e)=>{
-        if(closestFromEvent(e, '#mixableFilterBtn', { within: app })){ toggleMixableFilter(); return; }
-        if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
-        if(closestFromEvent(e, '#clearSearchBtn', { within: app }) || closestFromEvent(e, '#panelClearSearchBtn', { within: app })){ clearSearch(); return; }
-        if(closestFromEvent(e, '[data-action="clearFilters"]', { within: app })){ clearFilters(); return; }
-        if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: app })){ openQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: app })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: app })){ completeQuickStart({ skipped: true }); return; }
-        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: app })){ moveQuickStartStep(-1); return; }
-        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: app });
-        if(presetBtn){
-          const preset = presetBtn.dataset.preset;
-          void applyQuickStartPreset(preset).then((applied)=>{
-            if(applied){
-              quickStartState.preset = preset;
-              moveQuickStartStep(1);
-            }
-          });
-          return;
-        }
-        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: app });
-        if(pickBtn){
-          const songId = pickBtn.dataset.songId || pickBtn.getAttribute('data-song-id');
-          if(songId){
-            selectedSong = songsById[songId] || songs.find(s=>s.id===songId) || null;
-            refreshSelectedSongCriteria();
-            showMixableOnly = true;
-            matchHintMessage = 'These are your best matches.';
-            render();
-            setupEventListeners();
-            const list = document.getElementById('songList');
-            if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
-            completeQuickStart();
-          }
-          return;
-        }
-        if(closestFromEvent(e, '[data-action="mobileNextWindow"]', { within: app })){ shiftMobileWindow(1); return; }
-        if(closestFromEvent(e, '[data-action="mobilePrevWindow"]', { within: app })){ shiftMobileWindow(-1); return; }
-        const headerMoreBtn = closestFromEvent(e, '[data-action="toggleHeaderMore"]', { within: app });
-        if(headerMoreBtn){ headerMoreOpen = !headerMoreOpen; render(); setupEventListeners(); return; }
-        const stickyBtn = closestFromEvent(e, '[data-action="stickyCta"]', { within: app });
-        if(stickyBtn){
-          const action = stickyBtn.dataset.stickyAction || '';
-          if(action === 'open-quickstart'){ openQuickStart(); return; }
-          if(action === 'scroll-to-list'){
-            const list = document.getElementById('songList');
-            if(list){
-              list.classList.add('song-list-highlight');
-              list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              setTimeout(()=>list.classList.remove('song-list-highlight'), 1500);
-            }
-            return;
-          }
-          if(action === 'mixable-warning'){
-            setMixableInlineNotice('Select a song before enabling Mixable Only.');
-            return;
-          }
-        }
-        if(closestFromEvent(e, '#markAllBtn', { within: app }) && !viewingProfile){ markAllOwned(); return; }
-        if(closestFromEvent(e, '#clearAllBtn', { within: app }) && !viewingProfile){ clearAllOwned(); return; }
-        const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: app });
-        if(genreBtn && isAdmin()){
-          showGenreMenu(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), e);
-          return;
-        }
-        const trackAction = closestFromEvent(e, '[data-action]', { within: app });
-        if(trackAction){
-          const action = trackAction.dataset.action;
-          const songId = trackAction.dataset.id || trackAction.getAttribute('data-id');
-          if(action === 'select-track' && songId){ selectSong(songId); return; }
-          if(action === 'clear-selection'){ clearSelection(e); return; }
-          if(action === 'toggle-owned' && songId){
-            if(viewingProfile) return;
-            toggleOwned(songId);
-            return;
-          }
-          if(action === 'add-set' && songId){
-            if(viewingProfile) return;
-            addToSetlist(songId);
-            return;
-          }
-          if(action === 'add-sandbox' && songId){ addToSandbox(songId); return; }
-          if(action === 'preview-track' && songId){ onPreviewClick(songId); return; }
-        }
-      }, { action: 'app-click' }));
       app.addEventListener('input', safeOn('input', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
@@ -6883,53 +6764,10 @@ function render(){
       appDelegatesBound = true;
     }
 
-    function bindQuickStartDelegates(){
-      if(quickStartDelegatesBound) return;
-      const modal = document.getElementById('quickStartModal');
-      if(!modal) return;
-      document.addEventListener('click', safeOn('click', (e)=>{
-        const target = getEventElement(e);
-        if(!target) return;
-        if(target === modal){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: modal })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: modal })){ completeQuickStart({ skipped: true }); return; }
-        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: modal })){ moveQuickStartStep(-1); return; }
-        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: modal });
-        if(presetBtn){
-          const preset = presetBtn.dataset.preset;
-          void applyQuickStartPreset(preset).then((applied)=>{
-            if(applied){
-              quickStartState.preset = preset;
-              moveQuickStartStep(1);
-            }
-          });
-          return;
-        }
-        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: modal });
-        if(pickBtn){
-          const songId = pickBtn.dataset.songId || pickBtn.getAttribute('data-song-id');
-          if(songId){
-            selectedSong = songsById[songId] || songs.find(s=>s.id===songId) || null;
-            refreshSelectedSongCriteria();
-            showMixableOnly = true;
-            matchHintMessage = 'These are your best matches.';
-            render();
-            setupEventListeners();
-            const list = document.getElementById('songList');
-            if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
-            completeQuickStart();
-          }
-        }
-      }, { action: 'quick-start-modal-click' }));
-      quickStartDelegatesBound = true;
-    }
-
     function setupEventListeners(){
       bindUiDebugging();
+      bindActionDelegates();
       bindAppDelegates();
-      bindQuickStartDelegates();
-      bindProfileHandlers();
       updateProfileErrorBanner();
       runDelegationSelfTest();
       runInteractionSmokeTest();
@@ -7001,47 +6839,143 @@ function render(){
       }, { passive: false });
     }
 
-    let dataActionDelegatesBound = false;
-    function handleDataAction(el, event){
+    let actionDelegatesBound = false;
+    function handleDelegatedAction(el, event){
       if(!el) return;
       const action = el.dataset?.action;
       if(!action) return;
-      if(action === 'addSet'){
-        const id = el.dataset?.id;
-        if(!id) return;
-        event?.preventDefault();
-        addToSetlist(id);
+      const songId = el.dataset?.id || el.getAttribute?.('data-id');
+      if(action === 'toggle-mixable-filter'){ toggleMixableFilter(); return; }
+      if(action === 'toggle-owned-filter'){ toggleOwnedFilter(); return; }
+      if(action === 'clear-search'){ clearSearch(); return; }
+      if(action === 'clearFilters'){ clearFilters(); return; }
+      if(action === 'openQuickStart'){ openQuickStart(); return; }
+      if(action === 'closeQuickStart'){ closeQuickStart(); return; }
+      if(action === 'quickStartSkip'){ completeQuickStart({ skipped: true }); return; }
+      if(action === 'quickStartBack'){ moveQuickStartStep(-1); return; }
+      if(action === 'quickStartPreset'){
+        const preset = el.dataset?.preset;
+        void applyQuickStartPreset(preset).then((applied)=>{
+          if(applied){
+            quickStartState.preset = preset;
+            moveQuickStartStep(1);
+          }
+        });
         return;
       }
-      if(action === 'removeSet'){
-        const id = el.dataset?.id;
-        if(!id) return;
-        event?.preventDefault();
-        removeFromSetlist(id);
+      if(action === 'quickStartPickTrack'){
+        const pickSongId = el.dataset?.songId || el.getAttribute?.('data-song-id');
+        if(pickSongId){
+          selectedSong = songsById[pickSongId] || songs.find(s=>s.id===pickSongId) || null;
+          refreshSelectedSongCriteria();
+          showMixableOnly = true;
+          matchHintMessage = 'These are your best matches.';
+          render();
+          setupEventListeners();
+          const list = document.getElementById('songList');
+          if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
+          completeQuickStart();
+        }
         return;
       }
+      if(action === 'mobileNextWindow'){ shiftMobileWindow(1); return; }
+      if(action === 'mobilePrevWindow'){ shiftMobileWindow(-1); return; }
+      if(action === 'toggleHeaderMore'){ headerMoreOpen = !headerMoreOpen; render(); setupEventListeners(); return; }
+      if(action === 'stickyCta'){
+        const stickyAction = el.dataset?.stickyAction || '';
+        if(stickyAction === 'open-quickstart'){ openQuickStart(); return; }
+        if(stickyAction === 'scroll-to-list'){
+          const list = document.getElementById('songList');
+          if(list){
+            list.classList.add('song-list-highlight');
+            list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(()=>list.classList.remove('song-list-highlight'), 1500);
+          }
+          return;
+        }
+        if(stickyAction === 'mixable-warning'){
+          setMixableInlineNotice('Select a song before enabling Mixable Only.');
+        }
+        return;
+      }
+      if(action === 'mark-all-owned'){
+        if(viewingProfile) return;
+        markAllOwned();
+        return;
+      }
+      if(action === 'clear-all-owned'){
+        if(viewingProfile) return;
+        clearAllOwned();
+        return;
+      }
+      if(action === 'edit-genre'){
+        if(!isAdmin()) return;
+        const genreId = el.dataset?.genreTag || el.getAttribute?.('data-genre-tag');
+        if(genreId) showGenreMenu(genreId, event);
+        return;
+      }
+      if(action === 'select-track' && songId){ selectSong(songId); return; }
+      if(action === 'clear-selection'){ clearSelection(event); return; }
+      if(action === 'toggle-owned' && songId){
+        if(viewingProfile) return;
+        toggleOwned(songId);
+        return;
+      }
+      if(action === 'add-set' && songId){
+        if(viewingProfile) return;
+        addToSetlist(songId);
+        return;
+      }
+      if(action === 'add-sandbox' && songId){ addToSandbox(songId); return; }
+      if(action === 'preview-track' && songId){ onPreviewClick(songId); return; }
+      if(action === 'removeSet' && songId){ removeFromSetlist(songId); return; }
       if(action === 'switchView'){
         const viewName = el.dataset?.view;
         if(!viewName) return;
-        event?.preventDefault();
+        event?.preventDefault?.();
         switchView(viewName);
+        return;
+      }
+      if(action === 'open-profile-editor'){
+        debugProfileLog('persona edit click detected');
+        openProfileEditor();
+        return;
+      }
+      if(action === 'toggle-profile-edit'){
+        if(viewingProfile) return;
+        profileEditMode = !profileEditMode;
+        renderProfile();
+        setupEventListeners();
       }
     }
 
-    document.addEventListener('click', safeOn('click', (e) => {
-      const el = closestFromEvent(e, '[data-action]');
-      if (!el) return;
-      handleDataAction(el, e);
-    }, { action: 'data-action-click' }));
+    function handleDelegatedClick(event){
+      const target = getEventElement(event);
+      const modal = document.getElementById('quickStartModal');
+      if(modal && target === modal){
+        closeQuickStart();
+        return;
+      }
+      const el = closestFromEvent(event, '[data-action]');
+      if(!el) return;
+      handleDelegatedAction(el, event);
+    }
 
-    document.addEventListener('keydown', safeOn('keydown', (e) => {
-      if(e.key !== 'Enter' && e.key !== ' ') return;
-      const el = closestFromEvent(e, '[data-action]');
-      if (!el) return;
-      e.preventDefault();
-      handleDataAction(el, e);
-    }, { action: 'data-action-keydown' }));
-    dataActionDelegatesBound = true;
+    function handleDelegatedKeydown(event){
+      if(event.key !== 'Enter' && event.key !== ' ') return;
+      const el = closestFromEvent(event, '[data-action]');
+      if(!el) return;
+      event.preventDefault();
+      handleDelegatedAction(el, event);
+    }
+
+    function bindActionDelegates(){
+      if(actionDelegatesBound) return;
+      document.addEventListener('click', safeOn('click', handleDelegatedClick, { action: 'data-action-click' }));
+      document.addEventListener('keydown', safeOn('keydown', handleDelegatedKeydown, { action: 'data-action-keydown' }));
+      actionDelegatesBound = true;
+    }
 
     window.setPriorityStrength = (val) => {
       const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
