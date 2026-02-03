@@ -142,6 +142,8 @@
       backdrop-filter: blur(8px);
       padding: 16px;
     }
+    .quickstart-modal[aria-hidden="true"] { display: none; pointer-events: none; }
+    .quickstart-modal[aria-hidden="false"] { display: flex; pointer-events: auto; }
     .quickstart-card {
       width: min(520px, 94vw);
       background: linear-gradient(180deg, rgba(8,13,30,0.98), rgba(16,10,32,0.98));
@@ -693,7 +695,7 @@ function runDelegationSelfTest(){
   if(delegationSelfTested || (!DEBUG_UI && !DEBUG_PROFILE)) return;
   delegationSelfTested = true;
   const helpersReady = typeof getEventElement === 'function' && typeof closestFromEvent === 'function' && typeof safeOn === 'function';
-  console.log('[delegation] hardened listeners active', { helpersReady, documentClick: dataActionDelegatesBound === true });
+  console.log('[delegation] hardened listeners active', { helpersReady, documentClick: actionDelegatesBound === true });
 }
 
 let interactionSelfTested = false;
@@ -1612,7 +1614,6 @@ function track(eventName, payload = {}){
     let helpOpenSource = 'other';
     let helpTabTracked = false;
     let profileEditMode = true;
-    let profileHandlersBound = false;
     let debugUiBound = false;
     let headerMoreOpen = false;
     let isLowPowerMode = false;
@@ -1638,7 +1639,6 @@ function track(eventName, payload = {}){
     let stickyCtaDismissed = localStorage.getItem('jamMixer.stickyCtaDismissed') === 'true';
     let quickStartDone = localStorage.getItem('jamMixer.quickStartDone') === 'true';
     let quickStartPrompted = false;
-    let quickStartDelegatesBound = false;
     let justEnteredProfile = false;
     let mobileWindowState = { start: 0, count: 40 };
     const TOUR_VERSION = 1;
@@ -5239,6 +5239,7 @@ function track(eventName, payload = {}){
         const selectedStyles = isSelected ? 'selected-card' : '';
         const genrePill = adminUser
           ? `<button data-action="open-genre-menu" data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
+          ? `<button data-action="edit-genre" data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
           : `<span class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-default">${song.genre}${hasOverride ? ' ✓' : ''}</span>`;
         return `
           <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" data-action="select-track" data-id="${song.id}" draggable="true">
@@ -6318,6 +6319,9 @@ function render(){
         <button id="panelClearSelectionBtn" data-action="clear-selection" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
         <button id="panelClearSearchBtn" data-action="clear-search" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
         <button id="panelDisableMixableBtn" data-action="disable-mixable" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
+        <button id="panelClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
+        <button id="panelClearSearchBtn" data-action="clear-search" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
+        <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
       </div>
     </div>`;
   const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
@@ -6753,6 +6757,7 @@ function render(){
 
     function setupEventListeners(){
       bindUiDebugging();
+      bindActionDelegates();
       bindAppDelegates();
       updateProfileErrorBanner();
       runDelegationSelfTest();
