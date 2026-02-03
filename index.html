@@ -445,11 +445,11 @@
           </div>
         </div>
         <div class="helpTabs" role="tablist" aria-label="Help tabs">
-          <button id="helpTabBasic" class="helpTabBtn active" data-tab="basic" role="tab" aria-selected="true" aria-controls="helpBasic">Basic</button>
-          <button id="helpTabAdvanced" class="helpTabBtn" data-tab="advanced" role="tab" aria-selected="false" aria-controls="helpAdvanced" tabindex="-1">Advanced</button>
+          <button id="helpTabBasic" class="helpTabBtn active" data-action="set-help-tab" data-tab="basic" role="tab" aria-selected="true" aria-controls="helpBasic">Basic</button>
+          <button id="helpTabAdvanced" class="helpTabBtn" data-action="set-help-tab" data-tab="advanced" role="tab" aria-selected="false" aria-controls="helpAdvanced" tabindex="-1">Advanced</button>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="helpCloseBtn" onclick="closeHelp()" aria-label="Close help">✕ Close</button>
+          <button class="helpCloseBtn" data-action="close-help" aria-label="Close help">✕ Close</button>
         </div>
       </div>
 
@@ -487,15 +487,15 @@
       <div class="helpFooter">
         <span class="small-muted" id="helpVersion"></span>
         <div class="helpFooterActions">
-          <button class="helpAltBtn" onclick="startTour('help',{ force: true })">Run Quick Tour</button>
-          <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
+          <button class="helpAltBtn" data-action="start-tour" data-tour="help" data-force="true">Run Quick Tour</button>
+          <button class="helpCloseBtn" data-action="close-help">Close</button>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Quick Start Modal -->
-  <div id="quickStartModal" class="quickstart-modal" aria-hidden="true">
+  <div id="quickStartModal" class="quickstart-modal" aria-hidden="true" data-action="closeQuickStart" data-close-backdrop="true">
     <div class="quickstart-card" role="dialog" aria-modal="true" aria-labelledby="quickStartTitle">
       <div class="flex items-center justify-between mb-3">
         <div>
@@ -522,12 +522,12 @@
       <div class="tour-hint" id="tourHint" style="display:none"></div>
       <div class="tour-actions">
         <div class="tour-left">
-          <button class="tour-btn" id="tourBackBtn">Back</button>
-          <button class="tour-btn tour-btn-secondary" id="tourRouteBtn" style="display:none">Go to Profile</button>
+          <button class="tour-btn" id="tourBackBtn" data-action="tour-back">Back</button>
+          <button class="tour-btn tour-btn-secondary" id="tourRouteBtn" data-action="tour-route" style="display:none">Go to Profile</button>
         </div>
         <div class="tour-right">
-          <button class="tour-btn" id="tourSkipBtn">Skip</button>
-          <button class="tour-btn tour-btn-primary" id="tourNextBtn">Next</button>
+          <button class="tour-btn" id="tourSkipBtn" data-action="tour-skip">Skip</button>
+          <button class="tour-btn tour-btn-primary" id="tourNextBtn" data-action="tour-next">Next</button>
         </div>
       </div>
     </div>
@@ -1862,8 +1862,11 @@ function track(eventName, payload = {}){
       if(!pager) return;
       pager.pageIndex = 0;
     }
+    const paginationDelegates = new Map();
     function renderPaginationBar(targetEl, paginationState, callbacks, meta){
       if(!targetEl || !paginationState || !meta) return;
+      const paginationId = targetEl.dataset.paginationId || targetEl.id || 'pagination';
+      paginationDelegates.set(paginationId, callbacks || {});
       const { totalItems, totalPages, from, to } = meta;
       const pageIndex = paginationState.pageIndex;
       const isEmpty = totalItems === 0;
@@ -1886,18 +1889,14 @@ function track(eventName, payload = {}){
       const select = document.createElement('select');
       select.className = 'pageSizeSelect bg-white/10 border border-white/10 rounded-lg px-3 py-2 min-h-[44px] text-white';
       select.disabled = isEmpty;
+      select.dataset.action = 'pagination-size';
+      select.dataset.paginationId = paginationId;
       paginationState.pageSizeOptions.forEach(size=>{
         const opt = document.createElement('option');
         opt.value = String(size);
         opt.textContent = `${size} / page`;
         if(paginationState.pageSize === size) opt.selected = true;
         select.appendChild(opt);
-      });
-      select.addEventListener('change', (e)=>{
-        const target = getEventElement(e);
-        if(!target) return;
-        const nextSize = Number(target.value);
-        if(callbacks?.onPageSizeChange) callbacks.onPageSizeChange(nextSize);
       });
       label.appendChild(labelText);
       label.appendChild(select);
@@ -1908,9 +1907,9 @@ function track(eventName, payload = {}){
       prevBtn.className = `px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${pageIndex===0 || isEmpty ? 'opacity-50 cursor-not-allowed' : ''}`;
       prevBtn.textContent = 'Previous';
       prevBtn.disabled = pageIndex === 0 || isEmpty;
-      prevBtn.addEventListener('click', ()=>{
-        if(callbacks?.onPageChange) callbacks.onPageChange(pageIndex - 1);
-      });
+      prevBtn.dataset.action = 'pagination-prev';
+      prevBtn.dataset.paginationId = paginationId;
+      prevBtn.dataset.pageIndex = String(pageIndex - 1);
       const pageInfo = document.createElement('div');
       pageInfo.className = 'text-sm font-semibold text-white px-2';
       pageInfo.textContent = `Page ${pageLabelCurrent} / ${pageLabelTotal}`;
@@ -1918,9 +1917,9 @@ function track(eventName, payload = {}){
       nextBtn.className = `px-4 min-h-[44px] py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-semibold ${pageIndex >= totalPages - 1 || isEmpty ? 'opacity-50 cursor-not-allowed' : ''}`;
       nextBtn.textContent = 'Next';
       nextBtn.disabled = pageIndex >= totalPages - 1 || isEmpty;
-      nextBtn.addEventListener('click', ()=>{
-        if(callbacks?.onPageChange) callbacks.onPageChange(pageIndex + 1);
-      });
+      nextBtn.dataset.action = 'pagination-next';
+      nextBtn.dataset.paginationId = paginationId;
+      nextBtn.dataset.pageIndex = String(pageIndex + 1);
       controls.appendChild(prevBtn);
       controls.appendChild(pageInfo);
       controls.appendChild(nextBtn);
@@ -1967,7 +1966,6 @@ function track(eventName, payload = {}){
 
     function ensureAdminMenuListeners(){
       if(adminMenuListenersBound) return;
-      document.addEventListener('click', safeOn('click', handleAdminMenuOutsideClick, { action: 'admin-menu-outside' }));
       document.addEventListener('keydown', safeOn('keydown', handleAdminMenuKeydown, { action: 'admin-menu-keydown' }));
       adminMenuListenersBound = true;
     }
@@ -2808,26 +2806,7 @@ function track(eventName, payload = {}){
       updateTourUI();
     }
     function bindTourEvents(){
-      const { backBtn, nextBtn, skipBtn, routeBtn } = getTourElements();
-      if(backBtn && !backBtn.dataset.bound){
-        backBtn.dataset.bound = 'true';
-        backBtn.addEventListener('click', prevTourStep);
-      }
-      if(nextBtn && !nextBtn.dataset.bound){
-        nextBtn.dataset.bound = 'true';
-        nextBtn.addEventListener('click', nextTourStep);
-      }
-      if(skipBtn && !skipBtn.dataset.bound){
-        skipBtn.dataset.bound = 'true';
-        skipBtn.addEventListener('click', skipTour);
-      }
-      if(routeBtn && !routeBtn.dataset.bound){
-        routeBtn.dataset.bound = 'true';
-        routeBtn.addEventListener('click', ()=>{
-          const step = tourState.steps[tourState.stepIndex];
-          goToTourRoute(step.route);
-        });
-      }
+      return;
     }
     function maybeAutoStartTour(){
       if(isTourDone()) return;
@@ -2909,22 +2888,15 @@ function track(eventName, payload = {}){
         if (currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...mergedProfile };
         localStorage.setItem('userProfiles', JSON.stringify(profiles));
         console.debug('[profile] local save ok');
-        const backendOk = await saveUserProfileToBackend(mergedProfile);
-        console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
-        const verifyProfile = await loadUserProfile(currentUser.uid || currentUser.username);
-        const prefMatch = JSON.stringify(verifyProfile?.preferences || {}) === JSON.stringify(mergedProfile.preferences || {});
-        const genreMatch = JSON.stringify(verifyProfile?.genreOverrides || {}) === JSON.stringify(mergedProfile.genreOverrides || {});
-        const djMatch = (verifyProfile?.djName || '').trim() === (mergedProfile.djName || '').trim();
-        const verified = !!verifyProfile && djMatch && prefMatch && genreMatch;
-        if(!verified){
-          console.error('[profile] save verification failed', { mergedProfile, verifyProfile });
-          throw new Error('Save verification failed');
-        }
-        currentUser = verifyProfile;
         applyPreferencesFromProfile(currentUser);
         refreshDraftProfileFromCurrentUser();
-        console.debug('[profile] save verified', { verifyProfile });
-        return { backendOk, verifyProfile };
+        void saveUserProfileToBackend(mergedProfile)
+          .then((backendOk)=>{
+            console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
+            return backendOk;
+          })
+          .catch((err)=>{ console.warn('[profile] backend save failed', err); return false; });
+        return { backendOk: true, verifyProfile: currentUser };
       } finally {
         isPersistingProfile = false;
       }
@@ -3324,36 +3296,12 @@ function track(eventName, payload = {}){
     }
     window.openProfileEditor = openProfileEditor;
 
-    function bindProfileHandlers(){
-      if(profileHandlersBound || window.__profileEventsBound) return;
-      const app = document.getElementById('app');
-      if(!app) return;
-      if(DEBUG_UI) console.log('[debug][profile] bindProfileHandlers');
-      window.__profileEventsBound = true;
-      app.addEventListener('click', safeOn('click', (e)=>{
-        const toggle = closestFromEvent(e, '[data-profile-action="toggle-edit"]', { within: app });
-        if(toggle){
-          if(viewingProfile) return;
-          profileEditMode = !profileEditMode;
-          renderProfile();
-          setupEventListeners();
-          return;
-        }
-        const editTrigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
-        if(editTrigger){
-          debugProfileLog('persona edit click detected');
-          openProfileEditor();
-        }
-      }, { action: 'profile-click' }));
-      app.addEventListener('keydown', safeOn('keydown', (e)=>{
-        if(e.key !== 'Enter' && e.key !== ' ') return;
-        const trigger = closestFromEvent(e, '[data-action="open-profile-editor"]', { within: app });
-        if(!trigger) return;
-        e.preventDefault();
-        debugProfileLog('persona edit keydown detected', { key: e.key });
-        openProfileEditor();
-      }, { action: 'profile-keydown' }));
-      profileHandlersBound = true;
+    function cancelProfileEdit(){
+      if(viewingProfile) return;
+      profileEditMode = false;
+      refreshDraftProfileFromCurrentUser();
+      renderProfile();
+      setupEventListeners();
     }
 
     window.setPersonaTheme = (themeId)=>{
@@ -3803,7 +3751,7 @@ function track(eventName, payload = {}){
               <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">${BRAND.APP_NAME.toUpperCase()}</h1>
               <p class="text-xl md:text-2xl text-cyan-300 mb-6">Create Epic Mashups & DJ Like a Pro on the Jam Stage!</p>
               <div class="mt-6">
-                <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 START MIXING NOW</button>
+                <button data-action="hide-landing" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 START MIXING NOW</button>
               </div>
             </div>
             <div class="bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12">
@@ -3825,7 +3773,7 @@ function track(eventName, payload = {}){
             </div>
 
             <div class="text-center">
-              <button onclick="hideLanding()" class="px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-2xl md:text-3xl shadow-2xl">🎵 LET'S MIX!</button>
+              <button data-action="hide-landing" class="px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-2xl md:text-3xl shadow-2xl">🎵 LET'S MIX!</button>
             </div>
           </div>
         </div>
@@ -3854,8 +3802,8 @@ function track(eventName, payload = {}){
               ${firebaseEnabled ? `
                 <div class="mb-5">
                   <div class="flex gap-2 bg-black/30 p-1 rounded-xl border border-cyan-500/20">
-                    <button type="button" id="tabSignIn" onclick="setAuthMode('signin')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
-                    <button type="button" id="tabSignUp" onclick="setAuthMode('signup')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
+                    <button type="button" id="tabSignIn" data-action="set-auth-mode" data-mode="signin" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
+                    <button type="button" id="tabSignUp" data-action="set-auth-mode" data-mode="signup" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
                   </div>
                   <p class="text-xs text-gray-300 mt-3 text-center">
                     Cloud sync works after you create an account once. Sign in to access your profile and owned songs.
@@ -3892,7 +3840,7 @@ function track(eventName, payload = {}){
                   </div>
 
                   <div class="text-center">
-                    <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
+                    <button type="button" data-action="forgot-password" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
                   </div>
                   <div id="authError" class="mt-3 text-sm text-red-200 bg-red-900/50 border border-red-500/60 rounded-lg p-3" style="display:none"></div>
                 </form>
@@ -5290,7 +5238,7 @@ function track(eventName, payload = {}){
         if(showMixableOnly && selectedSong){ if(!isMixableWithCriteria(selectedSongCriteria, song)) return ''; }
         const selectedStyles = isSelected ? 'selected-card' : '';
         const genrePill = adminUser
-          ? `<button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
+          ? `<button data-action="open-genre-menu" data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
           : `<span class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-default">${song.genre}${hasOverride ? ' ✓' : ''}</span>`;
         return `
           <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" data-action="select-track" data-id="${song.id}" draggable="true">
@@ -5363,6 +5311,7 @@ function track(eventName, payload = {}){
       if(scored.length && !isMobile){
         const renderPagination = (targetId)=>{
           const targetEl = document.getElementById(targetId);
+          if(targetEl) targetEl.dataset.paginationId = 'main';
           renderPaginationBar(targetEl, mainPager, {
             onPageChange: (nextIndex)=>{
               mainPager.pageIndex = Math.max(0, nextIndex);
@@ -5454,7 +5403,6 @@ function track(eventName, payload = {}){
       const profileEl = document.getElementById('profileView'); if(!profileEl) return;
       if(DEBUG_UI) console.log('[debug][profile] renderProfile');
       bindUiDebugging();
-      bindProfileHandlers();
       const viewOnly = !!viewingProfile;
       if(!viewOnly && (!draftProfile || (currentUser?.username && draftProfile.username !== currentUser.username))){
         refreshDraftProfileFromCurrentUser();
@@ -5513,7 +5461,7 @@ function track(eventName, payload = {}){
       const friendError = friendLookupError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-500/40 rounded px-3 py-2">${friendLookupError}</div>` : '';
       const friendList = friendLookupResults.length ? `<div class="space-y-2">
         <div class="text-xs text-gray-300">Multiple matches found. Pick one:</div>
-        ${friendLookupResults.map(p=>`<button onclick="selectFriendProfile('${p.username || p.uid || ''}')" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
+        ${friendLookupResults.map(p=>`<button data-action="select-friend-profile" data-username="${p.username || p.uid || ''}" class="w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between"><span class="font-semibold text-white">${p.djName || p.username || 'DJ'}</span><span class="text-xs text-gray-400">${p.username || 'unknown'}</span></button>`).join('')}
       </div>` : '';
       const ownedFiltered = songs
         .filter(s=>ownedIds.includes(s.id))
@@ -5576,12 +5524,12 @@ function track(eventName, payload = {}){
             ${currentUser ? `
               <div id="ratingStarRow" class="flex items-center gap-2">
                 ${[1,2,3,4,5].map(star=>`
-                  <button type="button" data-star="${star}" onclick="setRatingStar(${star})" class="rating-star text-2xl ${ratingDraft.stars >= star ? 'active' : ''}" aria-label="${star} star">${star <= ratingDraft.stars ? '★' : '☆'}</button>
+                  <button type="button" data-action="set-rating-star" data-star="${star}" class="rating-star text-2xl ${ratingDraft.stars >= star ? 'active' : ''}" aria-label="${star} star">${star <= ratingDraft.stars ? '★' : '☆'}</button>
                 `).join('')}
               </div>
               <div id="ratingTagRow" class="flex flex-wrap gap-2">
                 ${RATING_TAGS.map(tag=>`
-                  <button type="button" data-tag="${tag}" onclick="toggleRatingTag('${tag}')" class="px-3 py-1 rounded-full border text-xs font-semibold ${ratingDraft.tags.includes(tag) ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-white/10 bg-white/5 text-gray-200'}">${tag}</button>
+                  <button type="button" data-action="toggle-rating-tag" data-tag="${tag}" class="px-3 py-1 rounded-full border text-xs font-semibold ${ratingDraft.tags.includes(tag) ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-100' : 'border-white/10 bg-white/5 text-gray-200'}">${tag}</button>
                 `).join('')}
               </div>
               <div>
@@ -5589,7 +5537,7 @@ function track(eventName, payload = {}){
                 <div class="text-xs text-gray-400 text-right mt-1" id="ratingCommentCount">${(ratingDraft.comment || '').length}/${RATING_MAX_COMMENT}</div>
               </div>
               <div class="flex items-center gap-3 flex-wrap">
-                <button type="button" onclick="submitRating()" class="px-4 py-2 rounded-lg font-semibold ${ratingSubmitting ? 'bg-gray-600/40 text-gray-200 cursor-not-allowed' : 'bg-amber-500/30 border border-amber-400/50 text-amber-100'}" ${ratingSubmitting ? 'disabled' : ''}>${ratingDraft.hasExisting ? 'Update Rating' : 'Submit Rating'}</button>
+                <button type="button" data-action="submit-rating" class="px-4 py-2 rounded-lg font-semibold ${ratingSubmitting ? 'bg-gray-600/40 text-gray-200 cursor-not-allowed' : 'bg-amber-500/30 border border-amber-400/50 text-amber-100'}" ${ratingSubmitting ? 'disabled' : ''}>${ratingDraft.hasExisting ? 'Update Rating' : 'Submit Rating'}</button>
                 ${ratingStatusMessage ? `<div class="text-sm px-3 py-2 rounded-lg border ${ratingStatusClass}">${ratingStatusMessage}</div>` : ''}
               </div>
             ` : `<div class="text-sm text-gray-300">Sign in to rate this DJ.</div>`}
@@ -5600,7 +5548,7 @@ function track(eventName, payload = {}){
         const djName = profile?.djName || username || 'DJ';
         const platform = getStreamPlatformInfo(profile.streamUrl);
         const rating = getProfileRatingDisplay(profile);
-        return `<div onclick="viewLiveProfile('${username}')" class="min-w-[240px] cursor-pointer bg-black/40 border border-white/10 rounded-xl p-4 hover:border-emerald-400/60 transition">
+        return `<div data-action="view-live-profile" data-username="${username}" class="min-w-[240px] cursor-pointer bg-black/40 border border-white/10 rounded-xl p-4 hover:border-emerald-400/60 transition">
           <div class="flex items-center gap-3">
             ${renderPersonaBadge(profile, 48)}
             <div class="flex-1">
@@ -5613,7 +5561,7 @@ function track(eventName, payload = {}){
             <span class="px-2 py-1 rounded-full border border-white/10 bg-white/5">${platform.icon} ${platform.label}</span>
             <span class="text-amber-200 font-semibold">${rating.avgRating ? rating.avgRating.toFixed(1) : '0.0'}★ (${rating.ratingCount})</span>
           </div>
-          <button type="button" onclick="viewLiveProfile('${username}')" class="mt-3 w-full px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold">View Profile</button>
+          <button type="button" data-action="view-live-profile" data-username="${username}" class="mt-3 w-full px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-sm font-semibold">View Profile</button>
         </div>`;
       }).join('');
       const liveNowPanel = !viewOnly ? `
@@ -5623,7 +5571,7 @@ function track(eventName, payload = {}){
                 <div class="text-lg font-bold text-white">🔴 Live Now</div>
                 <span class="px-2 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-gray-200">(${liveNowUsers.length})</span>
               </div>
-              <button type="button" onclick="refreshLiveNowUsers()" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs">Refresh</button>
+              <button type="button" data-action="refresh-live-now" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs">Refresh</button>
             </div>
             ${liveNowLoading ? `<div class="text-sm text-gray-300">Loading live profiles…</div>` : ''}
             ${liveNowError ? `<div class="text-sm text-red-200">${liveNowError}</div>` : ''}
@@ -5644,18 +5592,18 @@ function track(eventName, payload = {}){
         ? `<p class="text-sm text-gray-200">${escapeHtml(bio)}</p>`
         : `<p class="text-sm text-gray-400">Add a short bio to show your vibe.</p>`;
       const personaThemeButtons = PERSONA_THEMES.map(item=>`
-        <button type="button" onclick="setPersonaTheme('${item.id}')" data-persona-theme="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${persona.personaTheme === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+        <button type="button" data-action="set-persona-theme" data-persona-theme="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${persona.personaTheme === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
           ${item.label}
         </button>
       `).join('');
       const personaButtons = PERSONA_LIST.map(item=>`
-        <button type="button" onclick="setPersonaId('${item.id}')" data-persona-id="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option persona-card w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-semibold ${persona.personaId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+        <button type="button" data-action="set-persona-id" data-persona-id="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option persona-card w-20 h-20 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-semibold ${persona.personaId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
           ${renderPersonaSVG({ personaId: item.id, themeId: persona.personaTheme, seed: persona.personaSeed, size: 48 })}
           <span>${item.name}</span>
         </button>
       `).join('');
       const themeButtons = THEME_ACCENTS.map(item=>`
-        <button type="button" onclick="setThemeAccent('${item.id}')" data-theme-accent="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${themeAccentId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
+        <button type="button" data-action="set-theme-accent" data-theme-accent="${item.id}" ${profileEditable ? '' : 'disabled'} class="persona-option px-3 py-2 rounded-full text-xs font-semibold ${themeAccentId === item.id ? 'active' : ''} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}">
           ${item.label}
         </button>
       `).join('');
@@ -5698,7 +5646,7 @@ function track(eventName, payload = {}){
                     <div class="text-xs text-gray-400">Seed: <span id="personaSeedLabel" class="text-white font-semibold">${escapeHtml(persona.personaSeed)}</span></div>
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <button type="button" onclick="randomizePersonaSeed()" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${editDisabledClass}">Randomize Seed</button>
+                    <button type="button" data-action="randomize-persona-seed" ${profileEditable ? '' : 'disabled'} class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold ${editDisabledClass}">Randomize Seed</button>
                   </div>
                 </div>
                 <div class="space-y-2">
@@ -5751,17 +5699,17 @@ function track(eventName, payload = {}){
         } else if(status === 'outgoing_pending'){
           actionMarkup = `<div class="flex gap-2 items-center">
             <span class="px-3 py-1 rounded-full text-xs bg-purple-500/20 border border-purple-400/40 text-purple-100">Request sent</span>
-            ${outgoingReq ? `<button onclick="cancelFriendRequest('${outgoingReq.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
+            ${outgoingReq ? `<button data-action="cancel-friend-request" data-request-id="${outgoingReq.id}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>` : ''}
           </div>`;
         } else if(status === 'incoming_pending'){
           actionMarkup = `<div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${incomingReq?.id || ''}','${incomingReq?.fromUid || ''}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${incomingReq?.id || ''}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button data-action="accept-friend-request" data-request-id="${incomingReq?.id || ''}" data-from-uid="${incomingReq?.fromUid || ''}" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button data-action="reject-friend-request" data-request-id="${incomingReq?.id || ''}" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
           </div>`;
         } else if(profile.allowFriendRequests === false){
           actionMarkup = `<span class="text-xs text-gray-400">Requests disabled</span>`;
         } else {
-          actionMarkup = `<button onclick="sendFriendRequest('${uid}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Add</button>`;
+          actionMarkup = `<button data-action="send-friend-request" data-uid="${uid}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold">Add</button>`;
         }
         return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
           <div class="flex items-center gap-3">
@@ -5788,8 +5736,8 @@ function track(eventName, payload = {}){
             </div>
           </div>
           <div class="flex gap-2">
-            <button onclick="acceptFriendRequest('${req.id}','${req.fromUid}')" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
-            <button onclick="rejectFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
+            <button data-action="accept-friend-request" data-request-id="${req.id}" data-from-uid="${req.fromUid}" class="px-3 py-1 rounded-lg bg-emerald-500/30 border border-emerald-400/50 text-xs font-semibold">Accept</button>
+            <button data-action="reject-friend-request" data-request-id="${req.id}" class="px-3 py-1 rounded-lg bg-red-500/30 border border-red-400/50 text-xs font-semibold">Decline</button>
           </div>
         </div>`;
       }).join('');
@@ -5805,14 +5753,14 @@ function track(eventName, payload = {}){
           </div>
           <div class="flex gap-2">
             <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-purple-500/20 border border-purple-400/40 text-purple-100">Pending</span>
-            <button onclick="cancelFriendRequest('${req.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
+            <button data-action="cancel-friend-request" data-request-id="${req.id}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Cancel</button>
           </div>
         </div>`;
       }).join('');
       const friendsListHtml = friendsList.map(item=>{
         const profile = item.profile || { username: item.friendUid, djName: item.friendUid };
         const liveBadge = profile.isLive ? `<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-400 text-black border border-emerald-200/80">LIVE</span>` : '';
-        const watchBtn = profile.streamUrl && profile.isLive ? `<button onclick="viewLiveProfile('${profile.username || profile.uid || ''}')" class="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs font-semibold">Watch</button>` : '';
+        const watchBtn = profile.streamUrl && profile.isLive ? `<button data-action="view-live-profile" data-username="${profile.username || profile.uid || ''}" class="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-400/40 text-xs font-semibold">Watch</button>` : '';
         return `<div class="flex items-center justify-between gap-3 bg-black/40 border border-white/10 rounded-xl p-3">
           <div class="flex items-center gap-3">
             ${renderPersonaBadge(profile, 40)}
@@ -5824,8 +5772,8 @@ function track(eventName, payload = {}){
           <div class="flex items-center gap-2">
             ${liveBadge}
             ${watchBtn}
-            <button onclick="viewLiveProfile('${profile.username || profile.uid || item.friendUid || ''}')" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold">View Profile</button>
-            <button onclick="removeFriend('${item.friendUid}')" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Remove</button>
+            <button data-action="view-live-profile" data-username="${profile.username || profile.uid || item.friendUid || ''}" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold">View Profile</button>
+            <button data-action="remove-friend" data-friend-uid="${item.friendUid}" class="px-3 py-1 rounded-lg bg-red-500/20 border border-red-400/40 text-xs font-semibold">Remove</button>
           </div>
         </div>`;
       }).join('');
@@ -5848,14 +5796,14 @@ function track(eventName, payload = {}){
             ${friendsGateMessage ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendsGateClass}">${friendsGateMessage}</div>` : ''}
             <form id="socialFriendSearchForm" class="flex flex-col sm:flex-row gap-2" onsubmit="handleFriendSearch(event)">
               <input id="socialFriendSearchInput" value="${escapeHtml(socialFriendSearchTerm || '')}" placeholder="Search DJs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
-              <button id="socialFriendSearchButton" type="submit" onclick="logFriendSearchClick()" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
+              <button id="socialFriendSearchButton" type="submit" data-action="log-friend-search" ${socialFriendSearchLoading ? 'disabled' : ''} class="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 font-semibold ${socialFriendSearchLoading ? 'opacity-60 cursor-not-allowed' : ''}">${friendSearchButtonLabel}</button>
             </form>
             ${socialFriendSearchNotice ? `<div class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full ${friendNoticeClass}">${socialFriendSearchNotice}</div>` : ''}
             ${socialFriendSearchError ? `<div class="text-sm text-red-200 bg-red-500/10 border border-red-400/40 rounded-lg px-3 py-2">${socialFriendSearchError}</div>` : ''}
             ${friendSearchResultsHtml ? `<div class="space-y-2 max-h-64 overflow-y-auto pr-1">${friendSearchResultsHtml}</div>` : (socialFriendSearchQuery && !socialFriendSearchLoading ? `<div class="text-sm text-gray-400">No DJs found for ‘${escapeHtml(socialFriendSearchQuery)}’.</div>` : '')}
             <div class="flex items-center gap-2 text-xs">
-              <button onclick="setFriendPanelTab('friends')" class="px-3 py-1 rounded-full border ${friendPanelTab==='friends'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Friends (${friendsList.length})</button>
-              <button onclick="setFriendPanelTab('requests')" class="px-3 py-1 rounded-full border ${friendPanelTab==='requests'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Requests (${friendRequestsIncoming.length + friendRequestsOutgoing.length})</button>
+              <button data-action="set-friend-panel-tab" data-tab="friends" class="px-3 py-1 rounded-full border ${friendPanelTab==='friends'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Friends (${friendsList.length})</button>
+              <button data-action="set-friend-panel-tab" data-tab="requests" class="px-3 py-1 rounded-full border ${friendPanelTab==='requests'?'bg-white/10 border-white/30 text-white':'bg-transparent border-white/10 text-gray-300'}">Requests (${friendRequestsIncoming.length + friendRequestsOutgoing.length})</button>
             </div>
             ${friendPanelTab === 'requests' ? `
               <div class="grid md:grid-cols-2 gap-3">
@@ -5891,7 +5839,7 @@ function track(eventName, payload = {}){
                 <div class="text-lg font-bold text-red-100">Danger Zone</div>
                 <p class="text-sm text-red-200/80">Permanently delete your account and cloud library. No turning back.</p>
               </div>
-              <button onclick="deleteAccount()" ${canDeleteAccount ? '' : 'disabled'} class="px-4 py-2 rounded-lg bg-red-500/30 border border-red-400/60 text-red-100 font-semibold ${canDeleteAccount ? '' : 'opacity-60 cursor-not-allowed'}">Delete Account</button>
+              <button data-action="delete-account" ${canDeleteAccount ? '' : 'disabled'} class="px-4 py-2 rounded-lg bg-red-500/30 border border-red-400/60 text-red-100 font-semibold ${canDeleteAccount ? '' : 'opacity-60 cursor-not-allowed'}">Delete Account</button>
             </div>
             <div class="text-xs text-red-200/80">
               ${canDeleteAccount ? 'This removes your profile, owned library, and sign-in. You will need to create a new account to return.' : 'Sign in with a cloud account to enable deletion.'}
@@ -5909,7 +5857,7 @@ function track(eventName, payload = {}){
               </div>
               ${viewOnly
                 ? `<div class="text-sm px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/40 text-purple-100">View only</div>`
-                : `<button id="profileEditToggle" data-profile-action="toggle-edit" class="text-sm px-3 py-1 rounded-full ${editBadgeClass} hover:brightness-110 transition">Edit Mode: ${editBadgeLabel}</button>`
+                : `<button id="profileEditToggle" data-action="toggle-profile-edit" class="text-sm px-3 py-1 rounded-full ${editBadgeClass} hover:brightness-110 transition">Edit Mode: ${editBadgeLabel}</button>`
               }
             </div>
             ${viewOnly ? `<div class="text-sm text-gray-300 bg-white/5 border border-white/10 rounded-lg px-3 py-2">Viewing ${djVal || usernameVal}'s public profile. Editing is disabled.</div>` : ''}
@@ -5938,10 +5886,10 @@ function track(eventName, payload = {}){
               <div class="md:col-span-2">
                 <div class="flex items-center gap-2">
                   <label class="text-sm text-gray-300">Live Status</label>
-                  <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'live_icon', target: 'live' })" aria-label="Open help: Live streaming" title="How Live status works">?</button>
+                  <button type="button" class="helpIconBtn" data-action="open-help-modal" data-source="live_icon" data-target="live" aria-label="Open help: Live streaming" title="How Live status works">?</button>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
-                  <button id="liveToggleBtn" onclick="toggleLiveStatus()" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" ${!profileEditable || !streamUrlValid ? 'disabled' : ''}>${liveToggleLabel}</button>
+                  <button id="liveToggleBtn" data-action="toggle-live" class="px-4 py-2 rounded-lg font-semibold ${liveActive ? 'bg-red-500/30 border border-red-400/60 text-red-100' : 'bg-emerald-500/30 border border-emerald-400/60 text-emerald-100'} ${profileEditable ? '' : 'opacity-60 cursor-not-allowed'}" ${!profileEditable || !streamUrlValid ? 'disabled' : ''}>${liveToggleLabel}</button>
                   <a id="watchStreamBtn" href="${normalizedStreamUrl}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 rounded-lg bg-blue-500/20 border border-blue-400/40 text-blue-100 text-sm font-semibold" style="display:${streamUrlValid ? 'inline-flex' : 'none'};">Watch Stream</a>
                   ${livePill}
                   ${liveSinceLabel && liveActive ? `<span class="text-xs text-gray-400">Live since ${liveSinceLabel}</span>` : ''}
@@ -5949,9 +5897,9 @@ function track(eventName, payload = {}){
               </div>
             </div>
             <div class="flex gap-3 flex-wrap">
-              ${viewOnly ? '' : `<button onclick="saveProfileSettings()" ${profileEditable ? '' : 'disabled'} class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold profile-accent-glow ${editDisabledClass}">Save Profile</button>`}
-              <button onclick="switchView('browser')" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
-              ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Back to My Profile</button>` : ''}
+              ${viewOnly ? '' : `<button data-action="profile-save" ${profileEditable ? '' : 'disabled'} class="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold profile-accent-glow ${editDisabledClass}">Save Profile</button>`}
+              <button data-action="switchView" data-view="browser" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to Mixer</button>
+              ${viewOnly ? `<button data-action="exit-profile-view" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Back to My Profile</button>` : ''}
             </div>
             <div id="profileStatus" class="text-sm text-cyan-200"></div>
           </div>
@@ -5979,7 +5927,7 @@ function track(eventName, payload = {}){
               </div>
               <div class="flex items-center gap-2">
                 <span class="text-xs font-semibold px-2 py-1 rounded-full ${epicLinked ? 'bg-emerald-500/20 text-emerald-100 border border-emerald-400/40' : 'bg-white/10 text-gray-200 border border-white/20'}">${epicLinked ? 'Linked' : 'Not linked'}</span>
-                ${epicLinked ? `<button onclick="unlinkOAuth('epic')" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-sm">Unlink</button>` : `<button onclick="startOAuth('epic')" class="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg text-sm font-semibold">Link Epic</button>`}
+                ${epicLinked ? `<button data-action="unlink-oauth" data-provider="epic" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-sm">Unlink</button>` : `<button data-action="start-oauth" data-provider="epic" class="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg text-sm font-semibold">Link Epic</button>`}
               </div>
             </div>
             <p class="text-xs text-gray-400">Redirects through Epic, then returns here to store a link in your profile. Firebase email/password stays your primary sign-in.</p>
@@ -6000,7 +5948,7 @@ function track(eventName, payload = {}){
               <div class="flex-1 flex flex-col gap-2">
                 <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                   <input id="friendSearchInput" value="${friendSearchTerm || ''}" ${friendsEnabled ? '' : 'disabled'} placeholder="Search DJ name…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}" />
-                  <button onclick="viewFriendProfile()" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 bg-purple-500/40 hover:bg-purple-500/50 border border-purple-400/50 rounded-lg font-semibold ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">View</button>
+                  <button data-action="view-friend-profile" ${friendsEnabled ? '' : 'disabled'} class="px-4 py-3 bg-purple-500/40 hover:bg-purple-500/50 border border-purple-400/50 rounded-lg font-semibold ${friendsEnabled ? '' : 'opacity-60 cursor-not-allowed'}">View</button>
                 </div>
                 <div class="text-xs text-gray-400">${friendsEnabled ? 'Shows their owned songs (read-only)' : (friendsGateMessage || 'Friends require Online mode.')}</div>
                 ${friendError}
@@ -6011,7 +5959,7 @@ function track(eventName, payload = {}){
                   <input id="ownedSearchInput" value="${profileOwnedSearch || ''}" placeholder="Search owned songs…" class="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-lg text-white" />
                   <div class="text-xs text-gray-400 sm:w-40">Live filter by title or artist</div>
                 </div>
-                ${viewOnly ? `<button onclick="exitProfileViewMode()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to My Profile</button>` : ''}
+                ${viewOnly ? `<button data-action="exit-profile-view" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Back to My Profile</button>` : ''}
               </div>
             </div>
             <div id="profileOwnedList" class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -6023,6 +5971,7 @@ function track(eventName, payload = {}){
       const ownedPaginationEl = document.getElementById('profileOwnedPagination');
       const ownedListEl = document.getElementById('profileOwnedList');
       if(ownedPaginationEl){
+        ownedPaginationEl.dataset.paginationId = 'profile-owned';
         renderPaginationBar(ownedPaginationEl, profileOwnedPager, {
           onPageChange: (nextIndex)=>{
             profileOwnedPager.pageIndex = Math.max(0, nextIndex);
@@ -6147,7 +6096,7 @@ function track(eventName, payload = {}){
           const flags = t.flags && t.flags.length ? t.flags.map(f=>`<span class="px-2 py-1 rounded bg-white/10 border border-white/10 text-xs mr-1">${f}</span>`).join('') : '<span class="text-green-300 text-xs">OK</span>';
           const hasOverride = genreOverrides[t.id];
           const genreButton = `<button data-song-id-genre="${t.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${t.genre}${hasOverride ? ' ✓' : ''}</button>`;
-          return `<tr class="border-b border-white/5"><td class="p-2">${t.title}<div class="text-xs text-gray-400">${t.artist}</div></td><td class="p-2">${t.bpm} <div class="text-xs text-gray-400">raw ${t.rawBpm||t.bpm}</div></td><td class="p-2">${t.camelot}<div class="text-xs text-gray-400">derived ${t.derivedCamelot}</div></td><td class="p-2 text-xs text-gray-300">${t.rawKey||'?'} ${t.rawMode||''}</td><td class="p-2">${genreButton}</td><td class="p-2">${flags}</td><td class="p-2 text-xs"><button class="px-2 py-1 bg-purple-500/30 rounded" onclick="openOverrideModal('camelot','${t.id}')">Set Camelot</button><button class="ml-1 px-2 py-1 bg-blue-500/30 rounded" onclick="openOverrideModal('bpm','${t.id}')">Set BPM</button><button class="ml-1 px-2 py-1 bg-red-500/30 rounded" onclick="clearOverrides('${t.id}')">Clear</button></td></tr>`;
+          return `<tr class="border-b border-white/5"><td class="p-2">${t.title}<div class="text-xs text-gray-400">${t.artist}</div></td><td class="p-2">${t.bpm} <div class="text-xs text-gray-400">raw ${t.rawBpm||t.bpm}</div></td><td class="p-2">${t.camelot}<div class="text-xs text-gray-400">derived ${t.derivedCamelot}</div></td><td class="p-2 text-xs text-gray-300">${t.rawKey||'?'} ${t.rawMode||''}</td><td class="p-2">${genreButton}</td><td class="p-2">${flags}</td><td class="p-2 text-xs"><button class="px-2 py-1 bg-purple-500/30 rounded" data-action="open-override-modal" data-override-type="camelot" data-track-id="${t.id}">Set Camelot</button><button class="ml-1 px-2 py-1 bg-blue-500/30 rounded" data-action="open-override-modal" data-override-type="bpm" data-track-id="${t.id}">Set BPM</button><button class="ml-1 px-2 py-1 bg-red-500/30 rounded" data-action="clear-overrides" data-track-id="${t.id}">Clear</button></td></tr>`;
         }).join('');
 
       auditEl.innerHTML = `
@@ -6164,11 +6113,11 @@ function track(eventName, payload = {}){
               <input id="auditSearchInput" value="${auditSearch}" placeholder="Search title or artist" class="flex-1 min-w-[200px] px-3 py-2 bg-black/40 border border-white/10 rounded" />
             </div>
             <div class="flex flex-wrap gap-2 text-xs">
-              <button class="px-3 py-1 rounded ${auditFilters.flaggedOnly?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('flaggedOnly')">Show flagged only</button>
-              <button class="px-3 py-1 rounded ${auditFilters.overriddenOnly?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('overriddenOnly')">Show overridden only</button>
-              <button class="px-3 py-1 rounded ${auditFilters.invalidCamelot?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('invalidCamelot')">Invalid camelot</button>
-              <button class="px-3 py-1 rounded ${auditFilters.modeMismatch?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('modeMismatch')">Mode mismatch</button>
-              <button class="px-3 py-1 rounded ${auditFilters.bpmOutlier?'bg-amber-500/40':'bg-white/10'}" onclick="toggleAuditFilter('bpmOutlier')">BPM outliers</button>
+              <button class="px-3 py-1 rounded ${auditFilters.flaggedOnly?'bg-amber-500/40':'bg-white/10'}" data-action="toggle-audit-filter" data-filter="flaggedOnly">Show flagged only</button>
+              <button class="px-3 py-1 rounded ${auditFilters.overriddenOnly?'bg-amber-500/40':'bg-white/10'}" data-action="toggle-audit-filter" data-filter="overriddenOnly">Show overridden only</button>
+              <button class="px-3 py-1 rounded ${auditFilters.invalidCamelot?'bg-amber-500/40':'bg-white/10'}" data-action="toggle-audit-filter" data-filter="invalidCamelot">Invalid camelot</button>
+              <button class="px-3 py-1 rounded ${auditFilters.modeMismatch?'bg-amber-500/40':'bg-white/10'}" data-action="toggle-audit-filter" data-filter="modeMismatch">Mode mismatch</button>
+              <button class="px-3 py-1 rounded ${auditFilters.bpmOutlier?'bg-amber-500/40':'bg-white/10'}" data-action="toggle-audit-filter" data-filter="bpmOutlier">BPM outliers</button>
             </div>
           </div>
           <div class="panel overflow-auto">
@@ -6188,7 +6137,6 @@ function track(eventName, payload = {}){
           </div>
         </div>
       `;
-      bindGenreEditors(auditEl);
     }
 
     function updateBandReferencesLocal(oldUsername,newUsername,newDj){
@@ -6322,7 +6270,8 @@ function render(){
   const ownedCountCloudLabel = ownedSyncDiagnostics.ownedCountCloud === null
     ? '—'
     : ownedSyncDiagnostics.ownedCountCloud;
-  const syncStatusPanel = `
+  const showSyncStatus = localStorage.getItem('DEBUG_UI') === '1';
+  const syncStatusPanel = showSyncStatus ? `
     <div class="panel bg-black/40 border border-cyan-500/20">
       <div class="flex items-center justify-between mb-3">
         <div class="font-bold text-white">Sync Status</div>
@@ -6350,7 +6299,7 @@ function render(){
           <span class="font-semibold text-white">${ownedCountCloudLabel}</span>
         </div>
       </div>
-    </div>`;
+    </div>` : '';
   const selectedPanel = `
     <div class="panel ${selectedSong ? 'selected-panel' : ''} space-y-3 dim-when-sticky">
       <div class="flex items-center justify-between">
@@ -6366,15 +6315,14 @@ function render(){
         </div>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button id="panelClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
-        <button id="panelClearSearchBtn" onclick="clearSearch()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
-        <button id="panelDisableMixableBtn" onclick="disableMixable()" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
+        <button id="panelClearSelectionBtn" data-action="clear-selection" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
+        <button id="panelClearSearchBtn" data-action="clear-search" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg font-semibold text-white" ${searchTerm ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Search</button>
+        <button id="panelDisableMixableBtn" data-action="disable-mixable" class="px-3 py-2 rounded-lg font-semibold border ${showMixableOnly?'border-cyan-300 bg-cyan-500/20 text-cyan-100':'border-white/20 bg-white/5 text-gray-300'}" ${showMixableOnly ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>${showMixableOnly ? 'Disable Mixable' : 'Mixable Off'}</button>
       </div>
     </div>`;
   const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
   const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}${adminLabel}`;
   const authButtonLabel = firebaseAuth?.currentUser ? 'Logout' : 'Sign In';
-  const authButtonAction = firebaseAuth?.currentUser ? 'logoutUser()' : 'showLoginScreen()';
   const stickyCtaActive = getStickyCtaConfig().visible;
   document.getElementById('app').innerHTML = `
     <div class="min-h-screen ${stickyCtaActive ? 'sticky-cta-active' : ''}" id="appRoot">
@@ -6390,17 +6338,17 @@ function render(){
             </div>
             <div class="flex items-center flex-wrap justify-end header-actions">
               <button class="mobile-only px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-xs text-white" data-action="toggleHeaderMore">More</button>
-              ${viewingProfile?`<button onclick="exitProfileViewMode()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
-              ${(!viewingProfile && isAdmin())?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
-                  <button id="adminMenuHelpEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Help Editor</button>
-                  <button id="adminMenuWhatsNewEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
-                  <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
+              ${viewingProfile?`<button data-action="exit-profile-view" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
+              ${(!viewingProfile && isAdmin())?`<div class="relative"><button id="adminToolsBtn" data-action="toggle-admin-tools" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
+                  <button id="adminMenuHelpEditor" data-action="open-admin-help-editor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Help Editor</button>
+                  <button id="adminMenuWhatsNewEditor" data-action="open-admin-whats-new" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
+                  <button id="adminMenuAudit" data-action="open-admin-audit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
                 </div>`:''}</div>`:''}
               ${profileEnabled
-                ? `<button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>`
+                ? `<button data-action="open-profile" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>`
                 : `<button class="px-3 py-2 bg-purple-500/20 border border-purple-500/50 rounded-lg text-purple-200 text-sm" ${disabledFeatureAttrs}>Profile</button>`}
-              <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
-              <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
+              <button data-action="open-help" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
+              <button data-action="${firebaseAuth?.currentUser ? 'logout' : 'open-login'}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
             </div>
           </div>
           <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
@@ -6424,7 +6372,7 @@ function render(){
             <button id="browserBtn" data-action="switchView" data-view="browser" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
             <div class="flex items-center gap-1">
               <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
-              <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
+              <button type="button" class="helpIconBtn" data-action="open-help-modal" data-source="setlist_icon" data-target="setlist" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
             ${profileEnabled
               ? `<button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>`
@@ -6454,20 +6402,20 @@ function render(){
                 </div>
                 <div class="relative">
                   <input type="text" id="searchInput" value="${searchTerm || ''}" placeholder="🔍 Search songs" class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
-                  <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
+                  <button id="clearSearchBtn" data-action="clear-search" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
                 </div>
                 <div id="searchStatus" class="text-xs text-cyan-200" style="display:none;">Filtering…</div>
                 <div class="flex flex-wrap gap-2">
-                  <button id="mixableFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
+                  <button id="mixableFilterBtn" data-action="toggle-mixable-filter" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
                   ${ownedSyncEnabled
-                    ? `<button id="ownedFilterBtn" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>`
+                    ? `<button id="ownedFilterBtn" data-action="toggle-owned-filter" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>`
                     : `<button class="px-3 py-2 rounded-lg font-medium transition bg-white/10 text-gray-300" ${disabledFeatureAttrs}>Show All</button>`}
-                  <button id="controlClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
+                  <button id="controlClearSelectionBtn" data-action="clear-selection" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
                 ${(!viewingProfile && ownedSyncEnabled)?`<div class="flex flex-wrap gap-2">
-                  <button id="markAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
-                  <button id="clearAllBtn" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
+                  <button id="markAllBtn" data-action="mark-all-owned" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
+                  <button id="clearAllBtn" data-action="clear-all-owned" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
                 </div>`:''}
                 <div class="bg-black/40 border border-white/10 rounded-lg p-3 space-y-3">
                   <div class="flex items-center justify-between flex-wrap gap-2">
@@ -6507,9 +6455,9 @@ function render(){
                   <span class="text-xs text-gray-300">Priority selector</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                  <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Tempo (BPM)</button>
-                  <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
-                  <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                  <button data-action="set-sort-mode" data-sort-mode="bpm" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Tempo (BPM)</button>
+                  <button data-action="set-sort-mode" data-sort-mode="camelot" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                  <button data-action="set-sort-mode" data-sort-mode="genre" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
                 </div>
                 <div class="flex items-center gap-2">
                   <div class="text-xs text-gray-300 font-semibold">Priority Strength</div>
@@ -6530,7 +6478,7 @@ function render(){
                       <div class="font-bold text-white">Sandbox (Drag tracks here)</div>
                       <div class="flex items-center gap-2 text-xs text-gray-300">
                         <span>Limit 4</span>
-                        <button onclick="clearSandbox()" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10">Clear</button>
+                        <button data-action="clear-sandbox" class="px-2 py-1 bg-white/10 hover:bg-white/20 rounded border border-white/10">Clear</button>
                       </div>
                     </div>
                     <div id="sandbox" class="sandbox-drop bg-black/40"></div>
@@ -6660,14 +6608,13 @@ function render(){
       const options = Array.from({length:12},(_,i)=>`${i+1}A`).concat(Array.from({length:12},(_,i)=>`${i+1}B`));
       const camelotSelect = `<select id="camelotSelect" class="w-full px-3 py-2 bg-black/60 border border-white/20 rounded">${options.map(o=>`<option value="${o}" ${track.camelot===o?'selected':''}>${o}</option>`).join('')}</select>`;
       const bpmInput = `<input id="bpmInput" type="number" value="${Math.round(track.bpm)}" class="w-full px-3 py-2 bg-black/60 border border-white/20 rounded"/>`;
-      const actionCall = type==='camelot' ? `setCamelotOverride('${trackId}', document.getElementById('camelotSelect').value)` : `setBpmOverride('${trackId}', document.getElementById('bpmInput').value)`;
       modal.innerHTML = `<div class="panel max-w-md w-full">
-        <div class="flex items-center justify-between mb-3"><div class="font-bold">Set ${type==='camelot'?'Camelot':'BPM'} for ${track.title}</div><button onclick="closeOverrideModal()">✕</button></div>
+        <div class="flex items-center justify-between mb-3"><div class="font-bold">Set ${type==='camelot'?'Camelot':'BPM'} for ${track.title}</div><button data-action="close-override-modal">✕</button></div>
         <div class="space-y-3">
           ${type==='camelot'?camelotSelect:bpmInput}
           <div class="flex gap-2 justify-end">
-            <button class="px-3 py-2 bg-white/10 rounded" onclick="closeOverrideModal()">Cancel</button>
-            <button class="px-3 py-2 bg-blue-500/60 rounded" onclick="${actionCall}; closeOverrideModal();">Save</button>
+            <button class="px-3 py-2 bg-white/10 rounded" data-action="close-override-modal">Cancel</button>
+            <button class="px-3 py-2 bg-blue-500/60 rounded" data-action="save-override" data-override-type="${type}" data-track-id="${trackId}">Save</button>
           </div>
         </div>
       </div>`;
@@ -6691,92 +6638,6 @@ function render(){
       if(appDelegatesBound) return;
       const app = document.getElementById('app');
       if(!app) return;
-      app.addEventListener('click', safeOn('click', (e)=>{
-        if(closestFromEvent(e, '#mixableFilterBtn', { within: app })){ toggleMixableFilter(); return; }
-        if(closestFromEvent(e, '#ownedFilterBtn', { within: app })){ toggleOwnedFilter(); return; }
-        if(closestFromEvent(e, '#clearSearchBtn', { within: app }) || closestFromEvent(e, '#panelClearSearchBtn', { within: app })){ clearSearch(); return; }
-        if(closestFromEvent(e, '[data-action="clearFilters"]', { within: app })){ clearFilters(); return; }
-        if(closestFromEvent(e, '[data-action="openQuickStart"]', { within: app })){ openQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: app })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: app })){ completeQuickStart({ skipped: true }); return; }
-        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: app })){ moveQuickStartStep(-1); return; }
-        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: app });
-        if(presetBtn){
-          const preset = presetBtn.dataset.preset;
-          void applyQuickStartPreset(preset).then((applied)=>{
-            if(applied){
-              quickStartState.preset = preset;
-              moveQuickStartStep(1);
-            }
-          });
-          return;
-        }
-        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: app });
-        if(pickBtn){
-          const songId = pickBtn.dataset.songId || pickBtn.getAttribute('data-song-id');
-          if(songId){
-            selectedSong = songsById[songId] || songs.find(s=>s.id===songId) || null;
-            refreshSelectedSongCriteria();
-            showMixableOnly = true;
-            matchHintMessage = 'These are your best matches.';
-            render();
-            setupEventListeners();
-            const list = document.getElementById('songList');
-            if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
-            completeQuickStart();
-          }
-          return;
-        }
-        if(closestFromEvent(e, '[data-action="mobileNextWindow"]', { within: app })){ shiftMobileWindow(1); return; }
-        if(closestFromEvent(e, '[data-action="mobilePrevWindow"]', { within: app })){ shiftMobileWindow(-1); return; }
-        const headerMoreBtn = closestFromEvent(e, '[data-action="toggleHeaderMore"]', { within: app });
-        if(headerMoreBtn){ headerMoreOpen = !headerMoreOpen; render(); setupEventListeners(); return; }
-        const stickyBtn = closestFromEvent(e, '[data-action="stickyCta"]', { within: app });
-        if(stickyBtn){
-          const action = stickyBtn.dataset.stickyAction || '';
-          if(action === 'open-quickstart'){ openQuickStart(); return; }
-          if(action === 'scroll-to-list'){
-            const list = document.getElementById('songList');
-            if(list){
-              list.classList.add('song-list-highlight');
-              list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              setTimeout(()=>list.classList.remove('song-list-highlight'), 1500);
-            }
-            return;
-          }
-          if(action === 'mixable-warning'){
-            setMixableInlineNotice('Select a song before enabling Mixable Only.');
-            return;
-          }
-        }
-        if(closestFromEvent(e, '#markAllBtn', { within: app }) && !viewingProfile){ markAllOwned(); return; }
-        if(closestFromEvent(e, '#clearAllBtn', { within: app }) && !viewingProfile){ clearAllOwned(); return; }
-        const genreBtn = closestFromEvent(e, '[data-genre-tag]', { within: app });
-        if(genreBtn && isAdmin()){
-          showGenreMenu(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), e);
-          return;
-        }
-        const trackAction = closestFromEvent(e, '[data-action]', { within: app });
-        if(trackAction){
-          const action = trackAction.dataset.action;
-          const songId = trackAction.dataset.id || trackAction.getAttribute('data-id');
-          if(action === 'select-track' && songId){ selectSong(songId); return; }
-          if(action === 'clear-selection'){ clearSelection(e); return; }
-          if(action === 'toggle-owned' && songId){
-            if(viewingProfile) return;
-            toggleOwned(songId);
-            return;
-          }
-          if(action === 'add-set' && songId){
-            if(viewingProfile) return;
-            addToSetlist(songId);
-            return;
-          }
-          if(action === 'add-sandbox' && songId){ addToSandbox(songId); return; }
-          if(action === 'preview-track' && songId){ onPreviewClick(songId); return; }
-        }
-      }, { action: 'app-click' }));
       app.addEventListener('input', safeOn('input', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
@@ -6840,6 +6701,13 @@ function render(){
       app.addEventListener('change', safeOn('change', (e)=>{
         const target = getEventElement(e);
         if(!target) return;
+        if(target.dataset?.action === 'pagination-size'){
+          const paginationId = target.dataset.paginationId;
+          const callbacks = paginationDelegates.get(paginationId);
+          const nextSize = Number(target.value);
+          if(callbacks?.onPageSizeChange) callbacks.onPageSizeChange(nextSize);
+          return;
+        }
         if(target.id === 'keyMatchModeSelect'){ setKeyMatchMode(target.value); }
         if(target.id === 'includeOppositeModeToggle'){ toggleIncludeOppositeMode(target.checked); }
         if(target.id === 'profilePublicToggle' && !viewingProfile){
@@ -6883,53 +6751,9 @@ function render(){
       appDelegatesBound = true;
     }
 
-    function bindQuickStartDelegates(){
-      if(quickStartDelegatesBound) return;
-      const modal = document.getElementById('quickStartModal');
-      if(!modal) return;
-      document.addEventListener('click', safeOn('click', (e)=>{
-        const target = getEventElement(e);
-        if(!target) return;
-        if(target === modal){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="closeQuickStart"]', { within: modal })){ closeQuickStart(); return; }
-        if(closestFromEvent(e, '[data-action="quickStartSkip"]', { within: modal })){ completeQuickStart({ skipped: true }); return; }
-        if(closestFromEvent(e, '[data-action="quickStartBack"]', { within: modal })){ moveQuickStartStep(-1); return; }
-        const presetBtn = closestFromEvent(e, '[data-action="quickStartPreset"]', { within: modal });
-        if(presetBtn){
-          const preset = presetBtn.dataset.preset;
-          void applyQuickStartPreset(preset).then((applied)=>{
-            if(applied){
-              quickStartState.preset = preset;
-              moveQuickStartStep(1);
-            }
-          });
-          return;
-        }
-        const pickBtn = closestFromEvent(e, '[data-action="quickStartPickTrack"]', { within: modal });
-        if(pickBtn){
-          const songId = pickBtn.dataset.songId || pickBtn.getAttribute('data-song-id');
-          if(songId){
-            selectedSong = songsById[songId] || songs.find(s=>s.id===songId) || null;
-            refreshSelectedSongCriteria();
-            showMixableOnly = true;
-            matchHintMessage = 'These are your best matches.';
-            render();
-            setupEventListeners();
-            const list = document.getElementById('songList');
-            if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
-            completeQuickStart();
-          }
-        }
-      }, { action: 'quick-start-modal-click' }));
-      quickStartDelegatesBound = true;
-    }
-
     function setupEventListeners(){
       bindUiDebugging();
       bindAppDelegates();
-      bindQuickStartDelegates();
-      bindProfileHandlers();
       updateProfileErrorBanner();
       runDelegationSelfTest();
       runInteractionSmokeTest();
@@ -6941,25 +6765,6 @@ function render(){
       const keyModeSelect = document.getElementById('keyMatchModeSelect'); if(keyModeSelect){ keyModeSelect.value = keyMatchMode; }
       const semitoneRangeInput = document.getElementById('semitoneRangeInput'); if(semitoneRangeInput){ semitoneRangeInput.value = maxSemitoneRange; }
       const includeOppToggle = document.getElementById('includeOppositeModeToggle'); if(includeOppToggle){ includeOppToggle.checked = includeOppositeMode; }
-      if(isAdmin()){
-        const adminBtn = document.getElementById('adminToolsBtn');
-        if(adminBtn){
-          adminBtn.onclick = (e)=>{ e.stopPropagation(); console.debug('[admin] Admin Tools clicked'); window.toggleAdminTools(); };
-          console.debug('[admin] Admin Tools button bound');
-        } else {
-          console.debug('[admin] Admin Tools button missing after render');
-        }
-        const adminMenu = document.getElementById('adminToolsMenu');
-        if(adminMenu){
-          adminMenu.style.pointerEvents = 'auto';
-          const helpBtn = document.getElementById('adminMenuHelpEditor');
-          if(helpBtn) helpBtn.onclick = (e)=>{ e.stopPropagation(); openAdminHelpEditor(); toggleAdminTools(false); };
-          const whatsNewBtn = document.getElementById('adminMenuWhatsNewEditor');
-          if(whatsNewBtn) whatsNewBtn.onclick = (e)=>{ e.stopPropagation(); openAdminWhatsNewEditor(); toggleAdminTools(false); };
-          const auditBtn = document.getElementById('adminMenuAudit');
-          if(auditBtn) auditBtn.onclick = (e)=>{ e.stopPropagation(); openAuditFromMenu(); };
-        }
-      }
       setupLiveNowCarousel();
       updateRatingStarsUI();
       updateRatingTagsUI();
@@ -7001,37 +6806,346 @@ function render(){
       }, { passive: false });
     }
 
-    let dataActionDelegatesBound = false;
-    function handleDataAction(el, event){
-      if(!el) return;
-      const action = el.dataset?.action;
-      if(!action) return;
-      if(action === 'addSet'){
-        const id = el.dataset?.id;
-        if(!id) return;
-        event?.preventDefault();
-        addToSetlist(id);
-        return;
-      }
-      if(action === 'removeSet'){
-        const id = el.dataset?.id;
-        if(!id) return;
-        event?.preventDefault();
-        removeFromSetlist(id);
-        return;
-      }
-      if(action === 'switchView'){
-        const viewName = el.dataset?.view;
-        if(!viewName) return;
-        event?.preventDefault();
-        switchView(viewName);
+    function routeUIAction(action, id, el, event){
+      console.debug('[UI]', action, id);
+      switch(action){
+        case 'select-track':
+          if(id) selectSong(id);
+          return;
+        case 'toggle-owned':
+          if(id && !viewingProfile) toggleOwned(id);
+          return;
+        case 'open-profile':
+          openProfileView();
+          return;
+        case 'open-profile-editor':
+          openProfileEditor();
+          return;
+        case 'profile-edit':
+        case 'toggle-profile-edit':
+          if(viewingProfile) return;
+          profileEditMode = !profileEditMode;
+          renderProfile();
+          setupEventListeners();
+          return;
+        case 'profile-save':
+          saveProfileSettings();
+          return;
+        case 'profile-cancel':
+          cancelProfileEdit();
+          return;
+        case 'toggle-live':
+          toggleLiveStatus();
+          return;
+        case 'logout':
+          logoutUser();
+          return;
+        case 'open-login':
+          showLoginScreen();
+          return;
+        case 'hide-landing':
+          hideLanding();
+          return;
+        case 'set-auth-mode':
+          setAuthMode(el?.dataset?.mode);
+          return;
+        case 'forgot-password':
+          forgotPassword();
+          return;
+        case 'close-help':
+          closeHelp();
+          return;
+        case 'open-help':
+          openHelp();
+          return;
+        case 'open-help-modal':
+          openHelpModal({ source: el?.dataset?.source, target: el?.dataset?.target });
+          return;
+        case 'set-help-tab':
+          if(el?.dataset?.tab) setHelpTab(el.dataset.tab);
+          return;
+        case 'start-tour': {
+          const tourId = el?.dataset?.tour;
+          const force = el?.dataset?.force === 'true';
+          startTour(tourId, { force });
+          return;
+        }
+        case 'tour-back':
+          prevTourStep();
+          return;
+        case 'tour-next':
+          nextTourStep();
+          return;
+        case 'tour-skip':
+          skipTour();
+          return;
+        case 'tour-route': {
+          const step = tourState.steps[tourState.stepIndex];
+          goToTourRoute(step?.route);
+          return;
+        }
+        case 'openQuickStart':
+          openQuickStart();
+          return;
+        case 'closeQuickStart':
+          if(el?.dataset?.closeBackdrop === 'true' && event?.target !== el) return;
+          closeQuickStart();
+          return;
+        case 'quickStartSkip':
+          completeQuickStart({ skipped: true });
+          return;
+        case 'quickStartBack':
+          moveQuickStartStep(-1);
+          return;
+        case 'quickStartPreset': {
+          const preset = el?.dataset?.preset;
+          void applyQuickStartPreset(preset).then((applied)=>{
+            if(applied){
+              quickStartState.preset = preset;
+              moveQuickStartStep(1);
+            }
+          });
+          return;
+        }
+        case 'quickStartPickTrack': {
+          const songId = el?.dataset?.songId || el?.getAttribute('data-song-id');
+          if(songId){
+            selectedSong = songsById[songId] || songs.find(s=>s.id===songId) || null;
+            refreshSelectedSongCriteria();
+            showMixableOnly = true;
+            matchHintMessage = 'These are your best matches.';
+            render();
+            setupEventListeners();
+            const list = document.getElementById('songList');
+            if(list) list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(()=>{ matchHintMessage = ''; scheduleSongListRender('match-hint-clear'); }, 2600);
+            completeQuickStart();
+          }
+          return;
+        }
+        case 'mobileNextWindow':
+          shiftMobileWindow(1);
+          return;
+        case 'mobilePrevWindow':
+          shiftMobileWindow(-1);
+          return;
+        case 'toggleHeaderMore':
+          headerMoreOpen = !headerMoreOpen;
+          render();
+          setupEventListeners();
+          return;
+        case 'stickyCta': {
+          const action = el?.dataset?.stickyAction || '';
+          if(action === 'open-quickstart'){ openQuickStart(); return; }
+          if(action === 'scroll-to-list'){
+            const list = document.getElementById('songList');
+            if(list){
+              list.classList.add('song-list-highlight');
+              list.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              setTimeout(()=>list.classList.remove('song-list-highlight'), 1500);
+            }
+            return;
+          }
+          if(action === 'mixable-warning'){
+            setMixableInlineNotice('Select a song before enabling Mixable Only.');
+            return;
+          }
+          return;
+        }
+        case 'clearFilters':
+          clearFilters();
+          return;
+        case 'toggle-mixable-filter':
+          toggleMixableFilter();
+          return;
+        case 'toggle-owned-filter':
+          toggleOwnedFilter();
+          return;
+        case 'clear-search':
+          clearSearch();
+          return;
+        case 'clear-selection':
+          clearSelection(event);
+          return;
+        case 'disable-mixable':
+          disableMixable();
+          return;
+        case 'mark-all-owned':
+          if(!viewingProfile) markAllOwned();
+          return;
+        case 'clear-all-owned':
+          if(!viewingProfile) clearAllOwned();
+          return;
+        case 'pagination-prev':
+        case 'pagination-next': {
+          const paginationId = el?.dataset?.paginationId;
+          const nextIndex = Number(el?.dataset?.pageIndex);
+          const callbacks = paginationDelegates.get(paginationId);
+          if(callbacks?.onPageChange && Number.isFinite(nextIndex)){
+            callbacks.onPageChange(nextIndex);
+          }
+          return;
+        }
+        case 'open-genre-menu':
+          if(isAdmin()){
+            showGenreMenu(el?.dataset?.genreTag || el?.getAttribute('data-genre-tag'), event);
+          }
+          return;
+        case 'add-set':
+          if(id && !viewingProfile) addToSetlist(id);
+          return;
+        case 'removeSet':
+        case 'remove-set':
+          if(id) removeFromSetlist(id);
+          return;
+        case 'add-sandbox':
+          if(id) addToSandbox(id);
+          return;
+        case 'preview-track':
+          if(id) onPreviewClick(id);
+          return;
+        case 'remove-sandbox':
+          if(id) removeSandbox(id);
+          return;
+        case 'clear-sandbox':
+          clearSandbox();
+          return;
+        case 'switchView':
+          if(el?.dataset?.view) switchView(el.dataset.view);
+          return;
+        case 'set-sort-mode':
+          if(el?.dataset?.sortMode) setSortMode(el.dataset.sortMode);
+          return;
+        case 'toggle-admin-tools':
+          toggleAdminTools();
+          return;
+        case 'open-admin-help-editor':
+          openAdminHelpEditor();
+          toggleAdminTools(false);
+          return;
+        case 'open-admin-whats-new':
+          openAdminWhatsNewEditor();
+          toggleAdminTools(false);
+          return;
+        case 'open-admin-audit':
+          openAuditFromMenu();
+          return;
+        case 'open-override-modal': {
+          const type = el?.dataset?.overrideType;
+          const trackId = el?.dataset?.trackId;
+          if(type && trackId) openOverrideModal(type, trackId);
+          return;
+        }
+        case 'close-override-modal':
+          closeOverrideModal();
+          return;
+        case 'save-override': {
+          const type = el?.dataset?.overrideType;
+          const trackId = el?.dataset?.trackId;
+          if(type === 'camelot'){
+            const value = document.getElementById('camelotSelect')?.value;
+            if(value) setCamelotOverride(trackId, value);
+          } else if(type === 'bpm'){
+            const value = document.getElementById('bpmInput')?.value;
+            if(value) setBpmOverride(trackId, value);
+          }
+          closeOverrideModal();
+          return;
+        }
+        case 'clear-overrides':
+          if(el?.dataset?.trackId) clearOverrides(el.dataset.trackId);
+          return;
+        case 'toggle-audit-filter':
+          if(el?.dataset?.filter) toggleAuditFilter(el.dataset.filter);
+          return;
+        case 'set-persona-theme':
+          if(el?.dataset?.personaTheme) setPersonaTheme(el.dataset.personaTheme);
+          return;
+        case 'set-persona-id':
+          if(el?.dataset?.personaId) setPersonaId(el.dataset.personaId);
+          return;
+        case 'set-theme-accent':
+          if(el?.dataset?.themeAccent) setThemeAccent(el.dataset.themeAccent);
+          return;
+        case 'randomize-persona-seed':
+          randomizePersonaSeed();
+          return;
+        case 'view-live-profile':
+          if(el?.dataset?.username) viewLiveProfile(el.dataset.username);
+          return;
+        case 'refresh-live-now':
+          refreshLiveNowUsers();
+          return;
+        case 'set-rating-star':
+          if(el?.dataset?.star) setRatingStar(Number(el.dataset.star));
+          return;
+        case 'toggle-rating-tag':
+          if(el?.dataset?.tag) toggleRatingTag(el.dataset.tag);
+          return;
+        case 'submit-rating':
+          submitRating();
+          return;
+        case 'select-friend-profile':
+          if(el?.dataset?.username) selectFriendProfile(el.dataset.username);
+          return;
+        case 'send-friend-request':
+          if(el?.dataset?.uid) sendFriendRequest(el.dataset.uid);
+          return;
+        case 'accept-friend-request':
+          if(el?.dataset?.requestId) acceptFriendRequest(el.dataset.requestId, el?.dataset?.fromUid || '');
+          return;
+        case 'reject-friend-request':
+          if(el?.dataset?.requestId) rejectFriendRequest(el.dataset.requestId);
+          return;
+        case 'cancel-friend-request':
+          if(el?.dataset?.requestId) cancelFriendRequest(el.dataset.requestId);
+          return;
+        case 'remove-friend':
+          if(el?.dataset?.friendUid) removeFriend(el.dataset.friendUid);
+          return;
+        case 'set-friend-panel-tab':
+          if(el?.dataset?.tab) setFriendPanelTab(el.dataset.tab);
+          return;
+        case 'view-friend-profile':
+          viewFriendProfile();
+          return;
+        case 'exit-profile-view':
+          exitProfileViewMode();
+          return;
+        case 'delete-account':
+          deleteAccount();
+          return;
+        case 'start-oauth':
+          if(el?.dataset?.provider) startOAuth(el.dataset.provider);
+          return;
+        case 'unlink-oauth':
+          if(el?.dataset?.provider) unlinkOAuth(el.dataset.provider);
+          return;
+        case 'log-friend-search':
+          logFriendSearchClick();
+          return;
+        default:
+          return;
       }
     }
 
     document.addEventListener('click', safeOn('click', (e) => {
       const el = closestFromEvent(e, '[data-action]');
-      if (!el) return;
-      handleDataAction(el, e);
+      if (el) {
+        const action = el.dataset?.action;
+        const id = el.dataset?.id;
+        routeUIAction(action, id, el, e);
+      }
+      if(adminMenuOpen){
+        const menu = document.getElementById('adminToolsMenu');
+        const btn = document.getElementById('adminToolsBtn');
+        const target = getEventElement(e);
+        const clickInMenu = target ? menu?.contains(target) : false;
+        const clickOnBtn = target ? btn?.contains(target) : false;
+        if(menu && !clickInMenu && !clickOnBtn){
+          toggleAdminTools(false);
+        }
+      }
     }, { action: 'data-action-click' }));
 
     document.addEventListener('keydown', safeOn('keydown', (e) => {
@@ -7039,9 +7153,10 @@ function render(){
       const el = closestFromEvent(e, '[data-action]');
       if (!el) return;
       e.preventDefault();
-      handleDataAction(el, e);
+      const action = el.dataset?.action;
+      const id = el.dataset?.id;
+      routeUIAction(action, id, el, e);
     }, { action: 'data-action-keydown' }));
-    dataActionDelegatesBound = true;
 
     window.setPriorityStrength = (val) => {
       const map = { '0':'low', '1':'medium', '2':'high', low:'low', medium:'medium', high:'high' };
@@ -7353,7 +7468,7 @@ function render(){
       if(!isFeatureOn('SANDBOX')) return;
       const el=document.getElementById('sandbox');
       if(!el) return;
-      el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`;
+      el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM • ${t.key}</div></div><button class="ml-2 px-2 py-1 bg-red-600/40" data-action="remove-sandbox" data-id="${t.id}">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`;
       persistSandbox();
       const info=document.getElementById('sandboxInfo');
       if(sandboxTracks.length===0){ if(info) info.textContent=''; return; }
@@ -7745,17 +7860,6 @@ function render(){
     }
 
     function bindHelpTabs(){
-      const tabs = document.querySelectorAll('.helpTabBtn');
-      tabs.forEach(btn => {
-        const tab = btn.dataset.tab;
-        btn.addEventListener('click', () => setHelpTab(tab));
-        btn.addEventListener('keydown', (e) => {
-          if(e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar'){
-            e.preventDefault();
-            setHelpTab(tab);
-          }
-        });
-      });
       syncHelpTabsA11y();
     }
 
