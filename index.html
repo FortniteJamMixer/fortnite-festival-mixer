@@ -4528,6 +4528,79 @@ function track(eventName, payload = {}){
       showLoginScreen();
     }
 
+    async function deleteAccount(){
+      if(viewingProfile){ alert('Cannot delete while viewing another profile.'); return; }
+      if(!firebaseAuth?.currentUser){
+        alert('Sign in to delete your account.');
+        return;
+      }
+      const confirmed = confirm('⚠️ This permanently deletes your account, owned library, and profile. This cannot be undone.');
+      if(!confirmed) return;
+      const typed = prompt('Type DELETE to confirm account deletion.');
+      if(typed !== 'DELETE'){
+        alert('Account deletion canceled.');
+        return;
+      }
+      const statusEl = document.getElementById('profileStatus');
+      if(statusEl) statusEl.textContent = 'Deleting account…';
+      const uid = firebaseAuth.currentUser.uid;
+      const username = currentUser?.username || '';
+      try { await flushOwnedPendingWrites(); } catch(err){ console.warn('flush owned writes failed', err); }
+      try{
+        if(firestore && uid){
+          const userRef = firestore.collection('users').doc(uid);
+          await userRef.collection('library').doc('owned').delete().catch(()=>{});
+          await userRef.delete().catch(()=>{});
+        }
+        const legacyCollection = getLegacyProfileCollection();
+        if(legacyCollection){
+          if(uid) await legacyCollection.doc(uid).delete().catch(()=>{});
+          if(username) await legacyCollection.doc(username).delete().catch(()=>{});
+        }
+        await firebaseAuth.currentUser.delete();
+      }catch(err){
+        console.warn('account delete failed', err);
+        if(statusEl) statusEl.textContent = 'Delete failed — reauthenticate and try again.';
+        alert('Account deletion failed. Please sign out, sign in again, and retry.');
+        return;
+      }
+      try{
+        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+        if(uid) delete profiles[uid];
+        if(username) delete profiles[username];
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('activeProfileUid');
+        localStorage.removeItem('localProfile');
+        if(window.profileStore?.PROFILE_CACHE_KEY){
+          localStorage.removeItem(window.profileStore.PROFILE_CACHE_KEY);
+        }
+        if(window.profileStore?.getOwnedTracksCacheKey && uid){
+          localStorage.removeItem(window.profileStore.getOwnedTracksCacheKey(uid));
+        }
+        sessionStorage.removeItem(CURRENT_PAGE_KEY);
+      }catch(err){
+        console.warn('account delete local cleanup failed', err);
+      }
+      authSettledUser = null; authProcessing = false;
+      currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
+      ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
+      ownedLibraryRestoring = false;
+      ownedLibraryPendingWrite = null;
+      ownedSyncDiagnostics = {
+        cloudReadable: null,
+        cloudWritable: null,
+        lastCloudSyncAt: null,
+        ownedCountLocal: 0,
+        ownedCountCloud: null
+      };
+      view = 'browser';
+      showOwnedOnly = false;
+      showMixableOnly = false;
+      headerMoreOpen = false;
+      showLoginScreen();
+    }
+
     // -------------------- Songs loading -----------------------
     async function loadSongs(){
       if(songsLoaded){
@@ -5741,6 +5814,21 @@ function track(eventName, payload = {}){
           </div>
       ` : '';
       const profileErrorBanner = `<div id="profileErrorBanner" class="panel border border-red-400/40 bg-red-500/10 text-red-100 text-sm" style="display:${profileScriptError ? 'block' : 'none'};">Profile scripts failed. Open console.</div>`;
+      const canDeleteAccount = !viewOnly && !!firebaseAuth?.currentUser;
+      const deleteAccountPanel = !viewOnly ? `
+          <div class="panel space-y-3 border border-red-500/40 bg-red-500/10">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <div class="text-lg font-bold text-red-100">Danger Zone</div>
+                <p class="text-sm text-red-200/80">Permanently delete your account and cloud library. No turning back.</p>
+              </div>
+              <button onclick="deleteAccount()" ${canDeleteAccount ? '' : 'disabled'} class="px-4 py-2 rounded-lg bg-red-500/30 border border-red-400/60 text-red-100 font-semibold ${canDeleteAccount ? '' : 'opacity-60 cursor-not-allowed'}">Delete Account</button>
+            </div>
+            <div class="text-xs text-red-200/80">
+              ${canDeleteAccount ? 'This removes your profile, owned library, and sign-in. You will need to create a new account to return.' : 'Sign in with a cloud account to enable deletion.'}
+            </div>
+          </div>
+      ` : '';
       profileEl.innerHTML = `
         <div class="space-y-4 max-w-5xl mx-auto relative z-10" style="${profileAccentStyle}">
           ${profileErrorBanner}
@@ -5828,6 +5916,8 @@ function track(eventName, payload = {}){
             <p class="text-xs text-gray-400">Redirects through Epic, then returns here to store a link in your profile. Firebase email/password stays your primary sign-in.</p>
           </div>
           ` : ''}
+
+          ${deleteAccountPanel}
 
           <div class="panel space-y-4">
             <div class="flex items-start justify-between gap-3 flex-wrap">
