@@ -30,17 +30,17 @@ test('owned library prefers newer cloud snapshot', () => {
   const cache = snapshot(['a'], '2024-01-01T10:00:00Z');
   const cloud = snapshot(['a', 'b'], '2024-01-05T10:00:00Z');
   const plan = buildOwnedLibraryPlan({ cache, cloud });
-  assert.equal(plan.source, 'cloud');
+  assert.equal(plan.source, 'merge');
   assert.equal(plan.shouldUpdateCache, true);
   assert.equal(plan.shouldWriteCloud, false);
   assert.deepEqual(plan.chosen.trackIds, ['a', 'b']);
 });
 
-test('owned library prefers newer cache snapshot and queues cloud write', () => {
+test('owned library merges cache additions into cloud', () => {
   const cache = snapshot(['x', 'y'], '2024-01-05T10:00:00Z');
   const cloud = snapshot(['x'], '2024-01-01T10:00:00Z');
   const plan = buildOwnedLibraryPlan({ cache, cloud });
-  assert.equal(plan.source, 'cache');
+  assert.equal(plan.source, 'merge');
   assert.equal(plan.shouldWriteCloud, true);
   assert.deepEqual(plan.chosen.trackIds, ['x', 'y']);
 });
