@@ -696,6 +696,67 @@ function runDelegationSelfTest(){
   console.log('[delegation] hardened listeners active', { helpersReady, documentClick: dataActionDelegatesBound === true });
 }
 
+let interactionSelfTested = false;
+function runInteractionSmokeTest(){
+  if(interactionSelfTested || (!DEBUG_UI && !DEBUG_PROFILE)) return;
+  interactionSelfTested = true;
+  const app = document.getElementById('app');
+  if(!app) return;
+  const originalState = {
+    view,
+    songs,
+    songsById,
+    selectedSong,
+    ownedTracks: [...ownedTracks],
+    showOwnedOnly,
+    showMixableOnly,
+    mainPager: { ...mainPager }
+  };
+  try{
+    view = 'browser';
+    songs = [
+      { id:'test-a', title:'Test A', artist:'Tester', bpm:120, camelot:'8A', key:'Am', duration:180, genre:'Pop' },
+      { id:'test-b', title:'Test B', artist:'Tester', bpm:124, camelot:'9A', key:'Em', duration:200, genre:'Pop' },
+      { id:'test-c', title:'Test C', artist:'Tester', bpm:110, camelot:'7A', key:'Dm', duration:210, genre:'Rock' }
+    ];
+    songsById = Object.fromEntries(songs.map(song=>[song.id, song]));
+    selectedSong = null;
+    ownedTracks = [];
+    showOwnedOnly = false;
+    showMixableOnly = false;
+    resetMainPagination();
+    updateMobileWindowState({ reset: true });
+    render();
+    setupEventListeners();
+    const selectTarget = app.querySelector('[data-action="select-track"][data-id="test-a"]');
+    selectTarget?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    console.assert(selectedSong?.id === 'test-a', '[interaction-test] select-track failed', selectedSong);
+    const ownedTarget = app.querySelector('[data-action="toggle-owned"][data-id="test-a"]');
+    ownedTarget?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    console.assert(ownedTracks.includes('test-a'), '[interaction-test] toggle-owned failed', ownedTracks);
+    selectedSong = null;
+    refreshSelectedSongCriteria();
+    renderMatches();
+    const selectAgain = app.querySelector('[data-action="select-track"][data-id="test-b"]');
+    selectAgain?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    console.assert(selectedSong?.id === 'test-b', '[interaction-test] select after rerender failed', selectedSong);
+  }catch(err){
+    console.warn('[interaction-test] failed', err);
+  }finally{
+    view = originalState.view;
+    songs = originalState.songs;
+    songsById = originalState.songsById;
+    selectedSong = originalState.selectedSong;
+    ownedTracks = originalState.ownedTracks;
+    showOwnedOnly = originalState.showOwnedOnly;
+    showMixableOnly = originalState.showMixableOnly;
+    mainPager.pageIndex = originalState.mainPager.pageIndex;
+    mainPager.pageSize = originalState.mainPager.pageSize;
+    render();
+    setupEventListeners();
+  }
+}
+
 applyBrandingCopy();
 
 window.addEventListener('error', (event) => {
@@ -4811,7 +4872,7 @@ function track(eventName, payload = {}){
       const isOwned = displayTracks.includes(songId);
       const star = card.querySelector('[data-owned-star]');
       if(star) star.style.display = isOwned ? 'block' : 'none';
-      const button = card.querySelector('[data-song-action="toggle-owned"]');
+      const button = card.querySelector('[data-action="toggle-owned"]');
       if(button){
         button.textContent = isOwned ? '✓ Owned' : 'Mark Owned';
         button.className = `px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition`;
@@ -4822,7 +4883,7 @@ function track(eventName, payload = {}){
       const card = document.querySelector(`.song-card[data-song-id="${songId}"]`);
       if(!card) return;
       const isInSetlist = setlist.includes(songId);
-      const button = card.querySelector('[data-song-action="toggle-setlist"]');
+      const button = card.querySelector('[data-action="add-set"]');
       if(button){
         button.textContent = isInSetlist ? '✓ In Setlist' : '+ Set';
         button.className = `addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition`;
@@ -5070,6 +5131,14 @@ function track(eventName, payload = {}){
       if(backBtn) backBtn.style.visibility = quickStartState.step === 0 ? 'hidden' : 'visible';
     }
 
+    function renderMatches(){
+      if(view !== 'browser') return;
+      renderSongList();
+      if(selectedSong){
+        console.debug('[renderMatches] count=', lastFilteredCount);
+      }
+    }
+
     function renderSongList(){
       listRenderCount += 1;
       const ownedSyncEnabled = isFeatureOn('OWNED_SYNC');
@@ -5224,12 +5293,12 @@ function track(eventName, payload = {}){
           ? `<button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
           : `<span class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-default">${song.genre}${hasOverride ? ' ✓' : ''}</span>`;
         return `
-          <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" draggable="true">
+          <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" data-action="select-track" data-id="${song.id}" draggable="true">
             <div class="star-icon absolute top-2 right-2 text-xl" data-owned-star style="display:${isOwned?'block':'none'}">⭐</div>
-            ${isSelected ? `<button class="selected-badge absolute top-2 left-2 flex items-center gap-1" data-song-action="clear-selection">SELECTED <span class="font-normal text-[10px] opacity-90">(tap to clear)</span></button>` : (selectedSong && isMixable(selectedSong,song) ? `<div class="absolute top-2 left-2 text-xl">🎧</div>` : '')}
+            ${isSelected ? `<button class="selected-badge absolute top-2 left-2 flex items-center gap-1" data-action="clear-selection">SELECTED <span class="font-normal text-[10px] opacity-90">(tap to clear)</span></button>` : (selectedSong && isMixable(selectedSong,song) ? `<div class="absolute top-2 left-2 text-xl">🎧</div>` : '')}
             <div class="flex gap-4 mb-3">
-              ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" data-song-action="select" data-song-id="${song.id}"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
-              <div class="flex-1 cursor-pointer" data-song-action="select" data-song-id="${song.id}">
+              ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" data-action="select-track" data-id="${song.id}"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
+              <div class="flex-1 cursor-pointer" data-action="select-track" data-id="${song.id}">
                 <div class="font-bold text-lg mb-1 text-white">${song.title}</div>
                 <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
                 <div class="flex items-center gap-2 text-sm flex-wrap">
@@ -5245,16 +5314,16 @@ function track(eventName, payload = {}){
               </div>
             </div>
             <div class="flex flex-wrap gap-2 items-center">
-              <button data-song-action="select" data-song-id="${song.id}" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
+              <button data-action="select-track" data-id="${song.id}" class="px-3 py-2 rounded-lg text-sm font-semibold border ${isSelected?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Select</button>
               ${previewEnabled
-                ? `<button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-song-action="preview" data-song-id="${song.id}">Preview</button>`
+                ? `<button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-action="preview-track" data-id="${song.id}">Preview</button>`
                 : `<button class="previewBtn px-3 py-2 bg-white/10 rounded-lg text-sm text-gray-400" ${disabledFeatureAttrs}>Preview</button>`}
               ${ownedSyncEnabled
-                ? `<button data-song-action="toggle-owned" data-song-id="${song.id}" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>`
+                ? `<button data-action="toggle-owned" data-id="${song.id}" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>`
                 : `<button class="px-3 py-2 bg-gray-700/40 rounded-lg text-sm font-medium text-gray-400" ${disabledFeatureAttrs}>Mark Owned</button>`}
-              <button data-song-action="toggle-setlist" data-song-id="${song.id}" class="addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isInSetlist ? '✓ In Setlist' : '+ Set'}</button>
+              <button data-action="add-set" data-id="${song.id}" class="addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isInSetlist ? '✓ In Setlist' : '+ Set'}</button>
               ${sandboxEnabled
-                ? `<button data-song-action="add-sandbox" data-song-id="${song.id}" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>+ Sandbox</button>`
+                ? `<button data-action="add-sandbox" data-id="${song.id}" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>+ Sandbox</button>`
                 : `<button class="px-3 py-2 bg-blue-600/20 border border-blue-400/20 rounded-lg text-sm font-medium text-gray-400" ${disabledFeatureAttrs}>+ Sandbox</button>`}
               ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
             </div>
@@ -6496,7 +6565,7 @@ function render(){
     </div>
   `;
   if(view==='browser'){
-    renderSongList();
+    renderMatches();
     if(isFeatureOn('SANDBOX')){
       sandboxInit();
       renderSandbox();
@@ -6688,16 +6757,24 @@ function render(){
           showGenreMenu(genreBtn.dataset.genreTag || genreBtn.getAttribute('data-genre-tag'), e);
           return;
         }
-        const songAction = closestFromEvent(e, '[data-song-action]', { within: app });
-        if(songAction){
-          const action = songAction.dataset.songAction;
-          const songId = songAction.dataset.songId || songAction.getAttribute('data-song-id');
-          if(action === 'select' && songId){ selectSong(songId); return; }
+        const trackAction = closestFromEvent(e, '[data-action]', { within: app });
+        if(trackAction){
+          const action = trackAction.dataset.action;
+          const songId = trackAction.dataset.id || trackAction.getAttribute('data-id');
+          if(action === 'select-track' && songId){ selectSong(songId); return; }
           if(action === 'clear-selection'){ clearSelection(e); return; }
-          if(action === 'toggle-owned' && songId){ toggleOwned(songId); return; }
-          if(action === 'toggle-setlist' && songId){ addToSetlist(songId); return; }
+          if(action === 'toggle-owned' && songId){
+            if(viewingProfile) return;
+            toggleOwned(songId);
+            return;
+          }
+          if(action === 'add-set' && songId){
+            if(viewingProfile) return;
+            addToSetlist(songId);
+            return;
+          }
           if(action === 'add-sandbox' && songId){ addToSandbox(songId); return; }
-          if(action === 'preview' && songId){ onPreviewClick(songId); return; }
+          if(action === 'preview-track' && songId){ onPreviewClick(songId); return; }
         }
       }, { action: 'app-click' }));
       app.addEventListener('input', safeOn('input', (e)=>{
@@ -6855,6 +6932,7 @@ function render(){
       bindProfileHandlers();
       updateProfileErrorBanner();
       runDelegationSelfTest();
+      runInteractionSmokeTest();
       const searchInput = document.getElementById('searchInput');
       if(searchInput){
         const clearSearchBtn = document.getElementById('clearSearchBtn');
@@ -7015,6 +7093,7 @@ function render(){
 
     window.selectSong = (id) => {
       selectedSong = songs.find(s=>s.id===id);
+      console.debug('[selectTrack]', id, selectedSong?.title);
       resetMainPagination();
       refreshSelectedSongCriteria();
       updateMobileWindowState({ reset: true });
@@ -7079,7 +7158,7 @@ function render(){
       if(!guardFeature('OWNED_SYNC')) return;
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
       const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
-      await saveOwnedTracksSafe(nextOwned, { reason: 'toggle' });
+      const savePromise = saveOwnedTracksSafe(nextOwned, { reason: 'toggle' });
       updateOwnedCount();
       updateSongCardOwnedState(id);
       updateStickyCTA();
@@ -7087,6 +7166,7 @@ function render(){
         updateMobileWindowState({ reset: true });
         scheduleSongListRender('owned-filter-change');
       }
+      await savePromise;
     };
 
     window.exitProfileViewMode = () => {
