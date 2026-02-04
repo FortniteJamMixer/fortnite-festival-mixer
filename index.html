@@ -21,7 +21,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <script src="/constants/appMeta.js"></script>
   <script src="/services/configService.js"></script>
-  <script type="module" src="/services/profileStore.js"></script>
+  <script src="/services/localStorageStore.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -199,25 +199,6 @@
     .rating-star { color: rgba(255,255,255,0.35); transition: transform 0.15s ease, color 0.15s ease; }
     .rating-star.active { color: #fbbf24; transform: translateY(-1px) scale(1.05); }
     .rating-star-display { color: #fbbf24; }
-    .profile-accent-border { border-color: var(--profile-accent, #ff6b9d); }
-    .profile-accent-glow { box-shadow: 0 0 18px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
-    .profile-accent-pill { background: rgba(255,255,255,0.06); border: 1px solid var(--profile-accent, #ff6b9d); color: #fff; }
-    .profile-avatar-action { cursor: pointer; }
-    .profile-avatar-action:focus-visible { outline: 2px solid var(--profile-accent, #ff6b9d); outline-offset: 4px; }
-    .profile-avatar-overlay { pointer-events: none; }
-    .persona-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
-    .persona-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); transform: scale(1.04); }
-    .persona-option:hover { box-shadow: 0 0 16px rgba(255,255,255,0.2); transform: translateY(-1px) scale(1.02); }
-    .persona-badge { position: relative; display: inline-flex; align-items: center; justify-content: center; }
-    .persona-badge svg { display: block; }
-    .persona-energy { position: absolute; right: -4px; bottom: -4px; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 10px rgba(255,255,255,0.2); }
-    .persona-ring { animation: personaPulse 3s ease-in-out infinite; }
-    .persona-spark { animation: personaSpark 2.2s ease-in-out infinite; }
-    .persona-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
-    .persona-card:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 16px rgba(56,189,248,0.3); }
-    @keyframes personaPulse { 0%,100% { opacity: 0.85; } 50% { opacity: 0.55; } }
-    @keyframes personaSpark { 0%,100% { transform: translateY(0); opacity: 0.8; } 50% { transform: translateY(-3px); opacity: 1; } }
-    .profile-toggle { accent-color: var(--profile-accent, #ff6b9d); }
 
     /* Help modal */
     #helpModal {
@@ -525,7 +506,7 @@
       <div class="tour-actions">
         <div class="tour-left">
           <button class="tour-btn" id="tourBackBtn">Back</button>
-          <button class="tour-btn tour-btn-secondary" id="tourRouteBtn" style="display:none">Go to Profile</button>
+          <button class="tour-btn tour-btn-secondary" id="tourRouteBtn" style="display:none">Go to Browse</button>
         </div>
         <div class="tour-right">
           <button class="tour-btn" id="tourSkipBtn">Skip</button>
@@ -800,8 +781,6 @@ if (firebaseConfigValid && window.firebase?.initializeApp && window.firebase?.au
     firebaseAuth = firebase.auth();
     firestore = firebase.firestore();
     firebaseEnabled = true;
-    if(window.profileStore?.setFirestore) window.profileStore.setFirestore(firestore);
-    if(window.profileStore?.setFirebase) window.profileStore.setFirebase(firebase);
     firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
       console.warn('Firebase persistence failed', err);
       logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
@@ -1308,80 +1287,19 @@ function track(eventName, payload = {}){
       return map;
     }
     async function saveUserProfileToBackend(profile) {
-      if (!profile) return;
-      const firebaseUser = firebaseAuth?.currentUser;
-      const profileKey = profile.uid || firebaseUser?.uid;
-      const setlistItems = profile.setlist || [];
-      const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-      const usernameLower = normalizeUsernameLower(profile.username || profileKey);
-      const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
-      const searchNameLower = profile.searchNameLower || usernameLower;
-      const persona = ensurePersona(profile);
-      const { setlists, setlistIds, ownedTracks, ownedMap, ...profileRest } = profile;
-      const payload = {
-        ...profileRest,
-        uid: profileKey,
-        username: profile.username || profileKey,
-        djName: profile.djName || profile.username || profileKey,
-        usernameLower,
-        djNameLower,
-        searchNameLower,
-        searchTokens: Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower),
-        bio: (profile.bio || '').slice(0, PROFILE_BIO_MAX),
-        themeAccent: profile.themeAccent || THEME_ACCENTS[0].id,
-        personaId: persona.personaId,
-        personaTheme: persona.personaTheme,
-        personaSeed: persona.personaSeed,
-        isPublic: profile.isPublic !== false,
-        allowFriendRequests: profile.allowFriendRequests !== false,
-        rulesAccepted: profile.rulesAccepted === true,
-        rulesAcceptedAt: profile.rulesAcceptedAt || null,
-        email: profile.email || firebaseUser?.email || '',
-        setlist: setlistItems,
-        updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
-      };
-      let backendOk = true;
-      if (firestore && firebaseUser && profileKey) {
-        try {
-          const collection = getProfileCollection();
-          if(collection){
-            await collection.doc(profileKey).set(payload, { merge: true });
-          }
-        } catch (e) {
-          console.warn('Firestore save failed', e);
-          backendOk = false;
-        }
-      }
+      if (!profile) return false;
+      const profileKey = profile.uid || profile.username;
+      if(!profileKey) return false;
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      if (payload.username) profiles[payload.username] = payload;
-      if (profileKey) profiles[profileKey] = payload;
+      profiles[profileKey] = { ...(profiles[profileKey] || {}), ...profile };
+      if (profile.username) profiles[profile.username] = { ...(profiles[profile.username] || {}), ...profile };
       localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      return backendOk;
+      return true;
     }
     async function loadUserProfileFromBackend(identifier) {
       if (!identifier && !firebaseAuth?.currentUser) return null;
       const firebaseUser = firebaseAuth?.currentUser;
       const lookupKey = identifier || firebaseUser?.uid;
-      const isLikelyUid = typeof lookupKey === 'string' && (lookupKey.startsWith('local:') || lookupKey.length >= 20);
-      if (firestore && lookupKey) {
-        try {
-          const primaryCollection = getProfileCollection();
-          const legacyCollection = getLegacyProfileCollection();
-          if(primaryCollection && isLikelyUid){
-            const doc = await primaryCollection.doc(lookupKey).get();
-            if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
-          }
-          if(legacyCollection && isLikelyUid){
-            const legacyDoc = await legacyCollection.doc(lookupKey).get();
-            if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), lookupKey);
-          }
-          if(identifier && primaryCollection){
-            const query = await primaryCollection.where('usernameLower','==', normalizeUsernameLower(identifier)).limit(1).get();
-            const match = query.docs[0];
-            if(match?.exists) return normalizeProfileShape({ ...match.data(), uid: match.id }, match.id);
-          }
-        } catch (e) { console.warn('Firestore load failed', e); }
-      }
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
       if (lookupKey && profiles[lookupKey]) return normalizeProfileShape(profiles[lookupKey], lookupKey);
       if (firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
@@ -1553,26 +1471,17 @@ function track(eventName, payload = {}){
     let songs = [];
     let songsById = {};
     let draftProfile = null;
-    let ownedTracks = [];
-    let ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-    let ownedLibraryRestoring = false;
-    let ownedLibraryPendingWrite = null;
-    let ownedSyncDiagnostics = {
-      cloudReadable: null,
-      cloudWritable: null,
-      lastCloudSyncAt: null,
-      ownedCountLocal: 0,
-      ownedCountCloud: null
-    };
+    let ownedTracks = window.localStore?.loadOwned?.() || [];
+    const savedSettings = window.localStore?.loadSettings?.() || {};
     let selectedSong = null;
-    let sortMode = 'bpm';
+    let sortMode = ['bpm','camelot','compat','title'].includes(savedSettings.sortMode) ? savedSettings.sortMode : 'bpm';
     let previewSong = null;
     let setlist = [];
     let searchTerm = '';
     let view = 'browser';
-    let showOwnedOnly = false;
-    let showMixableOnly = false;
-    let selectedGenre = 'All';
+    let showOwnedOnly = savedSettings.showOwnedOnly === true;
+    let showMixableOnly = savedSettings.showMixableOnly === true;
+    let selectedGenre = savedSettings.selectedGenre || 'All';
     let bandMembers = [];
     let viewingProfile = null;
     let profileOwnedSearch = '';
@@ -1645,8 +1554,7 @@ function track(eventName, payload = {}){
     const TOUR_STORAGE_KEY = 'tour_done_v1';
     const TOUR_STEPS = [
       { id: 'browse', selector: '#searchInput', title: 'Browse Tracks', copy: 'Scroll or search to find songs you want to mix.', route: 'browser', routeLabel: 'Go to Browse' },
-      { id: 'setlist', selector: '#setlistBtn', title: 'Build Your Setlist', copy: 'Tap a track to add it, then open Setlist to review your picks.', route: 'browser' },
-      { id: 'go-live', selector: '#profileStreamUrl', title: 'Go Live (Optional)', copy: 'Add your stream link, then turn on LIVE. The green pill opens your stream.', route: 'profile', routeLabel: 'Go to Profile' }
+      { id: 'setlist', selector: '#setlistBtn', title: 'Build Your Setlist', copy: 'Tap a track to add it, then open Setlist to review your picks.', route: 'browser' }
     ];
     const tourState = {
       isOpen: false,
@@ -1667,13 +1575,11 @@ function track(eventName, payload = {}){
     let friendPanelTab = 'friends';
     let mainPager = null;
     let profileOwnedPager = null;
-    let priorityStrength = 'medium';
-    let profileSyncState = { syncing: false, message: '' };
+    let priorityStrength = ['low','medium','high'].includes(savedSettings.priorityStrength) ? savedSettings.priorityStrength : 'medium';
     let profileSyncTimeout = null;
-    let keyMatchMode = (localStorage.getItem('jamMixer.keyMatchMode') || 'camelot') === 'semitone' ? 'semitone' : 'camelot';
-    let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
-    let includeOppositeMode = localStorage.getItem('jamMixer.includeOppositeMode');
-    includeOppositeMode = includeOppositeMode === null ? true : includeOppositeMode === 'true';
+    let keyMatchMode = savedSettings.keyMatchMode === 'semitone' ? 'semitone' : 'camelot';
+    let maxSemitoneRange = Math.min(6, Math.max(1, Number(savedSettings.maxSemitoneRange ?? 6) || 6));
+    let includeOppositeMode = typeof savedSettings.includeOppositeMode === 'boolean' ? savedSettings.includeOppositeMode : true;
     function applyPreferencesFromProfile(profile){
       const prefs = profile?.preferences || {};
       if(prefs.keyMatchMode){ keyMatchMode = prefs.keyMatchMode === 'semitone' ? 'semitone' : 'camelot'; }
@@ -1685,22 +1591,7 @@ function track(eventName, payload = {}){
       persistKeyMatchSettings();
       isPersistingProfile = wasPersisting;
     }
-    function syncPreferencesIntoProfile(){
-      if(!currentUser) return;
-      const prefs = { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength };
-      currentUser.preferences = prefs;
-      if(draftProfile) draftProfile.preferences = prefs;
-    }
-    let preferenceSaveTimeout = null;
     let isPersistingProfile = false;
-    function schedulePreferencePersist(){
-      if(!currentUser) return;
-      clearTimeout(preferenceSaveTimeout);
-      preferenceSaveTimeout = setTimeout(()=>{
-        if(!currentUser) return;
-        persistCurrentUserProfile().catch(err=>console.warn('[profile] preference persistence failed', err));
-      }, 300);
-    }
     let camelotOverridesStore = { ids: {}, names: {} };
     let bpmOverridesStore = { ids: {}, names: {} };
     let auditSearch = '';
@@ -1724,7 +1615,6 @@ function track(eventName, payload = {}){
       { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, rawBpm:142, key:'A minor', rawKey:'A', rawMode:'minor', mode:'minor', camelot:'11A', derivedCamelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
     ].map(t=>({ ...t, flags: computeTrackFlags ? computeTrackFlags(t) : {} }));
     const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
-    const profileParam = new URLSearchParams(window.location.search).get('profile');
     const pendingOAuthToast = sessionStorage.getItem('oauthSuccess');
     if(pendingOAuthToast){ sessionStorage.removeItem('oauthSuccess'); setTimeout(()=>alert(pendingOAuthToast), 500); }
 
@@ -1747,7 +1637,6 @@ function track(eventName, payload = {}){
       userKey = key;
       return `${base}_${key}`;
     }
-    const PROFILE_MIGRATION_KEY = 'ffjm_migrated_uid';
     function readLegacyLocalProfile(){
       const legacyOwned = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
       const legacySetlist = JSON.parse(localStorage.getItem('setlist') || '[]');
@@ -1760,26 +1649,29 @@ function track(eventName, payload = {}){
         genreOverrides: legacyGenre
       };
     }
+    function loadLocalUserState(){
+      try{
+        const stored = JSON.parse(localStorage.getItem('jamMixer.userState.v1') || '{}');
+        setlist = normalizeSetlistIds(stored.setlist || []);
+        genreOverrides = stored.genreOverrides || {};
+        bandMembers = stored.bandMembers || [];
+      }catch(err){
+        console.warn('[local-state] Failed to parse stored state', err);
+      }
+    }
     function loadSandboxState(){
       sandboxIds = JSON.parse(localStorage.getItem(getNamespacedKey('sandboxTrackIds')) || '[]');
     }
     function persistProfileCache(){
-      if(!window.profileStore?.writeLocalProfileCache) return;
-      window.profileStore.writeLocalProfileCache({
-        uid: currentUser?.uid || ensureLocalDeviceId(),
-        email: currentUser?.email || '',
-        djName: currentUser?.djName || currentUser?.username || '',
-        streamUrl: currentUser?.streamUrl || '',
-        isLive: currentUser?.isLive === true,
-        liveStartedAt: currentUser?.liveStartedAt || currentUser?.liveSince || null,
+      localStorage.setItem('jamMixer.userState.v1', JSON.stringify({
         setlist,
         genreOverrides,
         bandMembers
-      });
+      }));
     }
     function scheduleProfileCacheSync(){
       clearTimeout(profileSyncTimeout);
-      profileSyncTimeout = setTimeout(async ()=>{
+      profileSyncTimeout = setTimeout(()=>{
         if(currentUser){
           currentUser.setlist = setlist;
           currentUser.genreOverrides = genreOverrides;
@@ -1791,24 +1683,6 @@ function track(eventName, payload = {}){
           draftProfile.bandMembers = bandMembers;
         }
         persistProfileCache();
-        const uid = firebaseAuth?.currentUser?.uid;
-        if(uid && firebaseEnabled && firestore && navigator.onLine){
-          try{
-            await window.profileStore.writeCloudProfile(uid, {
-              uid,
-              email: firebaseAuth?.currentUser?.email || currentUser?.email || '',
-              djName: currentUser?.djName || currentUser?.username || '',
-              streamUrl: currentUser?.streamUrl || '',
-              isLive: currentUser?.isLive === true,
-              liveStartedAt: currentUser?.liveStartedAt || currentUser?.liveSince || null,
-              setlist,
-              genreOverrides,
-              bandMembers
-            });
-          }catch(err){
-            console.warn('[profile] cloud sync failed', err);
-          }
-        }
       }, 350);
     }
     function createPaginationState({ pageIndex = 0, pageSize = DEFAULT_PAGE_SIZE } = {}){
@@ -2389,78 +2263,7 @@ function track(eventName, payload = {}){
       const arr = Array.isArray(ids) ? ids.filter(Boolean) : [];
       return Array.from(new Set(arr)).sort();
     }
-    function buildOwnedLibrarySnapshot(trackIds, updatedAt = new Date().toISOString(), meta = null){
-      const normalized = normalizeOwnedList(trackIds);
-      const hash = window.profileStore?.computeOwnedTracksHash
-        ? window.profileStore.computeOwnedTracksHash(normalized)
-        : normalized.join('|');
-      return {
-        trackIds: normalized,
-        count: normalized.length,
-        schemaVersion: window.profileStore?.OWNED_LIBRARY_SCHEMA_VERSION || 1,
-        updatedAt,
-        hash,
-        ...(meta ? { meta } : {})
-      };
-    }
-    function readOwnedTracksCache(uid){
-      if(!uid) return null;
-      return window.profileStore?.readOwnedTracksCache?.(uid) || null;
-    }
-    function writeOwnedTracksCache(uid, trackIds, updatedAt = new Date().toISOString()){
-      if(!uid) return null;
-      const snapshot = buildOwnedLibrarySnapshot(trackIds, updatedAt);
-      return window.profileStore?.writeOwnedTracksCache?.(uid, snapshot) || snapshot;
-    }
-    async function writeOwnedTracksCloud(uid, trackIds, meta = null){
-      if(!uid) return null;
-      if(!window.profileStore?.writeOwnedLibraryDoc) return null;
-      const snapshot = buildOwnedLibrarySnapshot(trackIds, new Date().toISOString(), meta);
-      return window.profileStore.writeOwnedLibraryDoc(uid, snapshot);
-    }
-    function updateOwnedSyncDiagnostics(patch = {}){
-      ownedSyncDiagnostics = { ...ownedSyncDiagnostics, ...patch };
-    }
-    function setOwnedLibraryStatus({ phase = 'idle', source = 'none', message = '' } = {}){
-      ownedLibraryState = { phase, source, message };
-    }
-    function resolveOwnedLibraryStatusMessage(){
-      if(!ownedLibraryState?.message) return '';
-      return ownedLibraryState.message;
-    }
-    async function flushOwnedLibraryPendingWrite(){
-      if(!ownedLibraryPendingWrite) return;
-      if(ownedLibraryRestoring) return;
-      const uid = firebaseAuth?.currentUser?.uid;
-      if(!uid || !firebaseEnabled || !firestore || !navigator.onLine) return;
-      const payload = ownedLibraryPendingWrite;
-      ownedLibraryPendingWrite = null;
-      if(!payload.trackIds?.length && payload.reason !== 'explicit_clear'){
-        console.warn('[owned-library] blocked empty pending write', { reason: payload.reason });
-        return;
-      }
-      const meta = payload.reason === 'explicit_clear' ? { reason: payload.reason } : null;
-      try{
-        await writeOwnedTracksCloud(uid, payload.trackIds, { ...(meta || {}), source: 'cloud' });
-        updateOwnedSyncDiagnostics({
-          cloudWritable: true,
-          lastCloudSyncAt: new Date().toISOString(),
-          ownedCountCloud: payload.trackIds.length
-        });
-        setOwnedLibraryStatus({
-          phase: 'ready',
-          source: 'cloud',
-          message: 'Library loaded (Cloud)'
-        });
-      }catch(err){
-        console.warn('[owned-library] pending write failed', err);
-        updateOwnedSyncDiagnostics({ cloudWritable: false });
-      }
-    }
-    async function flushOwnedPendingWrites(){
-      await flushOwnedLibraryPendingWrite();
-    }
-    async function saveOwnedTracksSafe(nextTrackIds, { reason = 'update', allowEmpty = false, skipCloud = false } = {}){
+    function saveOwnedTracksLocal(nextTrackIds, { reason = 'update', allowEmpty = false } = {}){
       const normalized = normalizeOwnedList(nextTrackIds);
       const explicitClear = reason === 'explicit_clear';
       const currentNormalized = normalizeOwnedList(ownedTracks);
@@ -2471,136 +2274,11 @@ function track(eventName, payload = {}){
         console.warn('[owned-library] blocked empty save', { reason });
         return { skipped: true, reason: 'empty_blocked' };
       }
-      ownedTracks = normalized;
-      const uid = firebaseAuth?.currentUser?.uid || currentUser?.uid;
-      if(uid) writeOwnedTracksCache(uid, normalized);
-      updateOwnedSyncDiagnostics({ ownedCountLocal: normalized.length });
-      if(skipCloud || ownedLibraryRestoring){
-        ownedLibraryPendingWrite = { trackIds: normalized, reason };
-        return { savedLocal: true, queued: true };
-      }
-      if(uid && firebaseEnabled && firestore && navigator.onLine){
-        const meta = explicitClear ? { reason } : {};
-        try{
-          await writeOwnedTracksCloud(uid, normalized, { ...meta, source: 'cloud' });
-          updateOwnedSyncDiagnostics({
-            cloudWritable: true,
-            lastCloudSyncAt: new Date().toISOString(),
-            ownedCountCloud: normalized.length
-          });
-          return { savedCloud: true };
-        }catch(err){
-          console.warn('[owned-library] cloud write failed', err);
-          updateOwnedSyncDiagnostics({ cloudWritable: false });
-          ownedLibraryPendingWrite = { trackIds: normalized, reason };
-          return { savedLocal: true, queued: true };
-        }
-      }
-      ownedLibraryPendingWrite = { trackIds: normalized, reason };
-      return { savedLocal: true, queued: true };
+      ownedTracks = window.localStore?.saveOwned?.(normalized) || normalized;
+      return { savedLocal: true };
     }
-    async function restoreOwnedLibrary(uid, { legacyOwnedTracks = [] } = {}){
-      if(!uid) return;
-      ownedLibraryRestoring = true;
-      const cachedSnapshot = readOwnedTracksCache(uid);
-      const legacySnapshot = legacyOwnedTracks.length
-        ? buildOwnedLibrarySnapshot(legacyOwnedTracks, new Date().toISOString())
-        : null;
-      let localSnapshot = cachedSnapshot || legacySnapshot || null;
-      if(localSnapshot?.trackIds?.length){
-        ownedTracks = normalizeOwnedList(localSnapshot.trackIds);
-        updateOwnedSyncDiagnostics({ ownedCountLocal: ownedTracks.length });
-        setOwnedLibraryStatus({
-          phase: 'restoring',
-          source: 'cache',
-          message: 'Restoring your library… Using cached library.'
-        });
-        render();
-        setupEventListeners();
-      } else {
-        updateOwnedSyncDiagnostics({ ownedCountLocal: 0 });
-        setOwnedLibraryStatus({
-          phase: 'restoring',
-          source: 'none',
-          message: 'Restoring your library…'
-        });
-        render();
-        setupEventListeners();
-      }
-      if(!firebaseEnabled || !firestore || !navigator.onLine){
-        if(localSnapshot && !cachedSnapshot){
-          writeOwnedTracksCache(uid, localSnapshot.trackIds, localSnapshot.updatedAt);
-        }
-        ownedLibraryRestoring = false;
-        updateOwnedSyncDiagnostics({
-          cloudReadable: firebaseEnabled ? false : null,
-          cloudWritable: firebaseEnabled ? false : null
-        });
-        setOwnedLibraryStatus({
-          phase: 'ready',
-          source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
-          message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
-        });
-        return;
-      }
-      try{
-        let cloudSnapshot = null;
-        try{
-          cloudSnapshot = await window.profileStore.readOwnedLibraryDoc(uid);
-          updateOwnedSyncDiagnostics({
-            cloudReadable: true,
-            lastCloudSyncAt: new Date().toISOString(),
-            ownedCountCloud: cloudSnapshot?.trackIds?.length ?? null
-          });
-        }catch(err){
-          console.warn('[owned-library] cloud read failed', err);
-          updateOwnedSyncDiagnostics({ cloudReadable: false });
-        }
-        const plan = window.profileStore.buildOwnedLibraryPlan({ cache: localSnapshot, cloud: cloudSnapshot });
-        if(plan?.chosen?.trackIds){
-          ownedTracks = normalizeOwnedList(plan.chosen.trackIds);
-          updateOwnedSyncDiagnostics({ ownedCountLocal: ownedTracks.length });
-        }
-        if(plan.shouldUpdateCache){
-          writeOwnedTracksCache(uid, plan.chosen.trackIds, plan.chosen.updatedAt || new Date().toISOString());
-        }
-        if(plan.shouldSeedCloud || plan.shouldWriteCloud){
-          if(plan.chosen.trackIds.length){
-            await writeOwnedTracksCloud(uid, plan.chosen.trackIds, {
-              reason: plan.shouldSeedCloud ? 'seed_cache' : 'reconcile_cache',
-              source: plan.source === 'merge' ? 'merge' : (plan.source === 'cache' ? 'local' : 'cloud')
-            });
-            updateOwnedSyncDiagnostics({
-              cloudWritable: true,
-              lastCloudSyncAt: new Date().toISOString(),
-              ownedCountCloud: plan.chosen.trackIds.length
-            });
-          }
-        }
-        const sourceLabel = plan.source === 'cloud'
-          ? 'Cloud'
-          : plan.source === 'cache'
-            ? 'Cached'
-            : plan.source === 'merge'
-              ? 'Merged'
-              : 'Local';
-        setOwnedLibraryStatus({
-          phase: 'ready',
-          source: plan.source,
-          message: `Library loaded (${sourceLabel})`
-        });
-        await flushOwnedLibraryPendingWrite();
-      } catch(err){
-        console.warn('[owned-library] reconcile failed', err);
-        updateOwnedSyncDiagnostics({ cloudReadable: false });
-        setOwnedLibraryStatus({
-          phase: 'ready',
-          source: localSnapshot?.trackIds?.length ? 'cache' : 'local',
-          message: localSnapshot?.trackIds?.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
-        });
-      } finally {
-        ownedLibraryRestoring = false;
-      }
+    async function saveOwnedTracksSafe(nextTrackIds, options = {}){
+      return saveOwnedTracksLocal(nextTrackIds, options);
     }
     function normalizeSetlistIds(ids){
       if(!Array.isArray(ids)) return [];
@@ -2712,7 +2390,7 @@ function track(eventName, payload = {}){
       }
       if(routeBtn){
         routeBtn.style.display = routeMismatch ? 'inline-flex' : 'none';
-        routeBtn.textContent = step.routeLabel || (step.route === 'profile' ? 'Go to Profile' : 'Go to Browse');
+        routeBtn.textContent = step.routeLabel || 'Go to Browse';
       }
       if(nextBtn){
         nextBtn.disabled = routeMismatch;
@@ -2838,148 +2516,40 @@ function track(eventName, payload = {}){
       }, 300);
     }
     async function persistCurrentUserProfile(){
-      console.debug('[profile] save clicked', { draftProfile, currentUser });
-      if(viewingProfile) throw new Error('Cannot save while viewing another profile');
-      if(!currentUser?.username) throw new Error('No current user to persist');
-      const adminApplied = applyAdminFlag(currentUser);
-      await persistAdminFlagIfNeeded(currentUser, adminApplied);
-      currentUser = adminApplied;
-      isPersistingProfile = true;
-      try{
-        syncPreferencesIntoProfile();
-        const normalizedStreamUrl = normalizeStreamUrlInput(currentUser.streamUrl || '');
-        const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
-        const usernameLower = normalizeUsernameLower(currentUser.username);
-        const djNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
-        const displayNameLower = normalizeUsernameLower(currentUser.djName || currentUser.username);
-        const searchNameLower = usernameLower;
-        const persona = ensurePersona(currentUser);
-        persistPersonaToStorage(persona);
-        const bio = (currentUser.bio || '').slice(0, PROFILE_BIO_MAX);
-        const themeAccent = currentUser.themeAccent || THEME_ACCENTS[0].id;
-        const isPublic = currentUser.isPublic !== false;
-        const allowFriendRequests = currentUser.allowFriendRequests !== false;
-        const rulesAccepted = currentUser.rulesAccepted === true;
-        const rulesAcceptedAt = currentUser.rulesAcceptedAt || null;
-        const { ownedTracks: currentOwnedTracks, ownedMap: currentOwnedMap, ...currentUserRest } = currentUser || {};
-        const mergedProfile = {
-          ...currentUserRest,
-          uid: firebaseAuth?.currentUser?.uid || currentUser.uid,
-          username: currentUser.username,
-          djName: (currentUser.djName || currentUser.username || '').trim() || currentUser.username,
-          usernameLower,
-          djNameLower,
-          displayNameLower,
-          searchNameLower,
-          searchTokens: buildSearchTokens(usernameLower),
-          bio,
-          themeAccent,
-          personaId: persona.personaId,
-          personaTheme: persona.personaTheme,
-          personaSeed: persona.personaSeed,
-          isPublic,
-          allowFriendRequests,
-          rulesAccepted,
-          rulesAcceptedAt,
-          setlist: setlist || [],
-          bandMembers,
-          genreOverrides,
-          streamUrl: normalizedStreamUrl,
-          isLive: streamUrlValid ? currentUser.isLive === true : false,
-          liveStartedAt: streamUrlValid ? (currentUser.liveStartedAt || currentUser.liveSince || null) : null,
-          oauth: currentUser.oauth || {},
-          tour: currentUser.tour || {},
-          preferences: {
-            keyMatchMode,
-            maxSemitoneRange,
-            includeOppositeMode,
-            priorityStrength
-          }
-        };
-        console.debug('[profile] currentUser before persist', currentUser);
-        currentUser = mergedProfile;
-        console.debug('[profile] currentUser after merge', currentUser);
-        refreshDraftProfileFromCurrentUser();
-        persistProfileCache();
-        persistKeyMatchSettings();
-        const profileKey = currentUser.uid || currentUser.username;
-        if(profileKey) localStorage.setItem('currentUser', profileKey);
-        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-        if (currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...mergedProfile };
-        if (currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...mergedProfile };
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
-        console.debug('[profile] local save ok');
-        const backendOk = await saveUserProfileToBackend(mergedProfile);
-        console[backendOk ? 'debug' : 'warn'](backendOk ? '[profile] backend save ok' : '[profile] backend save failed');
-        const verifyProfile = await loadUserProfile(currentUser.uid || currentUser.username);
-        const prefMatch = JSON.stringify(verifyProfile?.preferences || {}) === JSON.stringify(mergedProfile.preferences || {});
-        const genreMatch = JSON.stringify(verifyProfile?.genreOverrides || {}) === JSON.stringify(mergedProfile.genreOverrides || {});
-        const djMatch = (verifyProfile?.djName || '').trim() === (mergedProfile.djName || '').trim();
-        const verified = !!verifyProfile && djMatch && prefMatch && genreMatch;
-        if(!verified){
-          console.error('[profile] save verification failed', { mergedProfile, verifyProfile });
-          throw new Error('Save verification failed');
+      if(!currentUser?.username) return { backendOk: true, verifyProfile: currentUser };
+      const mergedProfile = {
+        ...currentUser,
+        setlist: setlist || [],
+        bandMembers,
+        genreOverrides,
+        preferences: {
+          keyMatchMode,
+          maxSemitoneRange,
+          includeOppositeMode,
+          priorityStrength
         }
-        currentUser = verifyProfile;
-        applyPreferencesFromProfile(currentUser);
-        refreshDraftProfileFromCurrentUser();
-        console.debug('[profile] save verified', { verifyProfile });
-        return { backendOk, verifyProfile };
-      } finally {
-        isPersistingProfile = false;
-      }
+      };
+      currentUser = mergedProfile;
+      persistProfileCache();
+      persistUserSettings();
+      const profileKey = currentUser.uid || currentUser.username;
+      if(profileKey) localStorage.setItem('currentUser', profileKey);
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      if (currentUser.username) profiles[currentUser.username] = { ...(profiles[currentUser.username]||{}), ...mergedProfile };
+      if (currentUser.uid) profiles[currentUser.uid] = { ...(profiles[currentUser.uid]||{}), ...mergedProfile };
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      return { backendOk: true, verifyProfile: currentUser };
     }
     async function loadUserProfile(username){
       if(!username && !firebaseAuth?.currentUser) return null;
       const firebaseUser = firebaseAuth?.currentUser;
-      if(firestore && (firebaseUser || username)){
-        try{
-          const collection = getProfileCollection();
-          const legacyCollection = getLegacyProfileCollection();
-          const lookupId = firebaseUser?.uid || username;
-          const isLikelyUid = typeof lookupId === 'string' && (lookupId.startsWith('local:') || lookupId.length >= 20);
-          if(collection && isLikelyUid){
-            const doc = await collection.doc(lookupId).get();
-            if(doc.exists) return normalizeProfileShape(doc.data(), lookupId);
-          }
-          if(legacyCollection && isLikelyUid){
-            const legacyId = firebaseUser?.uid || username;
-            const legacyDoc = await legacyCollection.doc(legacyId).get();
-            if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), legacyId);
-          }
-          if(username && collection){
-            const query = await collection.where('usernameLower','==', normalizeUsernameLower(username)).limit(1).get();
-            const match = query.docs[0];
-            if(match?.exists) return normalizeProfileShape({ ...match.data(), uid: match.id }, match.id);
-          }
-        }catch(e){ console.warn('Firestore load failed',e); }
-      }
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
       if(firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
       return normalizeProfileShape(profiles[username], username) || null;
     }
 
     async function loadProfileForViewing(username){
-      if(!username) return null;
-      const profile = await loadUserProfileFromBackend(username) || await loadUserProfile(username);
-      if(profile?.isPublic === false){
-        const ownerId = firebaseAuth?.currentUser?.uid || currentUser?.uid || currentUser?.username;
-        if(ownerId !== profile.uid && ownerId !== profile.username){
-          return null;
-        }
-      }
-      if(profile?.uid && firebaseEnabled && firestore && navigator.onLine){
-        try{
-          const ownedSnapshot = await window.profileStore.readOwnedLibraryDoc(profile.uid);
-          if(ownedSnapshot?.trackIds){
-            profile.ownedTracks = ownedSnapshot.trackIds;
-          }
-        }catch(err){
-          console.warn('[profile] owned library fetch failed', err);
-        }
-      }
-      viewingProfile = profile || null;
-      return viewingProfile;
+      return null;
     }
 
     async function fetchProfilesByField(field, value, { publicOnly = true } = {}){
@@ -3307,20 +2877,7 @@ function track(eventName, payload = {}){
     }
 
     function openProfileEditor(){
-      if(viewingProfile){
-        view = 'profile';
-        render();
-        setupEventListeners();
-        renderProfile();
-        debugProfileLog('profile editor open blocked (view-only)');
-        return;
-      }
-      profileEditMode = true;
-      view = 'profile';
-      render();
-      setupEventListeners();
-      renderProfile();
-      debugProfileLog('profile editor opened');
+      return;
     }
     window.openProfileEditor = openProfileEditor;
 
@@ -3570,32 +3127,13 @@ function track(eventName, payload = {}){
     };
 
     function openFriendProfile(profile){
-      if(!profile) return;
-      viewingProfile = normalizeProfileShape(profile, profile.uid || profile.username || '');
-      profileOwnedSearch = '';
-      resetPage(profileOwnedPager);
-      setProfileQueryParam(viewingProfile?.username || viewingProfile?.uid || '');
-      friendLookupResults = [];
-      friendLookupError = '';
-      ratingStatusMessage = '';
-      ratingStatusTone = 'info';
-      ratingLoadedFor = '';
-      ratingDraft = { stars: 0, tags: [], comment: '', hasExisting: false };
-      view = 'profile';
-      render();
-      setupEventListeners();
-      updateOwnedCount();
+      return;
     }
 
-    window.selectFriendProfile = (username)=>{
-      const pick = friendLookupResults.find(p=>p.username === username || p.uid === username);
-      if(!pick){ friendLookupError = 'Profile not available anymore.'; renderProfile(); setupEventListeners(); return; }
-      openFriendProfile(pick);
-    };
+    window.selectFriendProfile = () => {};
 
     async function viewFriendProfile(){
-      const input = (document.getElementById('friendSearchInput')?.value || '').trim();
-      friendSearchTerm = input;
+      return;
       friendLookupError = '';
       friendLookupResults = [];
       if(!firebaseAuth?.currentUser){
@@ -3628,113 +3166,11 @@ function track(eventName, payload = {}){
     }
 
     window.viewLiveProfile = async (username)=>{
-      if(!username) return;
-      if(!firebaseAuth?.currentUser){
-        friendLookupError = 'Sign in required to view other profiles.';
-        renderProfile(); setupEventListeners(); return;
-      }
-      const profile = await loadProfileForViewing(username);
-      if(profile){
-        openFriendProfile(profile);
-      } else {
-        friendLookupError = `No profile found for ‘${username}’`;
-        renderProfile(); setupEventListeners();
-      }
+      return;
     };
 
     window.submitRating = async ()=>{
-      ratingStatusMessage = '';
-      ratingStatusTone = 'info';
-      if(!currentUser){
-        ratingStatusMessage = 'Sign in required to rate this DJ.';
-        ratingStatusTone = 'error';
-        renderProfile(); setupEventListeners(); return;
-      }
-      if(!viewingProfile){
-        ratingStatusMessage = 'Open a profile to rate.';
-        ratingStatusTone = 'error';
-        renderProfile(); setupEventListeners(); return;
-      }
-      const streamerUid = viewingProfile.uid || viewingProfile.username;
-      if(!streamerUid){
-        ratingStatusMessage = 'Missing streamer profile.';
-        ratingStatusTone = 'error';
-        renderProfile(); setupEventListeners(); return;
-      }
-      const raterUid = currentUser.uid || currentUser.username;
-      const stars = Number(ratingDraft.stars) || 0;
-      if(stars < 1 || stars > 5){
-        ratingStatusMessage = 'Select a 1–5 star rating.';
-        ratingStatusTone = 'error';
-        renderProfile(); setupEventListeners(); return;
-      }
-      const comment = (ratingDraft.comment || '').trim();
-      if(comment.length > RATING_MAX_COMMENT){
-        ratingStatusMessage = `Comment too long. Max ${RATING_MAX_COMMENT} characters.`;
-        ratingStatusTone = 'error';
-        renderProfile(); setupEventListeners(); return;
-      }
-      const tags = Array.isArray(ratingDraft.tags) ? ratingDraft.tags.filter(tag=> RATING_TAGS.includes(tag)) : [];
-      if(tags.length !== (ratingDraft.tags || []).length){
-        ratingStatusMessage = 'Remove invalid tags before submitting.';
-        ratingStatusTone = 'error';
-        renderProfile(); setupEventListeners(); return;
-      }
-      const rateCheck = checkRatingUpdateLimit(streamerUid, raterUid);
-      if(!rateCheck.allowed){
-        const minutes = Math.ceil((rateCheck.retryAt - Date.now()) / 60000);
-        ratingStatusMessage = `Too many updates. Try again in ${minutes} min.`;
-        ratingStatusTone = 'error';
-        renderProfile(); setupEventListeners(); return;
-      }
-      ratingSubmitting = true;
-      renderProfile(); setupEventListeners();
-      try{
-        const previousRating = await getExistingRating(streamerUid, raterUid);
-        const updatedAt = new Date().toISOString();
-        const ratingPayload = { stars, tags, comment, updatedAt };
-        if(firestore){
-          const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-          const collection = getProfileCollection();
-          if(!collection) throw new Error('Profile collection unavailable');
-          await collection.doc(streamerUid).collection('ratings').doc(raterUid)
-            .set({ ...ratingPayload, updatedAt: serverTimestamp ? serverTimestamp() : updatedAt }, { merge: true });
-          const profileDoc = await collection.doc(streamerUid).get();
-          const baseProfile = profileDoc.exists ? normalizeProfileShape(profileDoc.data(), streamerUid) : viewingProfile;
-          const aggregates = updateAggregatesWithRating(baseProfile || {}, previousRating?.stars, stars);
-          await collection.doc(streamerUid).set(aggregates, { merge: true });
-          viewingProfile = viewingProfile && (viewingProfile.username === streamerUid || viewingProfile.uid === streamerUid)
-            ? { ...viewingProfile, ...aggregates }
-            : viewingProfile;
-        } else {
-          const ratings = getLocalRatings();
-          ratings[streamerUid] = ratings[streamerUid] || {};
-          ratings[streamerUid][raterUid] = ratingPayload;
-          saveLocalRatings(ratings);
-          const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-          const existingProfile = normalizeProfileShape(profiles[streamerUid] || viewingProfile || { username: streamerUid }, streamerUid);
-          const aggregates = updateAggregatesWithRating(existingProfile || {}, previousRating?.stars, stars);
-          const mergedProfile = { ...(profiles[streamerUid] || {}), ...existingProfile, ...aggregates };
-          profiles[streamerUid] = mergedProfile;
-          localStorage.setItem('userProfiles', JSON.stringify(profiles));
-          if(viewingProfile && (viewingProfile.username === streamerUid || viewingProfile.uid === streamerUid)){
-            viewingProfile = { ...viewingProfile, ...aggregates };
-          }
-        }
-        recordRatingUpdate(streamerUid, raterUid, rateCheck.updates || [], rateCheck.logs || {});
-        ratingDraft.hasExisting = true;
-        ratingStatusMessage = 'Rating saved!';
-        ratingStatusTone = 'success';
-        refreshLiveNowUsers();
-      }catch(err){
-        console.error('rating submit failed', err);
-        ratingStatusMessage = 'Rating failed. Please try again.';
-        ratingStatusTone = 'error';
-      }finally{
-        ratingSubmitting = false;
-        renderProfile();
-        setupEventListeners();
-      }
+      return;
     };
 
     function setProfileQueryParam(value){
@@ -3812,12 +3248,12 @@ function track(eventName, payload = {}){
             <div class="text-center mb-8">
               <div class="w-24 h-24 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 vinyl-spin">🎧</div>
               <h1 class="text-4xl font-bold text-white graffiti-text mb-2">${BRAND.APP_NAME.toUpperCase()}</h1>
-              <p class="text-cyan-300">Your Personal DJ Profile</p>
+              <p class="text-cyan-300">Local-first DJ Mixer</p>
             </div>
 
             <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
-              <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
-              ${!firebaseEnabled ? `<div class="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/50 text-yellow-100 text-sm text-center">Firebase not configured — using local profiles.</div>` : ''}
+              <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Continue</h2>
+              ${!firebaseEnabled ? `<div class="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/50 text-yellow-100 text-sm text-center">Firebase not configured — using local mode.</div>` : ''}
 
               ${firebaseEnabled ? `
                 <div class="mb-5">
@@ -3826,7 +3262,7 @@ function track(eventName, payload = {}){
                     <button type="button" id="tabSignUp" onclick="setAuthMode('signup')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
                   </div>
                   <p class="text-xs text-gray-300 mt-3 text-center">
-                    Cloud sync works after you create an account once. Sign in to access your profile and owned songs.
+                    Signing in is optional and does not affect local library storage.
                   </p>
                 </div>
 
@@ -3936,20 +3372,6 @@ function track(eventName, payload = {}){
     function getActiveProfile(){
       if(currentUser) return currentUser;
       const activeUid = localStorage.getItem('activeProfileUid');
-      const cachedProfile = window.profileStore?.readLocalProfileCache?.() || null;
-      if(cachedProfile && window.profileStore?.hasMeaningfulProfileData?.(cachedProfile)){
-        const ownedCache = cachedProfile.uid ? readOwnedTracksCache(cachedProfile.uid) : null;
-        if(ownedCache?.trackIds?.length){
-          cachedProfile.ownedTracks = ownedCache.trackIds;
-        }
-        const fallbackUid = cachedProfile.uid || activeUid || getLocalDeviceId();
-        return normalizeProfileShape({
-          ...cachedProfile,
-          uid: fallbackUid,
-          username: cachedProfile.username || cachedProfile.djName || 'Guest',
-          djName: cachedProfile.djName || cachedProfile.username || 'Guest'
-        }, fallbackUid);
-      }
       const localProfileRaw = localStorage.getItem('localProfile');
       if(localProfileRaw){
         try{
@@ -3983,13 +3405,6 @@ function track(eventName, payload = {}){
         ownedTracks = incomingOwned;
       } else if(!ownedTracks.length) {
         ownedTracks = [];
-      }
-      if(!firebaseAuth?.currentUser && ownedLibraryState.phase === 'idle'){
-        setOwnedLibraryStatus({
-          phase: 'ready',
-          source: ownedTracks.length ? 'cache' : 'local',
-          message: ownedTracks.length ? 'Library loaded (Cached)' : 'Library loaded (Local)'
-        });
       }
       setlist = normalizeSetlistIds(currentUser.setlist || currentUser.setlistIds || currentUser.setlists || []);
       bandMembers = currentUser.bandMembers || [];
@@ -4326,98 +3741,20 @@ function track(eventName, payload = {}){
     }
 
     async function hydrateFromLocalCacheOnly(){
-      const cached = window.profileStore?.readLocalProfileCache?.() || {};
-      const fallbackUid = cached.uid || getLocalDeviceId();
-      const fallbackName = cached.djName || cached.email || 'Guest';
-      const ownedCache = readOwnedTracksCache(fallbackUid);
-      const hydrated = normalizeProfileShape({
-        ...cached,
-        uid: fallbackUid,
-        username: cached.username || fallbackName,
-        djName: cached.djName || fallbackName,
-        ownedTracks: ownedCache?.trackIds || cached.ownedTracks || []
-      }, fallbackUid);
-      if(window.profileStore?.hasMeaningfulProfileData?.(hydrated)) return hydrated;
-      return null;
-    }
-
-    function getLegacyProfileForMigration(uid){
-      if(localStorage.getItem(PROFILE_MIGRATION_KEY) === uid){
-        return { legacyProfile: {}, usedLegacy: false };
-      }
-      const legacyProfile = readLegacyLocalProfile();
-      const usedLegacyProfile = window.profileStore?.hasMeaningfulProfileData
-        ? window.profileStore.hasMeaningfulProfileData(legacyProfile)
-        : hasMeaningfulData(legacyProfile);
-      const usedLegacy = usedLegacyProfile || (legacyProfile.ownedTracks && legacyProfile.ownedTracks.length);
-      return { legacyProfile, usedLegacy };
-    }
-
-    function resolveOwnedTracksFromCacheCandidates(candidates){
-      const uniqueCandidates = Array.from(new Set((candidates || []).filter(Boolean)));
-      let best = null;
-      uniqueCandidates.forEach((candidate)=>{
-        const snapshot = readOwnedTracksCache(candidate);
-        if(snapshot?.trackIds?.length && (!best || snapshot.trackIds.length > best.trackIds.length)){
-          best = snapshot;
-        }
-      });
-      return best?.trackIds || [];
+      return getActiveProfile();
     }
 
     async function hydrateProfileFromCloudThenMergeLocal(uid, email){
-      profileSyncState = { syncing: true, message: 'Syncing your profile…' };
-      const localCache = window.profileStore?.readLocalProfileCache?.() || {};
-      const { legacyProfile, usedLegacy } = getLegacyProfileForMigration(uid);
-      const { ownedTracks: legacyOwnedTracks = [], ...legacyProfileFields } = legacyProfile || {};
-      const cachedOwnedTracks = resolveOwnedTracksFromCacheCandidates([
-        uid,
-        localCache.uid,
-        localStorage.getItem('activeProfileUid'),
-        getLocalDeviceId()
-      ]);
-      const localProfile = {
-        ...localCache,
-        ...legacyProfileFields,
-        uid,
-        email: email || localCache.email || '',
-        djName: localCache.djName || currentUser?.djName || '',
-        ownedTracks: normalizeOwnedList([...(localCache.ownedTracks || []), ...cachedOwnedTracks])
-      };
-      setlist = normalizeSetlistIds(localProfile.setlist || []);
-      genreOverrides = localProfile.genreOverrides || {};
-      bandMembers = localProfile.bandMembers || [];
-      render(); setupEventListeners();
-      await restoreOwnedLibrary(uid, { legacyOwnedTracks });
-      const cloudProfile = await window.profileStore.readCloudProfile(uid);
-      const plan = window.profileStore.buildSyncPlan({ cloud: cloudProfile, local: localProfile });
-      const defaultProfile = {
+      const legacyProfile = readLegacyLocalProfile();
+      const localState = JSON.parse(localStorage.getItem('jamMixer.userState.v1') || '{}');
+      return {
         uid,
         email: email || '',
-        setlist: [],
-        genreOverrides: {},
-        bandMembers: []
+        ownedTracks: ownedTracks.length ? ownedTracks : legacyProfile.ownedTracks,
+        setlist: localState.setlist || legacyProfile.setlist || [],
+        genreOverrides: localState.genreOverrides || legacyProfile.genreOverrides || {},
+        bandMembers: localState.bandMembers || []
       };
-      let merged = { ...defaultProfile, ...(plan.merged || {}) };
-      merged.uid = uid;
-      merged.email = email || merged.email || '';
-      if(plan.shouldWriteCloud){
-        const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-        const migrating = plan.cloudEmpty && plan.localHasData;
-        const patch = {
-          ...merged,
-          migratedFromLocalAt: migrating
-            ? (serverTimestamp ? serverTimestamp() : new Date().toISOString())
-            : merged.migratedFromLocalAt ?? null
-        };
-        await window.profileStore.writeCloudProfile(uid, patch);
-      }
-      window.profileStore.writeLocalProfileCache(merged);
-      if(usedLegacy){
-        localStorage.setItem(PROFILE_MIGRATION_KEY, uid);
-        ['ownedTracks','setlist','setlistIds','genreOverrides'].forEach((key)=>localStorage.removeItem(key));
-      }
-      return merged;
     }
 
     function renderSignedOutState(){
@@ -4449,13 +3786,11 @@ function track(eventName, payload = {}){
           } else {
             currentUser = null;
           }
-          profileSyncState = { syncing: false, message: '' };
           renderSignedOutState();
           return;
         }
         if (authSettledUser === user.uid) return;
         authSettledUser = user.uid;
-        profileSyncState = { syncing: true, message: 'Syncing your profile…' };
         render(); setupEventListeners();
         try {
           const mergedProfile = await hydrateProfileFromCloudThenMergeLocal(user.uid, user.email || '');
@@ -4471,7 +3806,6 @@ function track(eventName, payload = {}){
           logEvent('auth_success', { uid: user.uid });
           renderSignedInState();
         } finally {
-          profileSyncState = { syncing: false, message: '' };
           render(); setupEventListeners();
         }
       });
@@ -4534,20 +3868,9 @@ function track(eventName, payload = {}){
 
     async function logoutUser(){
       try { await persistCurrentUserProfile(); } catch(err){ console.warn('save before logout failed', err); }
-      try { await flushOwnedPendingWrites(); } catch(err){ console.warn('flush owned writes failed', err); }
       if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
       authSettledUser = null; authProcessing = false;
-      currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
-      ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-      ownedLibraryRestoring = false;
-      ownedLibraryPendingWrite = null;
-      ownedSyncDiagnostics = {
-        cloudReadable: null,
-        cloudWritable: null,
-        lastCloudSyncAt: null,
-        ownedCountLocal: 0,
-        ownedCountCloud: null
-      };
+      currentUser = null; draftProfile = null; viewingProfile = null;
       view = 'browser';
       showOwnedOnly = false;
       showMixableOnly = false;
@@ -4558,76 +3881,7 @@ function track(eventName, payload = {}){
     }
 
     async function deleteAccount(){
-      if(viewingProfile){ alert('Cannot delete while viewing another profile.'); return; }
-      if(!firebaseAuth?.currentUser){
-        alert('Sign in to delete your account.');
-        return;
-      }
-      const confirmed = confirm('⚠️ This permanently deletes your account, owned library, and profile. This cannot be undone.');
-      if(!confirmed) return;
-      const typed = prompt('Type DELETE to confirm account deletion.');
-      if(typed !== 'DELETE'){
-        alert('Account deletion canceled.');
-        return;
-      }
-      const statusEl = document.getElementById('profileStatus');
-      if(statusEl) statusEl.textContent = 'Deleting account…';
-      const uid = firebaseAuth.currentUser.uid;
-      const username = currentUser?.username || '';
-      try { await flushOwnedPendingWrites(); } catch(err){ console.warn('flush owned writes failed', err); }
-      try{
-        if(firestore && uid){
-          const userRef = firestore.collection('users').doc(uid);
-          await userRef.collection('library').doc('owned').delete().catch(()=>{});
-          await userRef.delete().catch(()=>{});
-        }
-        const legacyCollection = getLegacyProfileCollection();
-        if(legacyCollection){
-          if(uid) await legacyCollection.doc(uid).delete().catch(()=>{});
-          if(username) await legacyCollection.doc(username).delete().catch(()=>{});
-        }
-        await firebaseAuth.currentUser.delete();
-      }catch(err){
-        console.warn('account delete failed', err);
-        if(statusEl) statusEl.textContent = 'Delete failed — reauthenticate and try again.';
-        alert('Account deletion failed. Please sign out, sign in again, and retry.');
-        return;
-      }
-      try{
-        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-        if(uid) delete profiles[uid];
-        if(username) delete profiles[username];
-        localStorage.setItem('userProfiles', JSON.stringify(profiles));
-        localStorage.removeItem('currentUser');
-        localStorage.removeItem('activeProfileUid');
-        localStorage.removeItem('localProfile');
-        if(window.profileStore?.PROFILE_CACHE_KEY){
-          localStorage.removeItem(window.profileStore.PROFILE_CACHE_KEY);
-        }
-        if(window.profileStore?.getOwnedTracksCacheKey && uid){
-          localStorage.removeItem(window.profileStore.getOwnedTracksCacheKey(uid));
-        }
-        sessionStorage.removeItem(CURRENT_PAGE_KEY);
-      }catch(err){
-        console.warn('account delete local cleanup failed', err);
-      }
-      authSettledUser = null; authProcessing = false;
-      currentUser = null; draftProfile = null; ownedTracks = []; setlist = []; bandMembers = []; viewingProfile = null; genreOverrides = {};
-      ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-      ownedLibraryRestoring = false;
-      ownedLibraryPendingWrite = null;
-      ownedSyncDiagnostics = {
-        cloudReadable: null,
-        cloudWritable: null,
-        lastCloudSyncAt: null,
-        ownedCountLocal: 0,
-        ownedCountCloud: null
-      };
-      view = 'browser';
-      showOwnedOnly = false;
-      showMixableOnly = false;
-      headerMoreOpen = false;
-      showLoginScreen();
+      alert('Account deletion is disabled in local-only mode.');
     }
 
     // -------------------- Songs loading -----------------------
@@ -4874,7 +4128,6 @@ function track(eventName, payload = {}){
     }
 
     function getStickyCtaConfig(){
-      if(!isFeatureOn('OWNED_SYNC')) return { visible: false };
       if(view !== 'browser') return { visible: false };
       if(viewingProfile) return { visible: false };
       if(!isMobileViewport()) return { visible: false };
@@ -4988,7 +4241,6 @@ function track(eventName, payload = {}){
     }
 
     function openQuickStart(){
-      if(!guardFeature('OWNED_SYNC')) return;
       if(quickStartDone) return;
       quickStartState.open = true;
       quickStartState.step = 0;
@@ -5013,7 +4265,6 @@ function track(eventName, payload = {}){
     function maybeAutoOpenQuickStart(){
       if(quickStartDone || quickStartPrompted || quickStartState.open) return;
       if(!currentUser || !justEnteredProfile) return;
-      if(!isFeatureOn('OWNED_SYNC')) return;
       if(ownedTracks.length === 0){
         quickStartPrompted = true;
         openQuickStart();
@@ -5039,7 +4290,6 @@ function track(eventName, payload = {}){
     }
 
     async function applyQuickStartPreset(preset){
-      if(!guardFeature('OWNED_SYNC')) return false;
       let nextOwned = [];
       if(preset === 'completionist'){
         const confirmed = confirm('⚠️ This will mark every track as owned. This cannot be undone easily. Continue?');
@@ -5109,7 +4359,6 @@ function track(eventName, payload = {}){
 
     function renderSongList(){
       listRenderCount += 1;
-      const ownedSyncEnabled = isFeatureOn('OWNED_SYNC');
       const previewEnabled = isFeatureOn('PREVIEW');
       const sandboxEnabled = isFeatureOn('SANDBOX');
       const disabledFeatureAttrs = `disabled title="${FEATURE_DISABLED_COPY}" style="opacity:0.5;cursor:not-allowed;pointer-events:none;"`;
@@ -5286,9 +4535,7 @@ function track(eventName, payload = {}){
               ${previewEnabled
                 ? `<button class="previewBtn px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm" data-action="preview-track" data-id="${song.id}">Preview</button>`
                 : `<button class="previewBtn px-3 py-2 bg-white/10 rounded-lg text-sm text-gray-400" ${disabledFeatureAttrs}>Preview</button>`}
-              ${ownedSyncEnabled
-                ? `<button data-action="toggle-owned" data-id="${song.id}" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>`
-                : `<button class="px-3 py-2 bg-gray-700/40 rounded-lg text-sm font-medium text-gray-400" ${disabledFeatureAttrs}>Mark Owned</button>`}
+              <button data-action="toggle-owned" data-id="${song.id}" class="px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
               <button data-action="add-set" data-id="${song.id}" class="addSetBtn px-4 py-2 ${isInSetlist ? 'bg-emerald-500/40 hover:bg-emerald-500/50' : 'bg-gradient-to-r from-purple-500 to-pink-500'} rounded-lg text-sm font-medium transition" ${viewingProfile ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>${isInSetlist ? '✓ In Setlist' : '+ Set'}</button>
               ${sandboxEnabled
                 ? `<button data-action="add-sandbox" data-id="${song.id}" class="px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/40 rounded-lg text-sm font-medium transition" ${sandboxTracks.find(t=>t.id===song.id) ? 'disabled style="opacity:0.5;cursor:not-allowed;pointer-events:none;"' : ''}>+ Sandbox</button>`
@@ -5315,7 +4562,7 @@ function track(eventName, payload = {}){
       const refreshBanner = trackLoadState.status === 'refreshing'
         ? `<div class="inline-banner">Refreshing tracks in the background…</div>`
         : '';
-      const emptyOwnedCallout = (ownedSyncEnabled && !viewingProfile && ownedTracks.length === 0 && !quickStartDone)
+      const emptyOwnedCallout = (!viewingProfile && ownedTracks.length === 0 && !quickStartDone)
         ? `<div class="panel p-4 bg-cyan-500/10 border border-cyan-400/30 text-sm text-cyan-100 space-y-2">
             <div class="font-semibold text-white">Step 1: Mark songs you own (start small)</div>
             <div class="text-xs text-cyan-200">Quick Start marks a starter set so you can see mixes fast.</div>
@@ -5419,6 +4666,7 @@ function track(eventName, payload = {}){
     }
 
     function renderProfile(){
+      return;
       const profileEl = document.getElementById('profileView'); if(!profileEl) return;
       if(DEBUG_UI) console.log('[debug][profile] renderProfile');
       bindUiDebugging();
@@ -6233,17 +5481,8 @@ function render(){
     alert('Admin only');
     view = 'browser';
   }
-  const ownedSyncEnabled = isFeatureOn('OWNED_SYNC');
-  const profileEnabled = isFeatureOn('PROFILE');
   const previewEnabled = isFeatureOn('PREVIEW');
   const sandboxEnabled = isFeatureOn('SANDBOX');
-  const disabledFeatureAttrs = `disabled title="${FEATURE_DISABLED_COPY}" style="opacity:0.5;cursor:not-allowed;pointer-events:none;"`;
-  if(!profileEnabled && view === 'profile'){
-    view = 'browser';
-  }
-  if(!ownedSyncEnabled && showOwnedOnly){
-    showOwnedOnly = false;
-  }
   currentUser = getActiveProfile() || currentUser;
   if(!isAdmin() && adminMenuOpen){
     adminMenuOpen = false;
@@ -6251,31 +5490,17 @@ function render(){
   syncAdminGlobals();
   const displayTracks = viewingProfile ? viewingProfile.ownedTracks || [] : ownedTracks;
   const ownedCount = displayTracks.length;
-  const ownedLibraryStatusMessage = resolveOwnedLibraryStatusMessage();
-  const ownedLibraryBadge = ownedSyncEnabled && ownedLibraryStatusMessage
-    ? `<span class="${ownedLibraryState.phase === 'restoring' ? 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-white/10 border border-white/20 text-cyan-100' : 'text-[11px] text-cyan-100/90'}">${ownedLibraryStatusMessage}</span>`
-    : '';
-  const stabilizationMode = !ownedSyncEnabled || !profileEnabled || !previewEnabled || !sandboxEnabled;
+  const stabilizationMode = !previewEnabled || !sandboxEnabled;
   const networkBadge = `<span data-network-badge class="${isOffline ? 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-600/30 border border-red-400/60 text-red-100' : 'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-600/30 border border-emerald-400/60 text-emerald-100'}">${isOffline ? 'Offline' : 'Online'}</span>`;
   const trackSourceLabel = trackSource === 'cache' ? 'Cached tracks' : trackSource === 'fallback' ? 'Sample tracks' : 'Live tracks';
   const trackSourceBadge = `<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 border border-white/20 text-cyan-100">🎵 ${trackSourceLabel}</span>`;
-  const hasCloudUser = firebaseEnabled && firebaseAuth?.currentUser;
-  const cloudUnavailable = hasCloudUser && (isOffline || ownedSyncDiagnostics.cloudReadable === false || ownedSyncDiagnostics.cloudWritable === false);
-  const cloudStatusText = hasCloudUser
-    ? (cloudUnavailable ? 'Cloud unavailable — using local cache' : 'Cloud sync OK')
-    : (isOffline ? 'Offline' : 'Online');
-  const cloudStatusLine = `<span class="text-xs ${cloudUnavailable ? 'text-amber-200' : 'text-gray-300'}">${cloudStatusText}</span>`;
-  const cloudFallbackBanner = cloudUnavailable
-    ? `<div class="inline-banner mt-2">Offline / Cloud unavailable (using local cache)</div>`
-    : '';
+  const cloudFallbackBanner = '';
   const adminBadge = isAdmin() ? `<span class="ml-2 px-2 py-1 text-xs rounded border border-cyan-400/40 text-cyan-100 bg-white/5">🛡 Admin</span>` : '';
   const configStatus = window.firebaseConfigStatus || {};
   const configWarningBanner = (!firebaseConfigValid && configStatus.reason === 'missing_env')
     ? `<div class="inline-banner mt-2">Online config missing; running in local mode.</div>`
     : '';
-  const syncBanner = profileSyncState?.syncing
-    ? `<div class="inline-banner mt-2">🔄 ${profileSyncState.message || 'Syncing your profile…'}</div>`
-    : '';
+  const syncBanner = '';
   const communityStatsRow = FEATURE_SIGNIN_STATS
     ? `
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-2 text-xs">
@@ -6283,41 +5508,7 @@ function render(){
     </div>`
     : '';
   const regressionBanner = (isAdmin() && regressionWarnings.length) ? `<div class="mt-2 p-3 rounded-lg border border-amber-400/40 bg-amber-500/10 text-amber-100 text-sm">Regression alerts: ${regressionWarnings.map(r=>`${r.id}→${r.expectedCamelot}`).join(', ')}</div>` : '';
-  const lastCloudSyncLabel = ownedSyncDiagnostics.lastCloudSyncAt
-    ? new Date(ownedSyncDiagnostics.lastCloudSyncAt).toLocaleString()
-    : '—';
-  const ownedCountCloudLabel = ownedSyncDiagnostics.ownedCountCloud === null
-    ? '—'
-    : ownedSyncDiagnostics.ownedCountCloud;
-  const syncStatusPanel = `
-    <div class="panel bg-black/40 border border-cyan-500/20">
-      <div class="flex items-center justify-between mb-3">
-        <div class="font-bold text-white">Sync Status</div>
-        ${cloudStatusLine}
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs text-gray-300">
-        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-          <span>cloudReadable</span>
-          <span class="font-semibold text-white">${ownedSyncDiagnostics.cloudReadable === null ? '—' : String(ownedSyncDiagnostics.cloudReadable)}</span>
-        </div>
-        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-          <span>cloudWritable</span>
-          <span class="font-semibold text-white">${ownedSyncDiagnostics.cloudWritable === null ? '—' : String(ownedSyncDiagnostics.cloudWritable)}</span>
-        </div>
-        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-          <span>lastCloudSyncAt</span>
-          <span class="font-semibold text-white">${lastCloudSyncLabel}</span>
-        </div>
-        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-          <span>ownedCountLocal</span>
-          <span class="font-semibold text-white">${ownedSyncDiagnostics.ownedCountLocal}</span>
-        </div>
-        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-          <span>ownedCountCloud</span>
-          <span class="font-semibold text-white">${ownedCountCloudLabel}</span>
-        </div>
-      </div>
-    </div>`;
+  const syncStatusPanel = '';
   const selectedPanel = `
     <div class="panel ${selectedSong ? 'selected-panel' : ''} space-y-3 dim-when-sticky">
       <div class="flex items-center justify-between">
@@ -6339,7 +5530,7 @@ function render(){
       </div>
     </div>`;
   const adminLabel = currentUser?.isAdmin ? ' • ADMIN' : '';
-  const signedLabel = viewingProfile ? `Viewing ${viewingProfile.djName || viewingProfile.username || 'Profile'}${adminLabel}` : `Signed in as ${currentUser ? currentUser.djName : 'Guest'}${adminLabel}`;
+  const signedLabel = `Signed in as ${currentUser ? currentUser.djName : 'Guest'}${adminLabel}`;
   const authButtonLabel = firebaseAuth?.currentUser ? 'Logout' : 'Sign In';
   const authButtonAction = firebaseAuth?.currentUser ? 'logoutUser()' : 'showLoginScreen()';
   const stickyCtaActive = getStickyCtaConfig().visible;
@@ -6356,31 +5547,9 @@ function render(){
               </div>
             </div>
             <div class="flex items-center flex-wrap justify-end header-actions">
-              <button class="mobile-only px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-xs text-white" data-action="toggleHeaderMore">More</button>
-              ${viewingProfile?`<button onclick="exitProfileViewMode()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg text-purple-100 text-sm">Back to my profile</button>`:''}
-              ${(!viewingProfile && isAdmin())?`<div class="relative"><button id="adminToolsBtn" aria-haspopup="true" aria-expanded="${adminMenuOpen}" class="px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 rounded-lg text-cyan-100 text-sm flex items-center gap-2" style="pointer-events:auto;cursor:pointer;">🛠️ Admin Tools</button>${adminMenuOpen?`<div id="adminToolsMenu" role="menu" class="admin-tools-menu absolute right-0 mt-2 w-56 bg-black/90 border border-cyan-400/30 rounded-lg shadow-xl ring-1 ring-cyan-400/30 p-2 space-y-2" style="z-index:6000;pointer-events:auto;">
-                  <button id="adminMenuHelpEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Help Editor</button>
-                  <button id="adminMenuWhatsNewEditor" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">What’s New Editor</button>
-                  <button id="adminMenuAudit" role="menuitem" class="w-full text-left px-3 py-2 rounded-md bg-white/5 hover:bg-cyan-500/20 border border-white/10 text-sm">Data Audit (Key/BPM)</button>
-                </div>`:''}</div>`:''}
-              ${profileEnabled
-                ? `<button onclick="openProfileView()" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">Profile</button>`
-                : `<button class="px-3 py-2 bg-purple-500/20 border border-purple-500/50 rounded-lg text-purple-200 text-sm" ${disabledFeatureAttrs}>Profile</button>`}
               <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
               <button onclick="${authButtonAction}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
             </div>
-          </div>
-          <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
-            <div class="flex items-center flex-wrap gap-2">
-              ${ownedSyncEnabled ? `<p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>` : ''}
-              ${ownedLibraryBadge}
-              ${networkBadge}
-              ${trackSourceBadge}
-              ${cloudStatusLine}
-              <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
-            </div>
-            ${communityStatsRow}
-            ${stabilizationMode ? `<div class="inline-banner mt-2">Stabilization mode: some features temporarily disabled.</div>` : ''}
           </div>
         </div>
       </header>
@@ -6393,16 +5562,12 @@ function render(){
               <button id="setlistBtn" data-action="switchView" data-view="setlist" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
               <button type="button" class="helpIconBtn" onclick="openHelpModal({ source: 'setlist_icon', target: 'setlist' })" aria-label="Open help: Setlist" title="How Setlist works">?</button>
             </div>
-            ${profileEnabled
-              ? `<button id="profileBtn" data-action="switchView" data-view="profile" class="px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}">Profile</button>`
-              : `<button class="px-4 py-2 rounded-lg font-medium transition bg-white/10 text-gray-300" ${disabledFeatureAttrs}>Profile</button>`}
           </div>
           ${view==='browser'?`<div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>`:''}
         </div>
         <div class="flex items-center gap-2 flex-wrap text-sm text-cyan-100">
           ${networkBadge}
           ${trackSourceBadge}
-          ${cloudStatusLine}
           <span class="text-xs text-gray-300">Offline browsing pulls your last cached tracks.</span>
         </div>
 
@@ -6426,13 +5591,11 @@ function render(){
                 <div id="searchStatus" class="text-xs text-cyan-200" style="display:none;">Filtering…</div>
                 <div class="flex flex-wrap gap-2">
                   <button id="mixableFilterBtn" data-action="toggle-mixable-filter" class="px-3 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
-                  ${ownedSyncEnabled
-                    ? `<button id="ownedFilterBtn" data-action="toggle-owned-filter" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>`
-                    : `<button class="px-3 py-2 rounded-lg font-medium transition bg-white/10 text-gray-300" ${disabledFeatureAttrs}>Show All</button>`}
+                  <button id="ownedFilterBtn" data-action="toggle-owned-filter" class="px-3 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
                   <button id="controlClearSelectionBtn" onclick="clearSelection()" class="px-3 py-2 bg-white/10 hover:bg-white/20 border border-cyan-400/60 rounded-lg font-semibold text-cyan-100" ${selectedSong ? '' : 'disabled style="opacity:0.55;cursor:not-allowed;"'}>Clear Selection</button>
                 </div>
                 <div id="mixableInlineNotice" class="inline-banner" style="display:${mixableInlineNotice ? 'block' : 'none'};">${mixableInlineNotice}</div>
-                ${(!viewingProfile && ownedSyncEnabled)?`<div class="flex flex-wrap gap-2">
+                ${(!viewingProfile)?`<div class="flex flex-wrap gap-2">
                   <button id="markAllBtn" data-action="mark-all-owned" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
                   <button id="clearAllBtn" data-action="clear-all-owned" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
                 </div>`:''}
@@ -6522,7 +5685,6 @@ function render(){
         <div id="setlistView" style="display:${view==='setlist'?'block':'none'}">
           <div id="setlistContent"></div>
         </div>
-        <div id="profileView" style="display:${view==='profile'?'block':'none'}"></div>
         <div id="auditView" style="display:${view==='audit'?'block':'none'}"></div>
       </main>
       <div id="stickyCtaBar" class="sticky-cta-bar hidden" aria-live="polite">
@@ -6985,13 +6147,22 @@ function render(){
       setupEventListeners();
     };
 
+    function persistUserSettings(){
+      if(window.localStore?.saveSettings){
+        window.localStore.saveSettings({
+          keyMatchMode,
+          maxSemitoneRange,
+          includeOppositeMode,
+          priorityStrength,
+          sortMode,
+          showOwnedOnly,
+          showMixableOnly,
+          selectedGenre
+        });
+      }
+    }
     function persistKeyMatchSettings(){
-      localStorage.setItem('jamMixer.keyMatchMode', keyMatchMode);
-      localStorage.setItem('jamMixer.maxSemitoneRange', String(maxSemitoneRange));
-      localStorage.setItem('jamMixer.includeOppositeMode', includeOppositeMode ? 'true' : 'false');
-      localStorage.setItem('jamMixer.priorityStrength', priorityStrength);
-      syncPreferencesIntoProfile();
-      if(!isPersistingProfile) schedulePreferencePersist();
+      persistUserSettings();
     }
     window.setKeyMatchMode = (mode) => {
       keyMatchMode = mode === 'semitone' ? 'semitone' : 'camelot';
@@ -7019,6 +6190,7 @@ function render(){
 
     window.setSortMode = (mode) => {
       sortMode = mode;
+      persistUserSettings();
       resetMainPagination();
       updateMobileWindowState({ reset: true });
       render();
@@ -7074,22 +6246,16 @@ function render(){
       showOwnedOnly = false;
       showMixableOnly = false;
       selectedGenre = 'All';
+      persistUserSettings();
       resetMainPagination();
       updateMobileWindowState({ reset: true });
       render();
       setupEventListeners();
     };
 
-    window.openProfileView = () => {
-      if(!guardFeature('PROFILE')) return;
-      view = 'profile';
-      render();
-      setupEventListeners();
-      renderProfile();
-    };
+    window.openProfileView = () => {};
 
     window.toggleOwned = async (id) => {
-      if(!guardFeature('OWNED_SYNC')) return;
       if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
       const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
       const savePromise = saveOwnedTracksSafe(nextOwned, { reason: 'toggle' });
@@ -7142,25 +6308,19 @@ function render(){
         alert('Admin only');
         newView = 'browser';
       }
-      if(newView === 'profile' && !guardFeature('PROFILE')){
-        return;
-      }
       adminMenuOpen = false;
       logEvent('view_switch', { from: view, to: newView });
       view = newView;
       if(view === 'browser'){ updateMobileWindowState({ reset: true }); }
       const browserView = document.getElementById('browserView');
       const setlistView = document.getElementById('setlistView');
-      const profileView = document.getElementById('profileView');
       const auditViewEl = document.getElementById('auditView');
       if(browserView) browserView.style.display = view==='browser' ? 'block' : 'none';
       if(setlistView) setlistView.style.display = view==='setlist' ? 'block' : 'none';
-      if(profileView) profileView.style.display = view==='profile' ? 'block' : 'none';
       if(auditViewEl) auditViewEl.style.display = view==='audit' ? 'block' : 'none';
-      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn'); const profileBtn = document.getElementById('profileBtn'); const auditBtn = document.getElementById('auditBtn');
+      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn'); const auditBtn = document.getElementById('auditBtn');
       if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
       if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
-      if(profileBtn) profileBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}`;
       if(auditBtn) auditBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='audit'?'bg-gradient-to-r from-amber-500 to-yellow-500':'bg-white/10 hover:bg-white/20'}`;
       if(view==='browser'){
         renderSongList();
@@ -7172,7 +6332,7 @@ function render(){
       }
       else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
       else if(view==='audit'){ renderAuditView(); setupEventListeners(); }
-      else { renderProfile(); setupEventListeners(); }
+      else { renderSongList(); setupEventListeners(); }
       updateTourUI();
     };
 
@@ -7182,6 +6342,7 @@ function render(){
         return;
       }
       showMixableOnly = !showMixableOnly;
+      persistUserSettings();
       resetMainPagination();
       updateMobileWindowState({ reset: true });
       render();
@@ -7189,8 +6350,8 @@ function render(){
     };
 
     window.toggleOwnedFilter = () => {
-      if(!guardFeature('OWNED_SYNC')) return;
       showOwnedOnly = !showOwnedOnly;
+      persistUserSettings();
       resetMainPagination();
       updateMobileWindowState({ reset: true });
       render();
@@ -7198,11 +6359,10 @@ function render(){
     };
 
     window.markAllOwned = async () => {
-      if(!guardFeature('OWNED_SYNC')) return;
       if(viewingProfile) return;
       if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
       ownedTracks = songs.map(s=>s.id);
-      scheduleProfileCacheSync();
+      await saveOwnedTracksSafe(ownedTracks, { reason: 'mark_all' });
       updateOwnedCount();
       updateMobileWindowState({ reset: true });
       scheduleSongListRender('mark-all-owned');
@@ -7211,7 +6371,6 @@ function render(){
     };
 
     window.clearAllOwned = async () => {
-      if(!guardFeature('OWNED_SYNC')) return;
       if(viewingProfile) return;
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
@@ -8193,21 +7352,7 @@ function render(){
     }
 
     async function maybeLoadSharedProfile(){
-      if(!profileParam){ viewingProfile = null; return; }
-      friendSearchTerm = profileParam;
-      if(!firebaseAuth?.currentUser){ friendLookupError = 'Sign in required to view other profiles.'; return; }
-      if(currentUser && (currentUser.username === profileParam || currentUser.uid === profileParam)){
-        viewingProfile = null; setProfileQueryParam(null); return;
-      }
-      const matches = await fetchProfilesByField('usernameLower', normalizeUsernameLower(profileParam));
-      const profile = matches[0] || await loadProfileForViewing(profileParam);
-      if(profile){
-        viewingProfile = normalizeProfileShape(profile, profile.username || profile.uid);
-        setProfileQueryParam(viewingProfile.username || viewingProfile.uid || '');
-        view = 'profile';
-      } else {
-        friendLookupError = `No profile found for ‘${profileParam}’`;
-      }
+      viewingProfile = null;
     }
 
     const helpModal = document.getElementById('helpModal');
@@ -8237,6 +7382,18 @@ function render(){
 
     // ----------------------- Init / Auth check ------------------------
     loadOverridesFromStorage();
+    loadLocalUserState();
+    const legacyProfile = readLegacyLocalProfile();
+    if(!ownedTracks.length && legacyProfile.ownedTracks.length){
+      ownedTracks = legacyProfile.ownedTracks;
+      window.localStore?.saveOwned?.(ownedTracks);
+    }
+    if(!setlist.length && legacyProfile.setlist.length){
+      setlist = legacyProfile.setlist;
+    }
+    if(Object.keys(genreOverrides).length === 0 && Object.keys(legacyProfile.genreOverrides || {}).length){
+      genreOverrides = legacyProfile.genreOverrides;
+    }
     handleNetworkStatusChange();
     window.addEventListener('online', ()=>{ handleNetworkStatusChange(); if(!songs.length) loadSongs(); });
     window.addEventListener('offline', handleNetworkStatusChange);

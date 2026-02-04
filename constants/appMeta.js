@@ -4,7 +4,7 @@ const APP_VERSION = '1.0.0';
 
 const FEATURE_FLAGS = {
   setlist: true,
-  liveProfile: true,
+  liveProfile: false,
   offlineMode: true,
   statsTiles: true,
   ownedToggle: true
@@ -28,9 +28,7 @@ const HELP_CONTENT = {
     quickStart: [
       'Browse → search tracks and mark what you own.',
       'Use + Set to build a Setlist.',
-      'Open Profile → set DJ Name and Customize your look.',
-      'Add a Stream URL + tap Go Live when you’re streaming.',
-      'Open Friends / Bandmates (Online mode) to add friends.'
+      'Tune key mode + filters to refine your mix picks.'
     ],
     sections: [
       {
@@ -39,7 +37,7 @@ const HELP_CONTENT = {
         bullets: [
           'Helps you browse Fortnite Festival tracks and plan mixes.',
           'Lets you mark Owned tracks and build a Setlist.',
-          'Gives you a DJ Profile with Live Status and friends.'
+          'Keeps your library and settings stored locally.'
         ]
       },
       {
@@ -58,7 +56,7 @@ const HELP_CONTENT = {
           'Owned X/Y shows how many tracks you marked as owned.',
           'Tap Mark Owned to add it, or ✓ Owned to remove it.',
           'Use Show All or ✓ Owned Only to switch views.',
-          'Your Owned list also appears in Profile.'
+          'Owned tracks persist locally on this device.'
         ]
       },
       {
@@ -72,40 +70,16 @@ const HELP_CONTENT = {
         ]
       },
       {
-        id: 'profile_basics',
-        title: 'Profile basics',
-        bullets: [
-          'Open Profile to edit Username and DJ Name.',
-          'Profile shows your persona icon, bio, and Owned tracks.',
-          'Click Save Profile to keep changes.'
-        ]
-      },
-      {
-        id: 'persona_icons',
-        title: 'Persona Icons',
-        bullets: [
-          'Personas are stylized DJ icons that work offline.',
-          'Pick a persona, theme, and seed for subtle variations.',
-          'Changes save locally and sync online when enabled.'
-        ]
-      },
-      {
         id: 'offline',
         title: 'Offline vs Online mode',
         bullets: [
-          'Online mode syncs your Profile to Firestore.',
           'Offline mode uses cached tracks and local storage.',
-          'Friends / Bandmates and search are disabled offline.',
-          'Persona icons work offline.'
+          'Owned tracks and settings work the same offline.',
+          'No cloud sync is required.'
         ]
       }
     ],
     faq: [
-      {
-        id: 'go_live_disabled',
-        q: 'Why is Go Live disabled?',
-        a: ['Add a valid Stream URL first.']
-      },
       {
         id: 'cant_see_setlist',
         q: 'Why can’t I see my Setlist?',
@@ -126,64 +100,10 @@ const HELP_CONTENT = {
   advanced: {
     sections: [
       {
-        id: 'profile_customization',
-        title: 'Profile Customization (Myspace vibe)',
-        bullets: [
-          'Customize gives your profile a Myspace vibe with colors, bio, and persona.',
-          'Changes save offline to local storage, and online to Firestore too.'
-        ],
-        steps: [
-          'Go to Profile.',
-          'Expand Customize.',
-          'Set Bio (160 characters max).',
-          'Pick a Theme Accent to change highlights.',
-          'Choose your Persona: pick an icon, theme, and Randomize Seed for subtle variations.',
-          'Click Save Profile.'
-        ]
-      },
-      {
-        id: 'persona',
-        title: 'Persona Icons',
-        bullets: [
-          'Personas are stylized DJ icons with neon gradients and glow.',
-          'Pick a theme for the energy ring and background.',
-          'Randomize the seed to tweak sparkles and highlights.'
-        ]
-      },
-      {
-        id: 'friends',
-        title: 'Friends / Bandmates',
-        bullets: [
-          'Find the Friends / Bandmates panel inside Profile.',
-          'Search by DJ Name or username (prefix matches work).',
-          'Add Friend sends a request; check Requests to Accept or Decline.',
-          'Friends list lets you view profiles, see LIVE pills, and watch if live.',
-          'Friends and search require Online mode; Offline shows a disabled message.'
-        ]
-      },
-      {
-        id: 'privacy_controls',
-        title: 'Privacy Controls',
-        bullets: [
-          'Public Profile: turn off to hide from search.',
-          'Allow Friend Requests: turn off to block new requests.'
-        ]
-      },
-      {
-        id: 'live',
-        title: 'Live streaming + LIVE pills',
-        bullets: [
-          'Add a Stream URL (Twitch, YouTube, Kick).',
-          'Live Status shows Go Live / End Live and needs a valid URL.',
-          'The green LIVE pill appears on your profile and opens your stream.',
-          'Friends may show a LIVE pill and a Watch button when streaming.'
-        ]
-      },
-      {
         id: 'pagination',
         title: 'Pagination & Page Size',
         bullets: [
-          'Use Previous / Next to flip pages in Browse and Profile owned tracks.',
+          'Use Previous / Next to flip pages in Browse tracks.',
           'Change Page size to 12 / 24 / 48 / 96 tracks.',
           '“Showing X–Y of Z tracks” tells you how much you’re viewing.',
           'Pages replace long scrolling (no doom scroll).'
@@ -196,9 +116,7 @@ const HELP_CONTENT = {
         id: 'troubleshooting',
         title: 'Troubleshooting',
         bullets: [
-          'Go Live disabled? Add a valid Stream URL.',
           'Setlist empty? Add tracks with + Set in Browse.',
-          'Friends missing? Switch to Online mode and search again.',
           'Owned count looks wrong? Refresh or re-mark your Owned tracks.'
         ]
       },
