@@ -124,9 +124,7 @@ const HELP_CONTENT = {
         id: 'sorting',
         title: 'Sorting / Matching',
         bullets: [
-          'Top Matches are sorted by overall compatibility first.',
-          'Tempo / Camelot / Genre decide how ties get nudged.',
-          'Priority Strength changes how hard the tie-break nudge is.',
+          'Top Matches are sorted by overall compatibility (key + BPM + genre).',
           'Mixable Only keeps just the safest key + tempo combos.'
         ]
       },
