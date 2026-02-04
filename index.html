@@ -1234,7 +1234,7 @@ function track(eventName, payload = {}){
     function normalizeProfileShape(profile, fallbackId){
       if(!profile) return null;
       const ownedFromMap = Object.keys(profile.ownedMap || {});
-      const ownedArray = Array.isArray(profile.ownedTracks) ? profile.ownedTracks : ownedFromMap;
+      const ownedArray = normalizeOwnedList(Array.isArray(profile.ownedTracks) ? profile.ownedTracks : ownedFromMap);
       const username = profile.username || fallbackId || profile.uid || '';
       const djName = profile.djName || username;
       const email = profile.email || profile.mail || '';
@@ -1471,7 +1471,7 @@ function track(eventName, payload = {}){
     let songs = [];
     let songsById = {};
     let draftProfile = null;
-    let ownedTracks = window.localStore?.loadOwned?.() || [];
+    let ownedTracks = normalizeOwnedList(window.localStore?.loadOwned?.() || []);
     const savedSettings = window.localStore?.loadSettings?.() || {};
     let selectedSong = null;
     let sortMode = ['bpm','camelot','compat','title'].includes(savedSettings.sortMode) ? savedSettings.sortMode : 'bpm';
@@ -2260,8 +2260,9 @@ function track(eventName, payload = {}){
       }
     }
     function normalizeOwnedList(ids){
-      const arr = Array.isArray(ids) ? ids.filter(Boolean) : [];
-      return Array.from(new Set(arr)).sort();
+      const arr = Array.isArray(ids) ? ids : [];
+      const normalized = arr.map(item => (typeof item === 'string' ? item : item?.id)).filter(Boolean);
+      return Array.from(new Set(normalized)).sort();
     }
     function saveOwnedTracksLocal(nextTrackIds, { reason = 'update', allowEmpty = false } = {}){
       const normalized = normalizeOwnedList(nextTrackIds);
