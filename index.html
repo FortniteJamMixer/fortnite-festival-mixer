@@ -3,25 +3,13 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <meta name="theme-color" content="#0f1020" />
-  <title>Fortnite Jam Mixer – Cross-Browser Edition</title>
-  <meta name="description" content="Fortnite Jam Mixer helps you build harmonious Fortnite Festival mashups with Camelot, BPM, and setlist tools." />
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <script>document.documentElement.classList.add('tw-offline');</script>
-  <link rel="stylesheet" href="/offline.css" />
-  <script src="https://cdn.tailwindcss.com" onload="document.documentElement.classList.remove('tw-offline');" onerror="console.warn('Tailwind CDN unavailable; using offline fallback.');"></script>
-
-  <!-- Firebase config injected from Vercel (serverless /api/firebase-config) -->
-  <script src="/api/firebase-config"></script>
+  <title>Fortnite Jam Mixer — Library</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Optional Firebase SDKs (compat). Enable only if you use Firebase. -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
-  <script src="/constants/appMeta.js"></script>
-  <script src="/services/configService.js"></script>
-  <script type="module" src="/services/profileStore.js"></script>
 
   <style>
     /* ---------------- Theme & Layout ---------------- */
@@ -33,20 +21,8 @@
       color: #e9f7ff;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      padding-bottom: env(safe-area-inset-bottom);
     }
-    :root {
-      --safe-top: env(safe-area-inset-top);
-      --safe-bottom: env(safe-area-inset-bottom);
-      --sticky-cta-height: 64px;
-    }
-    button,
-    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
-    select,
-    textarea {
-      min-height: 44px;
-    }
-    .content-wrapper { max-width: 1200px; margin: 18px auto; padding: 12px; }
+    .content-wrapper { max-width: 1400px; margin: 18px auto; padding: 12px; }
     .panel { background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.45)); border-radius: 12px; border: 1px solid rgba(255,255,255,0.03); padding: 12px; }
     .vinyl-spin { animation: spin 4s linear infinite; }
     .bounce-icon { animation: bounce 2s ease-in-out infinite; }
@@ -54,170 +30,28 @@
     @keyframes bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
     .graffiti-text { text-shadow: 3px 3px 0 #ff6b9d, 6px 6px 0 rgba(255,107,157,0.22); letter-spacing: 1px; }
     .camelot-pill { padding: 6px 10px; border-radius: 10px; font-weight: 700; color: #fff; }
-    .score-badge { font-weight: 800; letter-spacing: .6px; padding: 6px 10px; border-radius: 8px; display:inline-block; }
     .small-muted { color: rgba(230,247,255,0.7); font-size: 13px; }
-    .sandbox-drop { min-height: 110px; border-radius: 12px; padding: 10px; border: 2px dashed rgba(255,255,255,0.04); }
-    .context-menu { position: fixed; background: rgba(0,0,0,0.95); border-radius: 8px; padding: 8px; z-index:10000; backdrop-filter: blur(8px); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; }
-    .glow-perfect { box-shadow: 0 0 18px rgba(57,255,20,0.85), 0 0 48px rgba(57,255,20,0.12); }
-    .glow-good { box-shadow: 0 0 12px rgba(255,230,65,0.9), 0 0 36px rgba(255,230,65,0.08); }
-    .glow-bad { box-shadow: 0 0 12px rgba(255,63,63,0.9), 0 0 36px rgba(255,63,63,0.08); }
-    .selected-panel { border: 2px solid rgba(0,217,255,0.6); box-shadow: 0 0 18px rgba(0,217,255,0.18), 0 0 32px rgba(255,107,157,0.18); background: linear-gradient(90deg, rgba(0,217,255,0.1), rgba(255,107,157,0.12)); }
-    .selected-badge { background: linear-gradient(90deg,#06b6d4,#ec4899); color:#fff; font-weight:800; padding:6px 10px; border-radius:999px; font-size:11px; letter-spacing:0.5px; box-shadow: 0 0 12px rgba(6,182,212,0.4); }
-    .selected-card { border: 2px solid rgba(0,217,255,0.8); box-shadow: 0 0 26px rgba(0,217,255,0.45), 0 0 12px rgba(236,72,153,0.25); }
-    #adminToolsBtn { pointer-events: auto; cursor: pointer; }
-    .admin-tools-menu { z-index: 6000; pointer-events: auto; position: absolute; }
-    .song-grid { grid-template-columns: 1fr; contain: layout paint; }
-    .song-card { content-visibility: auto; contain-intrinsic-size: 320px 220px; }
-    .reduced-effects .vinyl-spin,
-    .reduced-effects .bounce-icon { animation: none !important; }
-    .reduced-effects .glow-perfect,
-    .reduced-effects .glow-good,
-    .reduced-effects .glow-bad,
-    .reduced-effects .selected-card { box-shadow: none !important; }
-    .reduced-effects .song-card { transition: none; }
-    .header-actions { gap: 12px; }
-    .header-secondary { margin-top: 8px; }
-    .header-secondary[hidden] { display: none; }
-    .safe-header { padding-top: var(--safe-top); }
-    .mobile-hidden { display: none; }
-    .mobile-only { display: none; }
-    .sticky-cta-bar {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 90;
-      padding: 10px 16px calc(10px + var(--safe-bottom));
-      background: rgba(10, 10, 24, 0.92);
-      border-top: 1px solid rgba(0,217,255,0.2);
-      backdrop-filter: blur(14px);
-      box-shadow: 0 -6px 24px rgba(0,0,0,0.4);
-      transform: translateY(0);
-      transition: transform 0.2s ease;
-    }
-    .sticky-cta-bar.hidden { transform: translateY(110%); }
-    .sticky-cta-button {
-      width: 100%;
-      min-height: 48px;
-      border-radius: 14px;
-      background: linear-gradient(90deg,#ff6b9d,#8b5cf6);
-      color: #fff;
-      font-weight: 800;
-      letter-spacing: 0.3px;
-      border: none;
-    }
-    .sticky-cta-copy { font-size: 12px; color: rgba(230,247,255,0.75); margin-top: 4px; text-align: center; }
-    .sticky-cta-spotlight { opacity: 0.7; transition: opacity 0.2s ease; }
-    .sticky-cta-active .sticky-cta-spotlight { opacity: 1; }
-    .sticky-cta-active .dim-when-sticky { opacity: 0.7; }
-    .song-list-highlight .song-card { border-color: rgba(0,217,255,0.45); }
-    .skeleton-card {
-      border-radius: 14px;
-      padding: 16px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-    .skeleton-line { height: 12px; border-radius: 999px; background: rgba(255,255,255,0.12); margin-bottom: 8px; }
-    .skeleton-line.short { width: 50%; }
-    .skeleton-line.medium { width: 70%; }
-    .skeleton-line.long { width: 90%; }
-    .inline-banner {
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: rgba(59,130,246,0.12);
-      border: 1px solid rgba(59,130,246,0.4);
-      color: #dff7ff;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .quickstart-modal {
-      position: fixed;
-      inset: 0;
-      z-index: 21000;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(2,6,23,0.8);
-      backdrop-filter: blur(8px);
-      padding: 16px;
-    }
-    .quickstart-modal[aria-hidden="true"] { display: none; pointer-events: none; }
-    .quickstart-modal[aria-hidden="false"] { display: flex; pointer-events: auto; }
-    .quickstart-card {
-      width: min(520px, 94vw);
-      background: linear-gradient(180deg, rgba(8,13,30,0.98), rgba(16,10,32,0.98));
-      border-radius: 18px;
-      border: 1px solid rgba(0,217,255,0.2);
-      padding: 18px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-    }
-    .quickstart-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-    .quickstart-actions button { flex: 1 1 140px; }
-    .quickstart-option {
-      width: 100%;
-      padding: 12px 14px;
-      border-radius: 14px;
-      border: 1px solid rgba(255,255,255,0.16);
-      background: rgba(255,255,255,0.06);
-      color: #fff;
-      font-weight: 700;
-      text-align: left;
-    }
-    .quickstart-option strong { display: block; font-size: 15px; }
-    .quickstart-track {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
-      cursor: pointer;
-    }
-    .quickstart-track:hover { border-color: rgba(0,217,255,0.6); }
 
-    @media (max-width: 640px) {
-      .header-secondary { display: none; }
-      .header-secondary.is-open { display: block; }
-      .mobile-hidden { display: none !important; }
-      .mobile-only { display: inline-flex; }
-      .header-actions { gap: 10px; }
-      .content-wrapper { padding: 8px; }
+    /* Grid Layout for Song Cards */
+    #songList {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
     }
-    @media (prefers-reduced-motion: reduce) {
-      .sticky-cta-bar { transition: none; }
+
+    @media (max-width: 1400px) {
+      #songList { grid-template-columns: repeat(4, 1fr); }
     }
-    @media (min-width: 768px) {
-      .song-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 1000px) {
+      #songList { grid-template-columns: repeat(3, 1fr); }
     }
-    .live-carousel { scroll-snap-type: x mandatory; scroll-behavior: smooth; }
-    .live-carousel > * { scroll-snap-align: start; }
-    .live-carousel.dragging { cursor: grabbing; }
-    .live-carousel::-webkit-scrollbar { height: 6px; }
-    .live-carousel::-webkit-scrollbar-thumb { background: rgba(79,70,229,0.6); border-radius: 999px; }
-    .rating-star { color: rgba(255,255,255,0.35); transition: transform 0.15s ease, color 0.15s ease; }
-    .rating-star.active { color: #fbbf24; transform: translateY(-1px) scale(1.05); }
-    .rating-star-display { color: #fbbf24; }
-    .profile-accent-border { border-color: var(--profile-accent, #ff6b9d); }
-    .profile-accent-glow { box-shadow: 0 0 18px var(--profile-accent-glow, rgba(255,107,157,0.45)); }
-    .profile-accent-pill { background: rgba(255,255,255,0.06); border: 1px solid var(--profile-accent, #ff6b9d); color: #fff; }
-    .profile-avatar-action { cursor: pointer; }
-    .profile-avatar-action:focus-visible { outline: 2px solid var(--profile-accent, #ff6b9d); outline-offset: 4px; }
-    .profile-avatar-overlay { pointer-events: none; }
-    .persona-option { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); }
-    .persona-option.active { border-color: var(--profile-accent, #ff6b9d); box-shadow: 0 0 12px var(--profile-accent-glow, rgba(255,107,157,0.45)); transform: scale(1.04); }
-    .persona-option:hover { box-shadow: 0 0 16px rgba(255,255,255,0.2); transform: translateY(-1px) scale(1.02); }
-    .persona-badge { position: relative; display: inline-flex; align-items: center; justify-content: center; }
-    .persona-badge svg { display: block; }
-    .persona-energy { position: absolute; right: -4px; bottom: -4px; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 10px rgba(255,255,255,0.2); }
-    .persona-ring { animation: personaPulse 3s ease-in-out infinite; }
-    .persona-spark { animation: personaSpark 2.2s ease-in-out infinite; }
-    .persona-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
-    .persona-card:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 16px rgba(56,189,248,0.3); }
-    @keyframes personaPulse { 0%,100% { opacity: 0.85; } 50% { opacity: 0.55; } }
-    @keyframes personaSpark { 0%,100% { transform: translateY(0); opacity: 0.8; } 50% { transform: translateY(-3px); opacity: 1; } }
-    .profile-toggle { accent-color: var(--profile-accent, #ff6b9d); }
+    @media (max-width: 768px) {
+      #songList { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 480px) {
+      #songList { grid-template-columns: 1fr; }
+    }
 
     /* Help modal */
     #helpModal {
@@ -230,8 +64,6 @@
       background: rgba(0,0,0,0.85);
       backdrop-filter: blur(6px);
     }
-    #helpModal[aria-hidden="true"] { display: none; pointer-events: none; }
-    #helpModal[aria-hidden="false"] { pointer-events: auto; }
     .helpBox {
       width: 92%;
       max-width: 760px;
@@ -251,12 +83,8 @@
       align-items:center;
       justify-content:space-between;
       gap:12px;
-      flex-wrap:wrap;
     }
     .helpTitle { font-size:20px; font-weight:800; color:#fff; display:flex; gap:10px; align-items:center; }
-    .helpTabs { display:flex; gap:8px; align-items:center; }
-    .helpTabBtn { padding:8px 10px; border-radius:10px; border:1px solid rgba(0,217,255,0.18); background:rgba(255,255,255,0.06); color:#dff7ff; font-weight:800; cursor:pointer; }
-    .helpTabBtn.active { background: linear-gradient(90deg,#ff6b9d,#8b5cf6); border-color: rgba(255,255,255,0.14); box-shadow:0 0 18px rgba(139,92,246,0.18); color:#fff; }
     .helpContent {
       padding: 14px 18px;
       overflow-y: auto;
@@ -265,42 +93,7 @@
       line-height:1.45;
       font-size:14px;
     }
-    .helpSection { margin-bottom: 18px; }
-    .helpSection h3 { font-size: 16px; margin-bottom: 6px; font-weight: 800; color: #fff; }
-    .helpSection h4 { font-size: 14px; margin-bottom: 6px; font-weight: 800; color: #9fe8ff; }
-    .helpSection p, .helpSection ul, .helpSection ol { margin-bottom: 8px; }
-    .helpSection ul { margin-left: 16px; }
-    .helpSection ol { margin-left: 18px; }
-    .helpComing { color: rgba(159,232,255,0.7); font-size: 12px; font-style: italic; display: none; }
-    .helpFaq { border: 1px solid rgba(0,217,255,0.18); background: rgba(255,255,255,0.03); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
-    .helpFaq summary { cursor: pointer; font-weight: 700; color: #e6f7ff; list-style: none; }
-    .helpFaq summary::-webkit-details-marker { display: none; }
-    .helpFaq p { margin-top: 6px; color: rgba(230,247,255,0.8); font-size: 13px; }
-    .helpDivider { margin: 14px 0; border-color: rgba(0,217,255,0.08); }
-    .anchorGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-bottom: 12px; }
-    .anchorLink { display: block; padding: 10px 12px; border-radius: 10px; background: rgba(0,217,255,0.06); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; text-decoration: none; font-weight: 700; }
-    .anchorLink:hover { border-color: rgba(255,107,157,0.35); box-shadow: 0 0 12px rgba(255,107,157,0.18); }
-    .callout { padding: 12px; border-radius: 10px; border: 1px solid rgba(0,217,255,0.14); background: rgba(0,217,255,0.05); margin-bottom: 10px; }
-    .calloutTitle { font-weight: 800; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; color: #9fe8ff; text-transform: uppercase; letter-spacing: 0.3px; font-size: 12px; }
-    .tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: rgba(0,217,255,0.12); color: #bdeeff; font-weight: 700; font-size: 12px; }
-    .camelot-wheel { width: 100%; max-width: 520px; margin: 10px auto; display: flex; justify-content: center; }
-    .camelot-wheel svg { width: 100%; height: auto; }
-    .camelot-caption { text-align: center; color: #e6f7ff; font-size: 13px; margin-top: 6px; }
-    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-weight: 800; font-size: 12px; }
     .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
-    .helpFooter { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .helpFooterActions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .helpAltBtn {
-      background: rgba(255,255,255,0.08);
-      padding: 8px 12px;
-      border-radius: 10px;
-      color: #dff7ff;
-      font-weight:700;
-      cursor:pointer;
-      border: 1px solid rgba(0,217,255,0.2);
-      transition: all .2s ease;
-    }
-    .helpAltBtn:hover { background: rgba(255,255,255,0.16); color: #fff; border-color: rgba(255,255,255,0.3); }
 
     /* Custom neon scrollbar for helpContent */
     .helpContent::-webkit-scrollbar { width: 12px; }
@@ -321,106 +114,6 @@
       border: none;
       box-shadow: 0 6px 24px rgba(139,92,246,0.12);
     }
-    .helpIconBtn {
-      width: 40px;
-      height: 40px;
-      min-width: 40px;
-      min-height: 40px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(255,255,255,0.08);
-      color: #e5f6ff;
-      font-weight: 800;
-      font-size: 14px;
-      cursor: pointer;
-      transition: all .2s ease;
-    }
-    .helpIconBtn:hover { background: rgba(255,255,255,0.2); color: #fff; }
-    .helpIconBtn:focus-visible { outline: 2px solid rgba(0,217,255,0.8); outline-offset: 2px; }
-
-    /* Admin editor modal */
-    .admin-editor-modal { position: fixed; inset: 0; z-index: 7000; display: flex; align-items: center; justify-content: center; background: rgba(3,7,18,0.75); backdrop-filter: blur(8px); }
-    .admin-editor-card { width: min(1100px, 95vw); max-height: 90vh; overflow: hidden; background: rgba(3,7,18,0.95); border: 1px solid rgba(0,217,255,0.2); border-radius: 18px; display: flex; flex-direction: column; }
-    .admin-editor-header { padding: 16px 20px; border-bottom: 1px solid rgba(0,217,255,0.15); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .admin-editor-body { padding: 18px 20px; overflow: auto; display: grid; gap: 16px; }
-    .admin-editor-columns { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-    .admin-editor-section { border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px; background: rgba(255,255,255,0.04); }
-    .admin-editor-row { display: grid; gap: 8px; align-items: center; grid-template-columns: 1fr auto; }
-    .admin-editor-row + .admin-editor-row { margin-top: 8px; }
-    .admin-editor-input, .admin-editor-textarea { width: 100%; background: rgba(15,23,42,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 8px 10px; color: #fff; font-size: 13px; }
-    .admin-editor-textarea { min-height: 70px; resize: vertical; }
-    .admin-editor-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-    .admin-editor-btn { padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #fff; font-size: 12px; font-weight: 600; }
-    .admin-editor-btn:hover { background: rgba(255,255,255,0.18); }
-    .admin-editor-preview { border: 1px solid rgba(0,217,255,0.18); border-radius: 12px; padding: 12px; background: rgba(0,0,0,0.4); max-height: 520px; overflow: auto; }
-    .admin-editor-inline-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-
-    /* Tour overlay */
-    #tourOverlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 25000;
-      pointer-events: none;
-    }
-    #tourOverlay[aria-hidden="true"] { display: none; pointer-events: none; }
-    #tourOverlay[aria-hidden="false"] { pointer-events: auto; }
-    #tourOverlay[data-open="true"] { display: block; pointer-events: auto; }
-    .tour-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(5,8,20,0.75);
-      backdrop-filter: blur(3px);
-    }
-    .tour-highlight {
-      position: fixed;
-      border-radius: 14px;
-      border: 2px solid rgba(0,217,255,0.75);
-      box-shadow: 0 0 0 2px rgba(0,217,255,0.15), 0 0 25px rgba(0,217,255,0.45);
-      transition: all .2s ease;
-      pointer-events: none;
-    }
-    .tour-tooltip {
-      position: fixed;
-      max-width: 320px;
-      width: calc(100% - 32px);
-      background: linear-gradient(180deg, rgba(12,10,25,0.98), rgba(20,16,38,0.98));
-      border-radius: 14px;
-      border: 1px solid rgba(0,217,255,0.22);
-      box-shadow: 0 12px 35px rgba(0,0,0,0.55), 0 0 28px rgba(0,217,255,0.18);
-      color: #e6f7ff;
-      padding: 14px 16px;
-      pointer-events: auto;
-    }
-    .tour-title { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
-    .tour-copy { font-size: 14px; color: rgba(230,247,255,0.85); margin-bottom: 10px; }
-    .tour-hint { font-size: 12px; color: rgba(159,232,255,0.8); margin-bottom: 10px; }
-    .tour-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
-    .tour-actions .tour-left { display:flex; gap:8px; flex-wrap:wrap; }
-    .tour-actions .tour-right { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
-    .tour-btn {
-      padding: 8px 12px;
-      border-radius: 10px;
-      font-weight: 700;
-      border: 1px solid rgba(255,255,255,0.2);
-      background: rgba(255,255,255,0.08);
-      color: #e6f7ff;
-      cursor: pointer;
-    }
-    .tour-btn:hover { background: rgba(255,255,255,0.18); }
-    .tour-btn-primary { background: linear-gradient(90deg,#ff6b9d,#8b5cf6); border: none; color: #fff; }
-    .tour-btn-primary:hover { filter: brightness(1.05); }
-    .tour-btn-secondary { border-color: rgba(0,217,255,0.4); color: #bdf1ff; }
-    .tour-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
-
-    /* responsive tweaks */
-    @media (max-width: 980px) {
-      .two-col { flex-direction: column; }
-      .rightCol { width: 100% !important; min-width: auto; }
-    }
   </style>
 </head>
 <body>
@@ -429,7 +122,7 @@
       <div class="min-h-screen flex items-center justify-center">
         <div class="text-center">
           <div class="text-6xl mb-4 animate-pulse">🎵</div>
-          <div class="text-2xl font-bold text-white" data-brand="loading">Loading Fortnite Jam Mixer...</div>
+          <div class="text-2xl font-bold text-white">Loading Festival Mixer...</div>
         </div>
       </div>
     </div>
@@ -437,13 +130,13 @@
 
   <!-- Help Modal (outside #app so it persists) -->
   <div id="helpModal" aria-hidden="true">
-      <div class="helpBox" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="helpBox" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
       <div class="helpHeader">
         <div class="helpTitle" id="helpTitle">
           <div style="width:50px;height:50px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,#ff6b9d,#8b5cf6);box-shadow:0 8px 24px rgba(139,92,246,0.12);font-size:22px;">🎧</div>
           <div>
             <div style="font-size:18px;font-weight:800">HELP & FEATURES</div>
-            <div style="font-size:12px;color:#bdeeff">Everything the landing page explains — available anytime</div>
+            <div style="font-size:12px;color:#bdeeff">Track your Fortnite Festival song library</div>
           </div>
         </div>
         <div class="helpTabs" role="tablist" aria-label="Help tabs">
@@ -456,35 +149,29 @@
       </div>
 
       <div class="helpContent" id="helpContent">
-        <div id="helpBasic" data-help-pane="basic">
-          <div class="helpSection" id="welcome">
-            <h3 data-brand="help-title">Fortnite Jam Mixer Help</h3>
-            <p class="small-muted" data-brand="help-intro">Simple steps you can follow fast. Start with Quick Start, then skim the sections below.</p>
-          </div>
+        <h3 style="font-weight:800;margin-bottom:6px;color:#fff;font-size:16px">Welcome — Quick Overview</h3>
+        <p class="small-muted">Track which songs you own in Fortnite Festival and organize them into setlists.</p>
 
-          <div class="helpSection" id="quickstart">
-            <h3>Quick Start (30 seconds)</h3>
-            <ol id="helpQuickStartList" style="line-height:1.6"></ol>
-          </div>
+        <hr style="margin:12px 0;border-color:rgba(0,217,255,0.06)">
 
-          <div class="helpSection" id="whatsNew">
-            <h3>What’s New</h3>
-            <ul id="whatsNewList"></ul>
-            <p class="small-muted" id="whatsNewEmpty" style="display:none">Nothing new right now — check back after the next update.</p>
-          </div>
+        <h4 style="margin-top:8px;font-weight:800;color:#ffb3d1">Library Basics</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li><strong>Mark Owned</strong> — Click <em>Mark Owned</em> on a track to add it to your collection.</li>
+          <li><strong>Setlist</strong> — Use <em>+ Set</em> to add a track to your setlist. Open the Setlist view to see your picks.</li>
+          <li><strong>Search & Filters</strong> — Use the search box and <em>Show All / ✓ Owned Only</em> to filter tracks.</li>
+        </ul>
 
-          <div id="helpBasicSections"></div>
+        <h4 style="margin-top:12px;font-weight:800;color:#9fe8ff">Song Information</h4>
+        <p class="small-muted">Each track shows its genre, key (Camelot notation), and BPM for reference. Genre tags can be corrected by the admin (BattleNeBody) via right-click.</p>
 
-          <div class="helpSection" id="helpFaq">
-            <h3>Troubleshooting FAQ</h3>
-            <div id="helpFaqList"></div>
-          </div>
-        </div>
+        <h4 style="margin-top:12px;font-weight:800;color:#b0ffc8">Setlist Management</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li><strong>Add to setlist</strong> — Click <em>+ Set</em>. The Setlist view shows your list.</li>
+          <li><strong>Remove from setlist</strong> — Use the ✕ button in Setlist view.</li>
+        </ul>
 
-        <div id="helpAdvanced" data-help-pane="advanced" style="display:none">
-          <div id="helpAdvancedSections"></div>
-        </div>
-      </div>
+        <h4 style="margin-top:12px;font-weight:800;color:#b6e0ff">Admin & Genre Overrides</h4>
+        <p class="small-muted">Admin (user <strong>BattleNeBody</strong>) can correct genre tags by right-clicking the genre pill.</p>
 
       <div class="helpFooter">
         <span class="small-muted" id="helpVersion"></span>
@@ -505,14 +192,13 @@
           <div id="quickStartSubtitle" class="text-xs text-cyan-200">Get mixing in under 30 seconds.</div>
         </div>
         <button class="text-sm text-gray-200 hover:text-white" data-action="closeQuickStart" aria-label="Close Quick Start">✕</button>
+        <h4 style="margin-top:12px;font-weight:800;color:#ff9a9a">Data Management</h4>
+        <p class="small-muted" style="margin-bottom:8px">All your data is stored locally in your browser. If you want to delete everything and start fresh, or if you're done using the app:</p>
+        <button onclick="deleteAllData()" style="background:linear-gradient(90deg,#ef4444,#dc2626);padding:8px 16px;border-radius:8px;color:#fff;font-weight:700;cursor:pointer;border:none;width:100%;margin-top:6px;">🗑️ Delete All My Data</button>
+        <p class="small-muted" style="margin-top:6px;font-size:11px;color:#ff9a9a;">⚠️ This will permanently erase your owned tracks, setlists, and all settings. This cannot be undone.</p>
+
+        <p class="small-muted" style="margin-top:10px">Open this panel anytime via the ❓ Help button. 🎧</p>
       </div>
-      <div id="quickStartBody" class="space-y-3"></div>
-      <div class="quickstart-actions">
-        <button class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white" data-action="quickStartBack">Back</button>
-        <button class="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white" data-action="quickStartSkip">Skip for now</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Tour Overlay -->
   <div id="tourOverlay" aria-hidden="true">
@@ -531,986 +217,65 @@
           <button class="tour-btn" id="tourSkipBtn" data-action="tour-skip">Skip</button>
           <button class="tour-btn tour-btn-primary" id="tourNextBtn" data-action="tour-next">Next</button>
         </div>
+      <div class="helpFooter">
+        <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
       </div>
     </div>
   </div>
 
   <script>
     /**************************************************************************
-     * Final merged app
-     * - All fixes applied (setlist rendering, show-all toggle, mixable toggle, band member)
-     * - Optional Firebase (see firebaseEnabled & firebaseConfig)
-     * - Help modal integrated (manual open via header button)
+     * Simplified Library-Only Version
+     * - No mixing logic, selection, or sandbox
+     * - 4-column grid layout
+     * - Load More pagination (12 songs initially)
+     * - Genre info display only
      **************************************************************************/
 
-const BRAND = Object.freeze({
-  APP_NAME: 'Fortnite Jam Mixer',
-  SHORT_NAME: 'Jam Mixer',
-  EXPORT_PREFIX: 'fortnite-jam-mixer',
-  BROWSER_TITLE: 'Fortnite Jam Mixer – Cross-Browser Edition'
-});
-const DEBUG_UI = false;
-const DEBUG_PROFILE = DEBUG_UI || (new URLSearchParams(window.location.search).get('debug') === '1');
-let profileScriptError = null;
-document.title = BRAND.BROWSER_TITLE;
+    // -------------------- FIREBASE (optional) ----------------------------
+    const firebaseEnabled = false; // set true to enable
+    const firebaseConfig = {
+      // Paste your firebase config here
+    };
 
-    // -------------------- FIREBASE (auto-detect) ----------------------------
-// We auto-enable Firebase if /api/firebase-config injected window.firebaseConfig (Vercel env vars).
-// This prevents the "no signup option" problem when firebaseEnabled was left false.
-const DEBUG_LOG_MAX = 50;
-function logEvent(type, payload = {}) {
-  const entry = {
-    type,
-    ts: Date.now(),
-    payload
-  };
-  if (typeof location !== 'undefined' && location.hostname === 'localhost') {
-    console.log('[telemetry]', entry);
-  }
-  try {
-    const existing = JSON.parse(localStorage.getItem('debugLogs') || '[]');
-    existing.push(entry);
-    while (existing.length > DEBUG_LOG_MAX) existing.shift();
-    localStorage.setItem('debugLogs', JSON.stringify(existing));
-  } catch (e) {
-    console.warn('Failed to persist debug log', e);
-  }
-}
-
-function debugProfileLog(message, data = {}){
-  if(!DEBUG_PROFILE) return;
-  if(Object.keys(data || {}).length){
-    console.log(`[debug][profile] ${message}`, data);
-  } else {
-    console.log(`[debug][profile] ${message}`);
-  }
-}
-
-function getEventElement(event){
-  if(!event) return null;
-  const path = typeof event.composedPath === 'function' ? event.composedPath() : null;
-  if(path && path.length){
-    for(const node of path){
-      if(node instanceof Element) return node;
-    }
-  }
-  const target = event.target;
-  if(target instanceof Element) return target;
-  if(target && target.nodeType === Node.TEXT_NODE) return target.parentElement;
-  if(target && target.parentElement) return target.parentElement;
-  return null;
-}
-
-function closestFromEvent(event, selector, options = {}){
-  const start = getEventElement(event);
-  if(!start || !selector) return null;
-  const match = start.closest(selector);
-  if(!match) return null;
-  const within = options.within;
-  if(within){
-    const boundary = typeof within === 'string' ? document.querySelector(within) : within;
-    if(boundary instanceof Element && !boundary.contains(match)) return null;
-  }
-  return match;
-}
-
-function showDelegationToast(message){
-  if(!DEBUG_UI && !DEBUG_PROFILE) return;
-  const existing = document.getElementById('delegationDevToast');
-  if(existing){
-    existing.textContent = message;
-    return;
-  }
-  const toast = document.createElement('div');
-  toast.id = 'delegationDevToast';
-  toast.textContent = message;
-  toast.style.position = 'fixed';
-  toast.style.bottom = '16px';
-  toast.style.right = '16px';
-  toast.style.zIndex = '9999';
-  toast.style.background = 'rgba(0,0,0,0.75)';
-  toast.style.color = '#fff';
-  toast.style.padding = '8px 12px';
-  toast.style.borderRadius = '8px';
-  toast.style.fontSize = '12px';
-  toast.style.pointerEvents = 'none';
-  document.body.appendChild(toast);
-  setTimeout(()=>{ toast.remove(); }, 3000);
-}
-
-function safeOn(type, handler, meta = {}){
-  return function(event){
-    try{
-      handler(event);
-    }catch(err){
-      const detail = {
-        type,
-        action: meta.action || meta.selector || 'unknown',
-        stack: err?.stack || String(err)
-      };
-      console.error('[delegation] handler error', detail);
-      showDelegationToast(`[delegation] ${type} error`);
-    }
-  };
-}
-
-const firebaseConfig = window.firebaseConfig || {};
-const firebaseConfigValid = !!firebaseConfig?.apiKey;
-let firebaseEnabled = false;
-
-    const ADMIN_USERS = ['BattleNeBody'];
-    function applyAdminFlag(profile){
-      if(!profile) return profile;
-      return { ...profile, isAdmin: ADMIN_USERS.includes(profile.username) };
-    }
-    function adminStatusChanged(originalProfile, updatedProfile){
-      if(!updatedProfile) return false;
-      const previous = originalProfile?.isAdmin ?? false;
-      return previous !== (updatedProfile.isAdmin ?? false) || typeof originalProfile?.isAdmin === 'undefined';
-    }
-    async function persistAdminFlagIfNeeded(originalProfile, updatedProfile){
-      if(!updatedProfile) return;
-      if(adminStatusChanged(originalProfile, updatedProfile)){
-        await saveUserProfileToBackend(updatedProfile);
+    let firebaseApp = null, firebaseAuth = null, firestore = null;
+    if (firebaseEnabled && window.firebase && firebaseConfig.apiKey) {
+      try {
+        firebaseApp = firebase.initializeApp(firebaseConfig);
+        firebaseAuth = firebase.auth();
+        firestore = firebase.firestore();
+        console.log('Firebase initialized');
+      } catch (e) {
+        console.warn('Firebase init failed', e);
+        firebaseApp = null;
       }
-    }
-
-function applyBrandingCopy(){
-  const loading = document.querySelector('[data-brand="loading"]');
-  if(loading) loading.textContent = `Loading ${BRAND.APP_NAME}...`;
-  const helpTitle = document.querySelector('[data-brand="help-title"]');
-  if(helpTitle) helpTitle.textContent = `${BRAND.APP_NAME} Help`;
-  const helpIntro = document.querySelector('[data-brand="help-intro"]');
-  if(helpIntro) helpIntro.textContent = `A complete, beginner-to-pro guide for every tool in ${BRAND.APP_NAME}. Open this help anytime with the ❓ button in the header.`;
-  const camelotAnchor = document.querySelector('[data-brand="help-anchor-camelot"]');
-  if(camelotAnchor) camelotAnchor.textContent = `How ${BRAND.APP_NAME} uses Camelot`;
-  const priorityDesc = document.querySelector('[data-brand="priority-desc"]');
-  if(priorityDesc) priorityDesc.textContent = `${BRAND.APP_NAME} always calculates a blended compatibility score (Key → BPM → Genre). Priority modes only decide how ties are broken, not the overall score.`;
-  const camelotHeading = document.querySelector('[data-brand="camelot-heading"]');
-  if(camelotHeading) camelotHeading.textContent = `How ${BRAND.APP_NAME} Uses Camelot`;
-}
-
-let delegationSelfTested = false;
-function runDelegationSelfTest(){
-  if(delegationSelfTested || (!DEBUG_UI && !DEBUG_PROFILE)) return;
-  delegationSelfTested = true;
-  const helpersReady = typeof getEventElement === 'function' && typeof closestFromEvent === 'function' && typeof safeOn === 'function';
-  console.log('[delegation] hardened listeners active', { helpersReady, documentClick: actionDelegatesBound === true });
-}
-
-let interactionSelfTested = false;
-function runInteractionSmokeTest(){
-  if(interactionSelfTested || (!DEBUG_UI && !DEBUG_PROFILE)) return;
-  interactionSelfTested = true;
-  const app = document.getElementById('app');
-  if(!app) return;
-  const originalState = {
-    view,
-    songs,
-    songsById,
-    selectedSong,
-    ownedTracks: [...ownedTracks],
-    showOwnedOnly,
-    showMixableOnly,
-    mainPager: { ...mainPager }
-  };
-  try{
-    view = 'browser';
-    songs = [
-      { id:'test-a', title:'Test A', artist:'Tester', bpm:120, camelot:'8A', key:'Am', duration:180, genre:'Pop' },
-      { id:'test-b', title:'Test B', artist:'Tester', bpm:124, camelot:'9A', key:'Em', duration:200, genre:'Pop' },
-      { id:'test-c', title:'Test C', artist:'Tester', bpm:110, camelot:'7A', key:'Dm', duration:210, genre:'Rock' }
-    ];
-    songsById = Object.fromEntries(songs.map(song=>[song.id, song]));
-    selectedSong = null;
-    ownedTracks = [];
-    showOwnedOnly = false;
-    showMixableOnly = false;
-    resetMainPagination();
-    updateMobileWindowState({ reset: true });
-    render();
-    setupEventListeners();
-    const selectTarget = app.querySelector('[data-action="select-track"][data-id="test-a"]');
-    selectTarget?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    console.assert(selectedSong?.id === 'test-a', '[interaction-test] select-track failed', selectedSong);
-    const ownedTarget = app.querySelector('[data-action="toggle-owned"][data-id="test-a"]');
-    ownedTarget?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    console.assert(ownedTracks.includes('test-a'), '[interaction-test] toggle-owned failed', ownedTracks);
-    selectedSong = null;
-    refreshSelectedSongCriteria();
-    renderMatches();
-    const selectAgain = app.querySelector('[data-action="select-track"][data-id="test-b"]');
-    selectAgain?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    console.assert(selectedSong?.id === 'test-b', '[interaction-test] select after rerender failed', selectedSong);
-  }catch(err){
-    console.warn('[interaction-test] failed', err);
-  }finally{
-    view = originalState.view;
-    songs = originalState.songs;
-    songsById = originalState.songsById;
-    selectedSong = originalState.selectedSong;
-    ownedTracks = originalState.ownedTracks;
-    showOwnedOnly = originalState.showOwnedOnly;
-    showMixableOnly = originalState.showMixableOnly;
-    mainPager.pageIndex = originalState.mainPager.pageIndex;
-    mainPager.pageSize = originalState.mainPager.pageSize;
-    render();
-    setupEventListeners();
-  }
-}
-
-applyBrandingCopy();
-
-window.addEventListener('error', (event) => {
-  logEvent('error', {
-    message: event?.message || 'Unknown error',
-    stack: event?.error?.stack || null,
-    view,
-    firebaseEnabled,
-    online: navigator.onLine
-  });
-  notifyProfileScriptError(event?.message || 'Profile scripts failed. Open console.', event?.error || event);
-});
-window.addEventListener('unhandledrejection', (event) => {
-  logEvent('unhandledrejection', {
-    message: event?.reason?.message || event?.reason || 'Unknown rejection',
-    stack: event?.reason?.stack || null,
-    view,
-    firebaseEnabled,
-    online: navigator.onLine
-  });
-  notifyProfileScriptError(event?.reason?.message || 'Profile scripts failed. Open console.', event?.reason || event);
-});
-
-function buildExportFilename(username = 'profile'){
-  const safeName = (username || 'profile').trim() || 'profile';
-  return `${BRAND.EXPORT_PREFIX}-${safeName}.json`;
-}
-
-let firebaseApp = null, firebaseAuth = null, firestore = null;
-let firebaseAuthUnsub = null;
-let userProfileUnsub = null;
-let authSettledUser = null;
-let authProcessing = false;
-let authInFlight = false;
-let appConfigLoaded = false;
-if (firebaseConfigValid && window.firebase?.initializeApp && window.firebase?.auth && window.firebase?.firestore) {
-  try {
-    firebaseApp = firebase.initializeApp(firebaseConfig);
-    firebaseAuth = firebase.auth();
-    firestore = firebase.firestore();
-    firebaseEnabled = true;
-    if(window.profileStore?.setFirestore) window.profileStore.setFirestore(firestore);
-    if(window.profileStore?.setFirebase) window.profileStore.setFirebase(firebase);
-    firebaseAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch((err)=>{
-      console.warn('Firebase persistence failed', err);
-      logEvent('auth_persistence_fail', { message: err?.message, code: err?.code });
-    });
-    console.log('Firebase initialized');
-    logEvent('firebase_init', { projectId: firebaseConfig.projectId });
-  } catch (e) {
-    console.warn('Firebase init failed', e);
-    logEvent('firebase_init_fail', { message: e?.message, code: e?.code });
-    firebaseApp = null;
-    firebaseAuth = null;
-    firestore = null;
-    firebaseEnabled = false;
-  }
-} else {
-  logEvent('firebase_disabled', { reason: 'missing config or sdk', firebaseConfigValid });
-}
-
-function getAppVersion(){
-  return window.appVersion || window.APP_VERSION || firebaseConfig?.appVersion || firebaseConfig?.version || null;
-}
-function warnIfWhatsNewStale(){
-  const host = typeof location !== 'undefined' ? location.hostname : '';
-  const isDevHost = host === 'localhost' || host === '127.0.0.1';
-  if(!isDevHost) return;
-  const appVersion = getAppVersion();
-  const items = Array.isArray(window.DEFAULT_WHATS_NEW?.items) ? window.DEFAULT_WHATS_NEW.items : [];
-  if(!appVersion || items.length === 0) return;
-  const signature = items.map(item => item.id).join('|');
-  let previous = {};
-  try{
-    previous = JSON.parse(localStorage.getItem('whatsNewSignature') || '{}');
-  }catch(_){}
-  if(previous?.version && previous.version !== appVersion && previous.signature === signature){
-    console.warn(`[whats-new] APP_VERSION changed to ${appVersion} but WHATS_NEW looks unchanged.`);
-  }
-  localStorage.setItem('whatsNewSignature', JSON.stringify({ version: appVersion, signature }));
-}
-warnIfWhatsNewStale();
-const featureRegistry = window.FEATURES || {};
-var isFeatureOn = window.isFeatureOn;
-if (typeof isFeatureOn !== 'function') {
-  isFeatureOn = (name) => Boolean((window.FEATURES || featureRegistry)?.[name]);
-  window.isFeatureOn = isFeatureOn;
-}
-const FEATURE_DISABLED_COPY = 'Temporarily disabled while we stabilize the app.';
-const FEATURE_DISABLED_TOAST_KEY = 'ffjm_feature_disabled_notice';
-function showFeatureDisabledNotice(){
-  if(sessionStorage.getItem(FEATURE_DISABLED_TOAST_KEY)) return;
-  sessionStorage.setItem(FEATURE_DISABLED_TOAST_KEY, '1');
-  const toast = document.createElement('div');
-  toast.textContent = 'Feature temporarily disabled.';
-  toast.style.position = 'fixed';
-  toast.style.bottom = '16px';
-  toast.style.right = '16px';
-  toast.style.zIndex = '9999';
-  toast.style.background = 'rgba(15, 23, 42, 0.9)';
-  toast.style.color = '#e2e8f0';
-  toast.style.padding = '10px 14px';
-  toast.style.borderRadius = '10px';
-  toast.style.fontSize = '12px';
-  toast.style.pointerEvents = 'none';
-  toast.style.border = '1px solid rgba(148, 163, 184, 0.3)';
-  document.body.appendChild(toast);
-  setTimeout(()=>{ toast.remove(); }, 3000);
-}
-function guardFeature(name){
-  if(isFeatureOn(name)) return true;
-  showFeatureDisabledNotice();
-  return false;
-}
-let helpContentState = window.DEFAULT_HELP_CONTENT || null;
-let whatsNewState = window.DEFAULT_WHATS_NEW || null;
-let configLoadPromise = null;
-function getFirebaseAnalytics(){
-  if(!firebaseEnabled) return null;
-  if(typeof firebase?.analytics !== 'function') return null;
-  try {
-    return firebase.analytics();
-  } catch (e) {
-    console.warn('Firebase analytics unavailable', e);
-    return null;
-  }
-}
-function track(eventName, payload = {}){
-  const safePayload = payload && typeof payload === 'object' ? payload : {};
-  const analyticsInstance = getFirebaseAnalytics();
-  if(analyticsInstance && typeof analyticsInstance.logEvent === 'function'){
-    try {
-      analyticsInstance.logEvent(eventName, safePayload);
-      return;
-    } catch (e) {
-      console.warn('Analytics logEvent failed', e);
-    }
-  }
-  console.debug('[analytics]', eventName, safePayload);
-}
-
-
-    function normalizeStreamUrlInput(value){
-      const trimmed = (value || '').trim();
-      if(!trimmed) return '';
-      if(/^https?:\/\//i.test(trimmed)) return trimmed;
-      if(/^www\./i.test(trimmed)) return `https://${trimmed}`;
-      if(/^[\w.-]+\.[a-z]{2,}/i.test(trimmed)) return `https://${trimmed}`;
-      return trimmed;
-    }
-    function isValidStreamUrl(value){
-      if(!value) return false;
-      try{
-        const parsed = new URL(value);
-        return ['http:','https:'].includes(parsed.protocol) && !!parsed.hostname;
-      }catch(_){
-        return false;
-      }
-    }
-    function normalizeLiveProfileFields(profile){
-      const streamUrl = normalizeStreamUrlInput(profile?.streamUrl || '');
-      const streamUrlValid = isValidStreamUrl(streamUrl);
-      const liveStartedAt = streamUrlValid ? (profile?.liveStartedAt || profile?.liveSince || null) : null;
-      return {
-        streamUrl,
-        isLive: streamUrlValid ? profile?.isLive === true : false,
-        liveStartedAt
-      };
-    }
-    const RATING_TAGS = ['Vibes', 'Transitions', 'Song Selection', 'Crowd Control', 'FX', 'Mixing'];
-    const RATING_MAX_COMMENT = 140;
-    const RATING_UPDATE_LIMIT = 3;
-    const RATING_WINDOW_MS = 60 * 60 * 1000;
-
-    function normalizeRatingBreakdown(breakdown){
-      const base = { 1:0, 2:0, 3:0, 4:0, 5:0 };
-      if(!breakdown) return base;
-      Object.keys(base).forEach(key=>{
-        const val = Number(breakdown[key] ?? breakdown[Number(key)]);
-        base[key] = Number.isFinite(val) && val > 0 ? Math.floor(val) : 0;
-      });
-      return base;
-    }
-
-    function computeRatingAggregates(breakdown){
-      const ratingBreakdown = normalizeRatingBreakdown(breakdown);
-      const ratingCount = Object.values(ratingBreakdown).reduce((sum, val)=> sum + val, 0);
-      const totalStars = Object.entries(ratingBreakdown).reduce((sum, [stars, count])=> sum + (Number(stars) * count), 0);
-      const avgRating = ratingCount ? Number((totalStars / ratingCount).toFixed(2)) : 0;
-      return { avgRating, ratingCount, ratingBreakdown };
-    }
-
-    function normalizeRatingFields(profile){
-      const ratingBreakdown = normalizeRatingBreakdown(profile?.ratingBreakdown);
-      const computed = computeRatingAggregates(ratingBreakdown);
-      const avgCandidate = Number(profile?.avgRating);
-      const countCandidate = Number(profile?.ratingCount);
-      return {
-        avgRating: Number.isFinite(avgCandidate) ? avgCandidate : computed.avgRating,
-        ratingCount: Number.isFinite(countCandidate) ? countCandidate : computed.ratingCount,
-        ratingBreakdown: ratingBreakdown
-      };
-    }
-
-    const PROFILE_COLLECTION = 'users';
-    const LEGACY_PROFILE_COLLECTION = 'profiles';
-    const PROFILE_BIO_MAX = 160;
-    const PERSONA_STORAGE_KEYS = Object.freeze({
-      id: 'profilePersonaId',
-      theme: 'profilePersonaTheme',
-      seed: 'profilePersonaSeed'
-    });
-    const PERSONA_THEMES = [
-      { id: 'neonPop', label: 'Neon Pop', ring: ['#ff6b9d', '#38bdf8'], background: ['#1e1b4b', '#0f172a'], accent: '#facc15', glow: 'rgba(255,107,157,0.55)', particle: '#fef3c7' },
-      { id: 'midnight', label: 'Midnight', ring: ['#0ea5e9', '#6366f1'], background: ['#0f172a', '#111827'], accent: '#38bdf8', glow: 'rgba(56,189,248,0.4)', particle: '#e0f2fe' },
-      { id: 'sunset', label: 'Sunset', ring: ['#fb7185', '#f97316'], background: ['#3b0a2a', '#1f2937'], accent: '#facc15', glow: 'rgba(249,115,22,0.4)', particle: '#fde68a' },
-      { id: 'mintwave', label: 'Mintwave', ring: ['#22d3ee', '#34d399'], background: ['#0f172a', '#064e3b'], accent: '#a7f3d0', glow: 'rgba(52,211,153,0.4)', particle: '#ccfbf1' },
-      { id: 'orbit', label: 'Orbit', ring: ['#60a5fa', '#c084fc'], background: ['#111827', '#312e81'], accent: '#f472b6', glow: 'rgba(192,132,252,0.45)', particle: '#fbcfe8' }
-    ];
-    const PERSONAS = Object.freeze({
-      raver: {
-        id: 'raver',
-        name: 'Raver',
-        energy: '⚡',
-        render: ({ theme }) => `
-          <circle cx="128" cy="86" r="22" fill="${theme.accent}" opacity="0.9"/>
-          <path d="M58 128 L96 96" stroke="${theme.accent}" stroke-width="10" stroke-linecap="round"/>
-          <path d="M198 128 L160 96" stroke="${theme.accent}" stroke-width="10" stroke-linecap="round"/>
-          <path d="M92 188 L128 138 L164 188" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
-          <circle cx="68" cy="116" r="6" fill="${theme.particle}"/>
-          <circle cx="188" cy="116" r="6" fill="${theme.particle}"/>
-        `
-      },
-      mc: {
-        id: 'mc',
-        name: 'MC',
-        energy: '🎤',
-        render: ({ theme }) => `
-          <circle cx="128" cy="90" r="22" fill="${theme.accent}" opacity="0.95"/>
-          <rect x="96" y="70" width="64" height="16" rx="8" fill="${theme.ring[0]}" opacity="0.9"/>
-          <path d="M92 168 L128 128 L164 168" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-          <rect x="178" y="120" width="18" height="40" rx="6" fill="${theme.ring[1]}" opacity="0.9"/>
-          <circle cx="187" cy="112" r="10" fill="${theme.accent}"/>
-        `
-      },
-      breaker: {
-        id: 'breaker',
-        name: 'Breaker',
-        energy: '🔥',
-        render: ({ theme }) => `
-          <circle cx="110" cy="92" r="18" fill="${theme.accent}" opacity="0.95"/>
-          <path d="M70 172 L122 132 L170 154" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M156 104 L182 70" stroke="${theme.ring[1]}" stroke-width="12" stroke-linecap="round"/>
-          <path d="M84 130 L52 92" stroke="${theme.ring[0]}" stroke-width="12" stroke-linecap="round"/>
-        `
-      },
-      turntablist: {
-        id: 'turntablist',
-        name: 'Turntablist',
-        energy: '🎧',
-        render: ({ theme }) => `
-          <circle cx="128" cy="78" r="20" fill="${theme.accent}" opacity="0.95"/>
-          <rect x="64" y="120" width="128" height="48" rx="14" fill="rgba(255,255,255,0.12)" stroke="${theme.ring[1]}" stroke-width="4"/>
-          <circle cx="104" cy="144" r="16" fill="${theme.ring[0]}" opacity="0.9"/>
-          <circle cx="152" cy="144" r="12" fill="${theme.ring[1]}" opacity="0.9"/>
-          <path d="M110 178 L128 148 L146 178" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-        `
-      },
-      producer: {
-        id: 'producer',
-        name: 'Producer',
-        energy: '💻',
-        render: ({ theme }) => `
-          <circle cx="128" cy="80" r="20" fill="${theme.accent}" opacity="0.95"/>
-          <rect x="70" y="120" width="116" height="54" rx="10" fill="rgba(255,255,255,0.1)" stroke="${theme.ring[0]}" stroke-width="4"/>
-          <path d="M86 148 L106 138 L126 146 L146 132 L170 140" stroke="${theme.accent}" stroke-width="6" stroke-linecap="round"/>
-        `
-      },
-      rocker: {
-        id: 'rocker',
-        name: 'Rock Shredder',
-        energy: '🎸',
-        render: ({ theme }) => `
-          <circle cx="108" cy="86" r="20" fill="${theme.accent}" opacity="0.95"/>
-          <path d="M88 160 L132 118 L176 170" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="188" cy="178" r="14" fill="${theme.ring[1]}" opacity="0.9"/>
-          <rect x="150" y="146" width="48" height="10" rx="5" fill="${theme.ring[0]}"/>
-        `
-      },
-      disco: {
-        id: 'disco',
-        name: 'Disco Diva',
-        energy: '✨',
-        render: ({ theme }) => `
-          <circle cx="128" cy="78" r="20" fill="${theme.accent}" opacity="0.95"/>
-          <circle cx="128" cy="122" r="22" fill="rgba(255,255,255,0.18)" stroke="${theme.ring[0]}" stroke-width="4"/>
-          <path d="M90 176 L128 136 L166 176" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="112" cy="118" r="6" fill="${theme.particle}"/>
-          <circle cx="144" cy="126" r="6" fill="${theme.particle}"/>
-        `
-      },
-      cyber: {
-        id: 'cyber',
-        name: 'Cyber DJ',
-        energy: '🛸',
-        render: ({ theme }) => `
-          <circle cx="128" cy="88" r="22" fill="${theme.accent}" opacity="0.95"/>
-          <rect x="90" y="78" width="76" height="18" rx="9" fill="${theme.ring[1]}" opacity="0.9"/>
-          <path d="M88 170 L128 130 L168 170" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M104 108 L152 108" stroke="${theme.particle}" stroke-width="4" stroke-linecap="round"/>
-        `
-      },
-      punk: {
-        id: 'punk',
-        name: 'Punk',
-        energy: '🔊',
-        render: ({ theme }) => `
-          <circle cx="128" cy="86" r="20" fill="${theme.accent}" opacity="0.95"/>
-          <path d="M112 64 L128 40 L144 64" stroke="${theme.ring[0]}" stroke-width="8" stroke-linecap="round"/>
-          <rect x="70" y="130" width="116" height="46" rx="12" fill="rgba(255,255,255,0.12)" stroke="${theme.ring[1]}" stroke-width="4"/>
-          <circle cx="102" cy="152" r="10" fill="${theme.accent}"/>
-          <circle cx="154" cy="152" r="10" fill="${theme.accent}"/>
-        `
-      },
-      kpop: {
-        id: 'kpop',
-        name: 'K-Pop',
-        energy: '⭐',
-        render: ({ theme }) => `
-          <circle cx="128" cy="84" r="20" fill="${theme.accent}" opacity="0.95"/>
-          <path d="M94 178 L128 136 L162 178" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M70 118 L90 88" stroke="${theme.ring[0]}" stroke-width="8" stroke-linecap="round"/>
-          <path d="M186 118 L166 88" stroke="${theme.ring[1]}" stroke-width="8" stroke-linecap="round"/>
-          <circle cx="70" cy="124" r="6" fill="${theme.particle}"/>
-          <circle cx="186" cy="124" r="6" fill="${theme.particle}"/>
-        `
-      }
-    });
-    const PERSONA_LIST = Object.values(PERSONAS);
-    // Persona QA checklist:
-    // 1) Profile → pick a persona → refresh → selection persists.
-    // 2) Change theme → ring/background update instantly.
-    // 3) Randomize seed → sparkles/accents shift.
-    // 4) Go offline → persona picker still works with no errors.
-    const THEME_ACCENTS = [
-      { id: 'pink-pop', label: 'Pink Pop', color: '#ff6b9d' },
-      { id: 'electric-blue', label: 'Electric Blue', color: '#38bdf8' },
-      { id: 'neon-violet', label: 'Neon Violet', color: '#a855f7' },
-      { id: 'sunset-gold', label: 'Sunset Gold', color: '#facc15' },
-      { id: 'mint-laser', label: 'Mint Laser', color: '#34d399' }
-    ];
-
-    function getProfileCollection(){
-      return firestore ? firestore.collection(PROFILE_COLLECTION) : null;
-    }
-
-    function getLegacyProfileCollection(){
-      return firestore ? firestore.collection(LEGACY_PROFILE_COLLECTION) : null;
-    }
-
-    function normalizeUsernameLower(value){
-      return (value || '').trim().toLowerCase();
-    }
-
-    function buildSearchTokens(value){
-      const normalized = normalizeUsernameLower(value);
-      const maxTokens = Math.min(20, normalized.length);
-      const tokens = [];
-      for(let i=1; i<=maxTokens; i+=1){
-        tokens.push(normalized.slice(0, i));
-      }
-      return tokens;
-    }
-
-    function hexToRgba(hex, alpha = 0.45){
-      const clean = (hex || '').replace('#','');
-      const normalized = clean.length === 3
-        ? clean.split('').map(ch => ch + ch).join('')
-        : clean;
-      if(normalized.length !== 6) return `rgba(255,107,157,${alpha})`;
-      const r = parseInt(normalized.slice(0,2), 16);
-      const g = parseInt(normalized.slice(2,4), 16);
-      const b = parseInt(normalized.slice(4,6), 16);
-      return `rgba(${r},${g},${b},${alpha})`;
-    }
-
-    function resolveThemeAccent(accent){
-      const preset = THEME_ACCENTS.find(item => item.id === accent);
-      if(preset) return preset.color;
-      if(/^#([0-9a-f]{3}){1,2}$/i.test(accent || '')) return accent;
-      return THEME_ACCENTS[0].color;
-    }
-
-    function createSeededRandom(seed){
-      let hash = 0;
-      String(seed || '').split('').forEach((char)=>{
-        hash = ((hash << 5) - hash) + char.charCodeAt(0);
-        hash |= 0;
-      });
-      let value = Math.abs(hash) || 1;
-      return () => {
-        value = (value * 9301 + 49297) % 233280;
-        return value / 233280;
-      };
-    }
-
-    function getStoredPersona(){
-      return {
-        personaId: localStorage.getItem(PERSONA_STORAGE_KEYS.id),
-        personaTheme: localStorage.getItem(PERSONA_STORAGE_KEYS.theme),
-        personaSeed: localStorage.getItem(PERSONA_STORAGE_KEYS.seed)
-      };
-    }
-
-    function persistPersonaToStorage(persona){
-      if(!persona) return;
-      if(persona.personaId) localStorage.setItem(PERSONA_STORAGE_KEYS.id, persona.personaId);
-      if(persona.personaTheme) localStorage.setItem(PERSONA_STORAGE_KEYS.theme, persona.personaTheme);
-      if(persona.personaSeed) localStorage.setItem(PERSONA_STORAGE_KEYS.seed, persona.personaSeed);
-    }
-
-    function ensurePersona(profile){
-      const fallbackSeed = profile?.username || profile?.uid || localDeviceId || Math.random().toString(36).slice(2, 8);
-      const isSelf = !!(profile && currentUser && ((profile.uid && profile.uid === currentUser.uid) || (profile.username && profile.username === currentUser.username)));
-      const stored = isSelf || !profile ? getStoredPersona() : {};
-      const personaId = profile?.personaId || stored.personaId || 'turntablist';
-      const personaTheme = profile?.personaTheme || stored.personaTheme || 'neonPop';
-      const personaSeed = profile?.personaSeed || stored.personaSeed || fallbackSeed;
-      return { personaId, personaTheme, personaSeed };
-    }
-
-    function getPersonaTheme(themeId){
-      return PERSONA_THEMES.find(item => item.id === themeId) || PERSONA_THEMES[0];
-    }
-
-    function renderPersonaSVG({ personaId, themeId, seed, size = 96 }){
-      const persona = PERSONAS[personaId] || PERSONAS.turntablist;
-      const theme = getPersonaTheme(themeId);
-      const random = createSeededRandom(`${seed}-${personaId}-${themeId}`);
-      const unique = Math.abs(Math.floor(random() * 100000));
-      const bgId = `persona-bg-${personaId}-${unique}`;
-      const ringId = `persona-ring-${personaId}-${unique}`;
-      const accentId = `persona-accent-${personaId}-${unique}`;
-      const sparkles = Array.from({ length: 5 }).map(() => {
-        const cx = 48 + Math.floor(random() * 160);
-        const cy = 48 + Math.floor(random() * 160);
-        const r = 3 + Math.floor(random() * 5);
-        return `<circle class="persona-spark" cx="${cx}" cy="${cy}" r="${r}" fill="${theme.particle}" opacity="0.7"/>`;
-      }).join('');
-      return `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 256 256" role="img" aria-label="${persona.name} persona">
-          <defs>
-            <linearGradient id="${bgId}" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stop-color="${theme.background[0]}"/>
-              <stop offset="100%" stop-color="${theme.background[1]}"/>
-            </linearGradient>
-            <linearGradient id="${ringId}" x1="0" x2="1" y1="0" y2="1">
-              <stop offset="0%" stop-color="${theme.ring[0]}"/>
-              <stop offset="100%" stop-color="${theme.ring[1]}"/>
-            </linearGradient>
-            <radialGradient id="${accentId}" cx="0.5" cy="0.4" r="0.6">
-              <stop offset="0%" stop-color="${theme.accent}"/>
-              <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
-            </radialGradient>
-          </defs>
-          <rect width="256" height="256" rx="56" fill="url(#${bgId})"/>
-          <circle cx="128" cy="128" r="102" fill="url(#${accentId})" opacity="0.45"/>
-          ${sparkles}
-          <circle class="persona-ring" cx="128" cy="128" r="108" fill="none" stroke="url(#${ringId})" stroke-width="10" opacity="0.9"/>
-          ${persona.render({ theme })}
-        </svg>
-      `.trim();
-    }
-
-    function renderPersonaBadge(profile, size = 48, extraClass = ''){
-      const persona = ensurePersona(profile);
-      const personaSvg = renderPersonaSVG({
-        personaId: persona.personaId,
-        themeId: persona.personaTheme,
-        seed: persona.personaSeed,
-        size
-      });
-      const energy = (PERSONAS[persona.personaId] || PERSONAS.turntablist).energy || '⚡';
-      const label = escapeHtml(profile?.djName || profile?.username || 'DJ');
-      return `
-        <div class="persona-badge ${extraClass}" style="width:${size}px;height:${size}px;" aria-label="${label} persona">
-          ${personaSvg}
-          <span class="persona-energy">${energy}</span>
-        </div>
-      `.trim();
     }
 
     // Backend save/load wrappers (Firestore or localStorage)
-    function normalizeProfileShape(profile, fallbackId){
-      if(!profile) return null;
-      const ownedFromMap = Object.keys(profile.ownedMap || {});
-      const ownedArray = Array.isArray(profile.ownedTracks) ? profile.ownedTracks : ownedFromMap;
-      const username = profile.username || fallbackId || profile.uid || '';
-      const djName = profile.djName || username;
-      const email = profile.email || profile.mail || '';
-      const oauth = profile.oauth || {};
-      const isAdmin = profile.isAdmin === true;
-      const normalizedSetlist = normalizeSetlistIds(profile.setlist || profile.setlistIds || profile.setlists);
-      const liveDefaults = normalizeLiveProfileFields(profile);
-      const ratingDefaults = normalizeRatingFields(profile);
-      const persona = ensurePersona(profile);
-      const bio = (profile.bio || '').slice(0, PROFILE_BIO_MAX);
-      const themeAccent = profile.themeAccent || THEME_ACCENTS[0].id;
-      const isPublic = profile.isPublic !== false;
-      const allowFriendRequests = profile.allowFriendRequests !== false;
-      const rulesAccepted = profile.rulesAccepted === true;
-      const rulesAcceptedAt = profile.rulesAcceptedAt || null;
-      const usernameLower = profile.usernameLower || normalizeUsernameLower(username);
-      const djNameLower = profile.djNameLower || normalizeUsernameLower(djName);
-      const searchNameLower = profile.searchNameLower || usernameLower;
-      const searchTokens = Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower);
-      const { setlists, setlistIds, ...profileRest } = profile;
-      return {
-        ...profileRest,
-        ...liveDefaults,
-        ...ratingDefaults,
-        username,
-        djName,
-        email,
-        ownedTracks: ownedArray,
-        setlist: normalizedSetlist,
-        oauth,
-        isAdmin,
-        bio,
-        themeAccent,
-        personaId: persona.personaId,
-        personaTheme: persona.personaTheme,
-        personaSeed: persona.personaSeed,
-        isPublic,
-        allowFriendRequests,
-        rulesAccepted,
-        rulesAcceptedAt,
-        usernameLower,
-        djNameLower,
-        searchNameLower,
-        searchTokens
-      };
-    }
-    function buildOwnedMap(ids){
-      const map = {};
-      (ids||[]).forEach(id=>{ map[id] = true; });
-      return map;
-    }
     async function saveUserProfileToBackend(profile) {
       if (!profile) return;
-      const firebaseUser = firebaseAuth?.currentUser;
-      const profileKey = profile.uid || firebaseUser?.uid;
-      const setlistItems = profile.setlist || [];
-      const serverTimestamp = firebase?.firestore?.FieldValue?.serverTimestamp;
-      const usernameLower = normalizeUsernameLower(profile.username || profileKey);
-      const djNameLower = normalizeUsernameLower(profile.djName || profile.username || profileKey);
-      const searchNameLower = profile.searchNameLower || usernameLower;
-      const persona = ensurePersona(profile);
-      const { setlists, setlistIds, ownedTracks, ownedMap, ...profileRest } = profile;
-      const payload = {
-        ...profileRest,
-        uid: profileKey,
-        username: profile.username || profileKey,
-        djName: profile.djName || profile.username || profileKey,
-        usernameLower,
-        djNameLower,
-        searchNameLower,
-        searchTokens: Array.isArray(profile.searchTokens) ? profile.searchTokens : buildSearchTokens(usernameLower),
-        bio: (profile.bio || '').slice(0, PROFILE_BIO_MAX),
-        themeAccent: profile.themeAccent || THEME_ACCENTS[0].id,
-        personaId: persona.personaId,
-        personaTheme: persona.personaTheme,
-        personaSeed: persona.personaSeed,
-        isPublic: profile.isPublic !== false,
-        allowFriendRequests: profile.allowFriendRequests !== false,
-        rulesAccepted: profile.rulesAccepted === true,
-        rulesAcceptedAt: profile.rulesAcceptedAt || null,
-        email: profile.email || firebaseUser?.email || '',
-        setlist: setlistItems,
-        updatedAt: serverTimestamp ? serverTimestamp() : new Date().toISOString()
-      };
-      let backendOk = true;
-      if (firestore && firebaseUser && profileKey) {
+      if (firestore && profile.username) {
         try {
-          const collection = getProfileCollection();
-          if(collection){
-            await collection.doc(profileKey).set(payload, { merge: true });
-          }
-        } catch (e) {
-          console.warn('Firestore save failed', e);
-          backendOk = false;
-        }
+          await firestore.collection('users').doc(profile.username).set(profile, { merge: true });
+          return true;
+        } catch (e) { console.warn('Firestore save failed', e); return false; }
+      } else {
+        const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+        profiles[profile.username] = profile;
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+        return true;
       }
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      if (payload.username) profiles[payload.username] = payload;
-      if (profileKey) profiles[profileKey] = payload;
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      return backendOk;
     }
-    async function loadUserProfileFromBackend(identifier) {
-      if (!identifier && !firebaseAuth?.currentUser) return null;
-      const firebaseUser = firebaseAuth?.currentUser;
-      const lookupKey = identifier || firebaseUser?.uid;
-      const isLikelyUid = typeof lookupKey === 'string' && (lookupKey.startsWith('local:') || lookupKey.length >= 20);
-      if (firestore && lookupKey) {
+    async function loadUserProfileFromBackend(username) {
+      if (!username) return null;
+      if (firestore) {
         try {
-          const primaryCollection = getProfileCollection();
-          const legacyCollection = getLegacyProfileCollection();
-          if(primaryCollection && isLikelyUid){
-            const doc = await primaryCollection.doc(lookupKey).get();
-            if (doc.exists) return normalizeProfileShape(doc.data(), lookupKey);
-          }
-          if(legacyCollection && isLikelyUid){
-            const legacyDoc = await legacyCollection.doc(lookupKey).get();
-            if (legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), lookupKey);
-          }
-          if(identifier && primaryCollection){
-            const query = await primaryCollection.where('usernameLower','==', normalizeUsernameLower(identifier)).limit(1).get();
-            const match = query.docs[0];
-            if(match?.exists) return normalizeProfileShape({ ...match.data(), uid: match.id }, match.id);
-          }
+          const doc = await firestore.collection('users').doc(username).get();
+          return doc.exists ? doc.data() : null;
         } catch (e) { console.warn('Firestore load failed', e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      if (lookupKey && profiles[lookupKey]) return normalizeProfileShape(profiles[lookupKey], lookupKey);
-      if (firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
-      return identifier ? normalizeProfileShape(profiles[identifier], identifier) || null : null;
-    }
-
-    function getStreamPlatformInfo(streamUrl){
-      if(!streamUrl) return { label: 'Other', icon: '🌐' };
-      try{
-        const host = new URL(streamUrl).hostname.replace('www.','').toLowerCase();
-        if(host.includes('twitch')) return { label: 'Twitch', icon: '🟣' };
-        if(host.includes('youtube') || host.includes('youtu.be')) return { label: 'YouTube', icon: '🔴' };
-        if(host.includes('kick')) return { label: 'Kick', icon: '🟢' };
-        if(host.includes('tiktok')) return { label: 'TikTok', icon: '🎵' };
-      }catch(_){}
-      return { label: 'Other', icon: '🌐' };
-    }
-
-    function getProfileRatingDisplay(profile){
-      const ratingCount = Number(profile?.ratingCount) || 0;
-      const avgRating = Number(profile?.avgRating) || 0;
-      const roundedStars = Math.round(avgRating);
-      const stars = Array.from({ length: 5 }, (_, i)=> i < roundedStars ? '★' : '☆').join('');
-      return { ratingCount, avgRating, stars };
-    }
-
-    function renderRatingBreakdownBars(breakdown, ratingCount){
-      if(!ratingCount) return '';
-      return `<div class="space-y-2">
-        ${[5,4,3,2,1].map(star=>{
-          const count = breakdown[String(star)] || 0;
-          const pct = ratingCount ? Math.round((count / ratingCount) * 100) : 0;
-          return `<div class="flex items-center gap-2 text-xs text-gray-300">
-            <div class="w-6 text-right">${star}★</div>
-            <div class="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
-              <div class="h-full bg-amber-400/80" style="width:${pct}%;"></div>
-            </div>
-            <div class="w-10 text-right text-gray-400">${count}</div>
-          </div>`;
-        }).join('')}
-      </div>`;
-    }
-
-    function getLocalRatings(){
-      return JSON.parse(localStorage.getItem('ratings') || '{}');
-    }
-
-    function saveLocalRatings(ratings){
-      localStorage.setItem('ratings', JSON.stringify(ratings));
-    }
-
-    async function getExistingRating(streamerUid, raterUid){
-      if(!streamerUid || !raterUid) return null;
-      if(firestore){
-        try{
-          const collection = getProfileCollection();
-          if(!collection) return null;
-          const doc = await collection.doc(streamerUid).collection('ratings').doc(raterUid).get();
-          return doc.exists ? doc.data() : null;
-        }catch(err){ console.warn('rating load failed', err); }
-      }
-      const ratings = getLocalRatings();
-      return ratings?.[streamerUid]?.[raterUid] || null;
-    }
-
-    function updateAggregatesWithRating(profile, previousStars, nextStars){
-      const ratingBreakdown = normalizeRatingBreakdown(profile?.ratingBreakdown);
-      let ratingCount = Math.max(0, Number(profile?.ratingCount) || 0);
-      if(previousStars){
-        const prevKey = String(previousStars);
-        ratingBreakdown[prevKey] = Math.max(0, (ratingBreakdown[prevKey] || 0) - 1);
-      } else {
-        ratingCount += 1;
-      }
-      const nextKey = String(nextStars);
-      ratingBreakdown[nextKey] = (ratingBreakdown[nextKey] || 0) + 1;
-      const computed = computeRatingAggregates(ratingBreakdown);
-      ratingCount = Math.max(ratingCount, computed.ratingCount);
-      return { avgRating: computed.avgRating, ratingCount, ratingBreakdown };
-    }
-
-    function checkRatingUpdateLimit(streamerUid, raterUid){
-      const now = Date.now();
-      const logs = JSON.parse(localStorage.getItem('ratingUpdateLog') || '{}');
-      const streamerLog = logs[streamerUid] || {};
-      const updates = (streamerLog[raterUid] || []).filter(ts => now - ts < RATING_WINDOW_MS);
-      if(updates.length >= RATING_UPDATE_LIMIT){
-        const oldest = updates[0];
-        return { allowed: false, retryAt: oldest + RATING_WINDOW_MS };
-      }
-      return { allowed: true, updates, logs };
-    }
-
-    function recordRatingUpdate(streamerUid, raterUid, updates, logs){
-      const now = Date.now();
-      const nextUpdates = [...updates, now];
-      const streamerLog = logs[streamerUid] || {};
-      streamerLog[raterUid] = nextUpdates;
-      logs[streamerUid] = streamerLog;
-      localStorage.setItem('ratingUpdateLog', JSON.stringify(logs));
-    }
-
-    async function getLiveUsers(){
-      if(firestore){
-        try{
-          const collection = getProfileCollection();
-          if(!collection) return [];
-          const snap = await collection
-            .where('isLive','==',true)
-            .orderBy('liveStartedAt','desc')
-            .get();
-          return snap.docs
-            .map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id))
-            .filter(profile=> isValidStreamUrl(profile.streamUrl));
-        }catch(err){
-          console.warn('live users query failed', err);
-        }
-      }
-      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
-      const unique = {};
-      Object.values(profiles)
-        .map(profile=> normalizeProfileShape(profile, profile?.username || profile?.uid || ''))
-        .filter(profile=> profile?.isLive && isValidStreamUrl(profile.streamUrl))
-        .forEach(profile=>{
-          const key = profile?.username || profile?.uid;
-          if(key && !unique[key]) unique[key] = profile;
-        });
-      return Object.values(unique)
-        .sort((a,b)=> new Date(b.liveStartedAt || 0) - new Date(a.liveStartedAt || 0));
+      return profiles[username] || null;
     }
 
     // ---------------------------- Data ------------------------------
@@ -1520,9 +285,6 @@ function track(eventName, payload = {}){
       '7A':'#9D4EDD','7B':'#B877FF','8A':'#E84A5F','8B':'#FF6B81','9A':'#00D9FF','9B':'#4DFFFF',
       '10A':'#FFA400','10B':'#FFBB5C','11A':'#FE6D73','11B':'#FF8C94','12A':'#A8E6CF','12B':'#C1F0DD'
     };
-    const knownCorrections = [
-      { id: 'dont_fear_the_reaper', expectedCamelot: '8A' },
-    ];
     const keyToCamelot = { 'C':'8B','Am':'8A','A Minor':'8A','C Major':'8B','G':'9B','Em':'9A','E Minor':'9A','G Major':'9B','D':'10B','Bm':'10A','B Minor':'10A','D Major':'10B','A':'11B','F#m':'11A','F# Minor':'11A','A Major':'11B','E':'12B','C#m':'12A','C# Minor':'12A','E Major':'12B','B':'1B','G#m':'1A','G# Minor':'1A','B Major':'1B','F#':'2B','D#m':'2A','D# Minor':'2A','F# Major':'2B','Db':'3B','Bbm':'3A','Bb Minor':'3A','Db Major':'3B','Ab':'4B','Fm':'4A','F Minor':'4A','Ab Major':'4B','Eb':'5B','Cm':'5A','C Minor':'5A','Eb Major':'5B','Bb':'6B','Gm':'6A','G Minor':'6A','Bb Major':'6B','F':'7B','Dm':'7A','D Minor':'7A','F Major':'7B' };
 
     const genreMap = {
@@ -1545,188 +307,41 @@ function track(eventName, payload = {}){
       'Soul': ['aretha franklin','otis redding','sam cooke']
     };
 
+    const genreColors = {
+      'Rock': '#ef4444',           // Red
+      'Classic Rock': '#dc2626',   // Dark Red
+      'Alternative': '#f97316',    // Orange
+      'Punk': '#ea580c',           // Dark Orange
+      'Metal': '#7f1d1d',          // Very Dark Red
+      'Pop': '#ec4899',            // Pink
+      'Hip-Hop': '#8b5cf6',        // Purple
+      'R&B': '#a855f7',            // Light Purple
+      'Electronic': '#06b6d4',     // Cyan
+      'Indie': '#14b8a6',          // Teal
+      'Country': '#eab308',        // Yellow
+      'Disco/Funk': '#f59e0b',     // Amber
+      'Blues': '#3b82f6',          // Blue
+      'Jazz': '#6366f1',           // Indigo
+      'Reggae': '#22c55e',         // Green
+      'Latin': '#f43f5e',          // Rose
+      'Soul': '#9333ea',           // Violet
+      'Other': '#6b7280'           // Gray
+    };
+
     // -------------------------- State -----------------------------
     let currentUser = null;
-    let songsLoaded = false;
-    let userKey = null;
-    let localDeviceId = localStorage.getItem('localDeviceId') || null;
     let songs = [];
-    let songsById = {};
-    let draftProfile = null;
-    let ownedTracks = [];
-    let ownedLibraryState = { phase: 'idle', source: 'none', message: '' };
-    let ownedLibraryRestoring = false;
-    let ownedLibraryPendingWrite = null;
-    let ownedSyncDiagnostics = {
-      cloudReadable: null,
-      cloudWritable: null,
-      lastCloudSyncAt: null,
-      ownedCountLocal: 0,
-      ownedCountCloud: null
-    };
+    let ownedTracks = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
     let selectedSong = null;
-    let sortMode = 'bpm';
-    let previewSong = null;
-    let setlist = [];
+    let setlist = JSON.parse(localStorage.getItem('setlist') || '[]');
     let searchTerm = '';
     let view = 'browser';
     let showOwnedOnly = false;
     let showMixableOnly = false;
-    let selectedGenre = 'All';
-    let bandMembers = [];
-    let viewingProfile = null;
-    let profileOwnedSearch = '';
-    let friendSearchTerm = '';
-    let socialFriendSearchTerm = '';
-    let socialFriendSearchDebounce = null;
-    let socialFriendSearchResults = [];
-    let socialFriendSearchLoading = false;
-    let socialFriendSearchError = '';
-    let socialFriendSearchNotice = '';
-    let socialFriendSearchNoticeTone = 'info';
-    let socialFriendSearchQuery = '';
-    let friendRequestsIncoming = [];
-    let friendRequestsOutgoing = [];
-    let friendsList = [];
-    let friendsLoading = false;
-    let friendsLoadedAt = 0;
-    let friendsError = '';
-    let friendLookupError = '';
-    let friendLookupResults = [];
-    let profileOwnedPagerOwnerKey = '';
-    let liveNowUsers = [];
-    let liveNowLoading = false;
-    let liveNowLoadedAt = 0;
-    let liveNowError = '';
-    let ratingDraft = { stars: 0, tags: [], comment: '', hasExisting: false };
-    let ratingLoadedFor = '';
-    let ratingLoading = false;
-    let ratingSubmitting = false;
-    let ratingStatusMessage = '';
-    let ratingStatusTone = 'info';
-    let genreOverrides = {};
-    let sandboxTracks = [];
-    let sandboxIds = [];
-    let helpTab = 'basic';
-    let helpScroll = { basic: 0, advanced: 0 };
-    let helpOpenedAt = null;
-    let helpOpenTarget = 'none';
-    let helpOpenSource = 'other';
-    let helpTabTracked = false;
-    let profileEditMode = true;
-    let debugUiBound = false;
-    let headerMoreOpen = false;
-    let isLowPowerMode = false;
-    let isSearchFocused = false;
-    let searchDebounceTimer = null;
-    let searchDebouncePending = false;
-    let trackLoadState = { status: 'idle', loaded: 0, total: 0, message: '' };
-    let trackLoadNotice = '';
-    let loadSongsStartTime = 0;
-    let firstListRenderLogged = false;
-    let maxMobileCardsRendered = 0;
-    let maxCardsLogged = false;
-    let listRenderCount = 0;
-    let songListRenderScheduled = false;
-    let songListRenderReason = '';
-    let selectedSongCriteria = null;
-    let lastFilteredCount = 0;
-    let mobileListObserver = null;
-    let mixableInlineNotice = '';
-    let mixableInlineTimer = null;
-    let matchHintMessage = '';
-    let quickStartState = { open: false, step: 0, preset: null };
-    let stickyCtaDismissed = localStorage.getItem('jamMixer.stickyCtaDismissed') === 'true';
-    let quickStartDone = localStorage.getItem('jamMixer.quickStartDone') === 'true';
-    let quickStartPrompted = false;
-    let justEnteredProfile = false;
-    let mobileWindowState = { start: 0, count: 40 };
-    const TOUR_VERSION = 1;
-    const TOUR_STORAGE_KEY = 'tour_done_v1';
-    const TOUR_STEPS = [
-      { id: 'browse', selector: '#searchInput', title: 'Browse Tracks', copy: 'Scroll or search to find songs you want to mix.', route: 'browser', routeLabel: 'Go to Browse' },
-      { id: 'setlist', selector: '#setlistBtn', title: 'Build Your Setlist', copy: 'Tap a track to add it, then open Setlist to review your picks.', route: 'browser' },
-      { id: 'go-live', selector: '#profileStreamUrl', title: 'Go Live (Optional)', copy: 'Add your stream link, then turn on LIVE. The green pill opens your stream.', route: 'profile', routeLabel: 'Go to Profile' }
-    ];
-    const tourState = {
-      isOpen: false,
-      stepIndex: 0,
-      steps: TOUR_STEPS,
-      source: 'auto',
-      lastFocused: null
-    };
-    const PAGE_SIZE_OPTIONS = [12,24,48,96];
-    const PAGE_SIZE_KEY = 'jamMixer.pageSize';
-    const CURRENT_PAGE_KEY = 'jamMixer.currentPage';
-    const DEFAULT_PAGE_SIZE = 24;
-    const MOBILE_PAGE_CHUNK = 40;
-    const MOBILE_MAX_CARDS = 80;
-    const MOBILE_BREAKPOINT = 768;
-    const reducedMotionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-    const mobileViewportQuery = window.matchMedia ? window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`) : null;
-    let friendPanelTab = 'friends';
-    let mainPager = null;
-    let profileOwnedPager = null;
-    let priorityStrength = 'medium';
-    let profileSyncState = { syncing: false, message: '' };
-    let profileSyncTimeout = null;
-    let keyMatchMode = (localStorage.getItem('jamMixer.keyMatchMode') || 'camelot') === 'semitone' ? 'semitone' : 'camelot';
-    let maxSemitoneRange = Math.min(6, Math.max(1, parseInt(localStorage.getItem('jamMixer.maxSemitoneRange') || '6', 10) || 6));
-    let includeOppositeMode = localStorage.getItem('jamMixer.includeOppositeMode');
-    includeOppositeMode = includeOppositeMode === null ? true : includeOppositeMode === 'true';
-    function applyPreferencesFromProfile(profile){
-      const prefs = profile?.preferences || {};
-      if(prefs.keyMatchMode){ keyMatchMode = prefs.keyMatchMode === 'semitone' ? 'semitone' : 'camelot'; }
-      if(Number.isFinite(prefs.maxSemitoneRange)){ maxSemitoneRange = Math.min(6, Math.max(1, Number(prefs.maxSemitoneRange))); }
-      if(typeof prefs.includeOppositeMode === 'boolean'){ includeOppositeMode = prefs.includeOppositeMode; }
-      if(['low','medium','high'].includes(prefs.priorityStrength)){ priorityStrength = prefs.priorityStrength; }
-      const wasPersisting = isPersistingProfile;
-      isPersistingProfile = true;
-      persistKeyMatchSettings();
-      isPersistingProfile = wasPersisting;
-    }
-    function syncPreferencesIntoProfile(){
-      if(!currentUser) return;
-      const prefs = { keyMatchMode, maxSemitoneRange, includeOppositeMode, priorityStrength };
-      currentUser.preferences = prefs;
-      if(draftProfile) draftProfile.preferences = prefs;
-    }
-    let preferenceSaveTimeout = null;
-    let isPersistingProfile = false;
-    function schedulePreferencePersist(){
-      if(!currentUser) return;
-      clearTimeout(preferenceSaveTimeout);
-      preferenceSaveTimeout = setTimeout(()=>{
-        if(!currentUser) return;
-        persistCurrentUserProfile().catch(err=>console.warn('[profile] preference persistence failed', err));
-      }, 300);
-    }
-    let camelotOverridesStore = { ids: {}, names: {} };
-    let bpmOverridesStore = { ids: {}, names: {} };
-    let auditSearch = '';
-    let auditFilters = { flaggedOnly:false, overriddenOnly:false, invalidCamelot:false, modeMismatch:false, bpmOutlier:false };
-    let regressionWarnings = [];
-    let adminMenuOpen = false;
-    let adminMenuListenersBound = false;
-    let isOffline = !navigator.onLine;
-    let trackSource = 'network';
-    const FEATURE_SIGNIN_STATS = false;
-    const communityStats = { totalDjs: '…' };
-    const communityStatGraceTimers = {};
-    const COMMUNITY_STAT_GRACE_MS = 3000;
-    const COMMUNITY_TOTAL_DJS_CACHE_KEY = 'ffmCommunityTotalDjs';
-    const TRACK_DB = { name: 'ffm-track-cache', store: 'tracks' };
-    const SAMPLE_TRACKS = [
-      { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, rawBpm:135, key:'C major', rawKey:'C', rawMode:'major', mode:'major', camelot:'8B', derivedCamelot:'8B', duration:180, albumArt:'', genre:'Pop'},
-      { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, rawBpm:115, key:'C minor', rawKey:'C', rawMode:'minor', mode:'minor', camelot:'8A', derivedCamelot:'8A', duration:210, albumArt:'', genre:'Rock'},
-      { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, rawBpm:128, key:'D major', rawKey:'D', rawMode:'major', mode:'major', camelot:'10B', derivedCamelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
-      { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, rawBpm:95, key:'G minor', rawKey:'G', rawMode:'minor', mode:'minor', camelot:'9A', derivedCamelot:'9A', duration:190, albumArt:'', genre:'Indie'},
-      { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, rawBpm:142, key:'A minor', rawKey:'A', rawMode:'minor', mode:'minor', camelot:'11A', derivedCamelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
-    ].map(t=>({ ...t, flags: computeTrackFlags ? computeTrackFlags(t) : {} }));
-    const usernamePattern = /^[A-Za-z0-9_]{3,20}$/;
-    const profileParam = new URLSearchParams(window.location.search).get('profile');
-    const pendingOAuthToast = sessionStorage.getItem('oauthSuccess');
-    if(pendingOAuthToast){ sessionStorage.removeItem('oauthSuccess'); setTimeout(()=>alert(pendingOAuthToast), 500); }
+    let searchMode = 'camelot'; // 'camelot' or 'key'
+    let genreOverrides = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
+    let currentPage = 1;
+    const songsPerPage = 15;
 
     // ---------------------- Admin & identity helpers -----------------------
     function ensureLocalDeviceId(){
@@ -1936,32 +551,42 @@ function track(eventName, payload = {}){
     function cloneProfile(profile){
       if(!profile) return null;
       try { return structuredClone(profile); } catch(_) { return JSON.parse(JSON.stringify(profile)); }
+    // ---------------------- Utils & Mixing Logic -----------------------
+    function convertToCamelot(key) {
+      if (!key) return '?';
+      return keyToCamelot[(key||'').trim()] || '?';
     }
-    function refreshDraftProfileFromCurrentUser(){
-      if(viewingProfile) return;
-      draftProfile = currentUser ? cloneProfile(currentUser) : null;
+    function getCompatibleKeys(camelot) {
+      if (!camelot || camelot === '?') return [];
+      const matches = camelot.match(/^(\d+)([AB])$/);
+      if (!matches) return [];
+      const num = parseInt(matches[1]); const letter = matches[2];
+      const compatible = [camelot, `${num}${letter==='A'?'B':'A'}`];
+      const nextNum = num === 12 ? 1 : num + 1; const prevNum = num === 1 ? 12 : num - 1;
+      compatible.push(`${nextNum}${letter}`); compatible.push(`${prevNum}${letter}`);
+      return compatible;
     }
-    function isAdmin(){
-      return currentUser?.isAdmin === true;
-    }
+    function isMixable(song1,song2){ if(!song1||!song2) return false; const compatible = getCompatibleKeys(song1.camelot); return compatible.includes(song2.camelot); }
 
-    function handleAdminMenuOutsideClick(e){
-      if(!adminMenuOpen) return;
-      const menu = document.getElementById('adminToolsMenu');
-      const btn = document.getElementById('adminToolsBtn');
-      const target = getEventElement(e);
-      const clickInMenu = target ? menu?.contains(target) : false;
-      const clickOnBtn = target ? btn?.contains(target) : false;
-      if(menu && !clickInMenu && !clickOnBtn){
-        toggleAdminTools(false);
-      }
-    }
+    function scoreKeyMatch(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 0; if(aCamelot===bCamelot) return 40; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 0; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; if(numA===numB&&letterA!==letterB) return 30; if(letterA===letterB&&(Math.abs(numA-numB)===1||Math.abs(numA-numB)===11)) return 30; if(Math.abs(numA-numB)===1&&letterA!==letterB) return 20; return 0; }
+    function scoreBpmMatch(aBpm,bBpm){ const diff=Math.abs(aBpm-bBpm); if(diff<=1) return 40; if(diff<=3) return 35; if(diff<=6) return 25; if(diff<=10) return 15; return 0; }
+    function scoreGenreMatch(aGenre,bGenre){ if(!aGenre||!bGenre) return 0; return aGenre===bGenre?20:0; }
+    function mashupCompatibility(a,b){ const key=scoreKeyMatch(a.camelot,b.camelot); const bpm=scoreBpmMatch(a.bpm,b.bpm); const genre=scoreGenreMatch(a.genre,b.genre); const total=key+bpm+genre; return {total,breakdown:{key,bpm,genre}}; }
+    function bpmShiftSuggestion(aBpm,bBpm){ const shift=Math.round(bBpm-aBpm); if(shift===0) return 'Perfect BPM match'; return (shift>0?'+':'')+shift+' BPM'; }
 
-    function handleAdminMenuKeydown(e){
-      if(e.key === 'Escape'){
-        closeHelp();
-        if(adminMenuOpen) toggleAdminTools(false);
+    // ----------------------- Genre detection -----------------------
+    function detectGenre(artist, title){
+      artist=(artist||'').toLowerCase(); title=(title||'').toLowerCase();
+      for(const [genre,artists] of Object.entries(genreMap)){
+        if(artists.some(a=>artist.includes(a) || (a.length>3 && artist.includes(a.split(' ')[0])))) return genre;
       }
+      if(title.includes('rock')||title.includes('metal')) return 'Rock';
+      if(title.includes('funk')||title.includes('disco')) return 'Disco/Funk';
+      if(title.includes('blues')) return 'Blues';
+      if(title.includes('jazz')) return 'Jazz';
+      if(title.includes('country')) return 'Country';
+      if(title.includes('reggae')) return 'Reggae';
+      return 'Other';
     }
 
     function ensureAdminMenuListeners(){
@@ -2900,324 +1525,27 @@ function track(eventName, payload = {}){
       } finally {
         isPersistingProfile = false;
       }
+    // ----------------------- Storage helpers -----------------------
+    async function saveUserProfile(){
+      if(!currentUser) return;
+      const profile = { username: currentUser.username, djName: currentUser.djName, ownedTracks, setlists: currentUser.setlists||[], genreOverrides };
+      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      profiles[profile.username] = profile;
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      await saveUserProfileToBackend(profile);
     }
     async function loadUserProfile(username){
-      if(!username && !firebaseAuth?.currentUser) return null;
-      const firebaseUser = firebaseAuth?.currentUser;
-      if(firestore && (firebaseUser || username)){
+      if(!username) return null;
+      if(firestore){
         try{
-          const collection = getProfileCollection();
-          const legacyCollection = getLegacyProfileCollection();
-          const lookupId = firebaseUser?.uid || username;
-          const isLikelyUid = typeof lookupId === 'string' && (lookupId.startsWith('local:') || lookupId.length >= 20);
-          if(collection && isLikelyUid){
-            const doc = await collection.doc(lookupId).get();
-            if(doc.exists) return normalizeProfileShape(doc.data(), lookupId);
-          }
-          if(legacyCollection && isLikelyUid){
-            const legacyId = firebaseUser?.uid || username;
-            const legacyDoc = await legacyCollection.doc(legacyId).get();
-            if(legacyDoc.exists) return normalizeProfileShape(legacyDoc.data(), legacyId);
-          }
-          if(username && collection){
-            const query = await collection.where('usernameLower','==', normalizeUsernameLower(username)).limit(1).get();
-            const match = query.docs[0];
-            if(match?.exists) return normalizeProfileShape({ ...match.data(), uid: match.id }, match.id);
-          }
+          const doc = await firestore.collection('users').doc(username).get();
+          if(doc.exists) return doc.data();
         }catch(e){ console.warn('Firestore load failed',e); }
       }
       const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      if(firebaseUser?.uid && profiles[firebaseUser.uid]) return normalizeProfileShape(profiles[firebaseUser.uid], firebaseUser.uid);
-      return normalizeProfileShape(profiles[username], username) || null;
-    }
-
-    async function loadProfileForViewing(username){
-      if(!username) return null;
-      const profile = await loadUserProfileFromBackend(username) || await loadUserProfile(username);
-      if(profile?.isPublic === false){
-        const ownerId = firebaseAuth?.currentUser?.uid || currentUser?.uid || currentUser?.username;
-        if(ownerId !== profile.uid && ownerId !== profile.username){
-          return null;
-        }
-      }
-      if(profile?.uid && firebaseEnabled && firestore && navigator.onLine){
-        try{
-          const ownedSnapshot = await window.profileStore.readOwnedLibraryDoc(profile.uid);
-          if(ownedSnapshot?.trackIds){
-            profile.ownedTracks = ownedSnapshot.trackIds;
-          }
-        }catch(err){
-          console.warn('[profile] owned library fetch failed', err);
-        }
-      }
-      viewingProfile = profile || null;
-      return viewingProfile;
-    }
-
-    async function fetchProfilesByField(field, value, { publicOnly = true } = {}){
-      if(!firestore || !value) return [];
-      try{
-        const collection = getProfileCollection();
-        if(!collection) return [];
-        let query = collection.where(field,'==',value);
-        if(publicOnly) query = query.where('isPublic','==',true);
-        const snap = await query.get();
-        return snap.docs.map(doc=> normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id));
-      }catch(err){ console.warn('profile lookup failed', err); return []; }
-    }
-
-    function getFriendsOnlineStatus(){
-      const firebaseReady = firebaseEnabled && !!firestore;
-      const signedIn = !!firebaseAuth?.currentUser;
-      const offline = !navigator.onLine || isOffline;
-      const online = firebaseReady && signedIn && !offline;
-      return { firebaseReady, signedIn, offline, online };
-    }
-
-    function getFriendsGateMessage(status){
-      if(!status) return '';
-      if(status.offline) return 'Friends require Online mode.';
-      if(!status.firebaseReady) return 'Friends require Firebase online mode.';
-      if(!status.signedIn) return 'Sign in to search friends.';
-      return '';
-    }
-
-    function isOnlineProfileMode(){
-      return getFriendsOnlineStatus().online;
-    }
-
-    function setFriendSearchNotice(message, tone = 'info'){
-      socialFriendSearchNotice = message;
-      socialFriendSearchNoticeTone = tone;
-    }
-
-    function getFriendSearchQuery(){
-      const input = document.getElementById('socialFriendSearchInput');
-      const raw = input?.value || '';
-      const trimmed = raw.trim();
-      socialFriendSearchTerm = raw;
-      socialFriendSearchQuery = trimmed;
-      return trimmed;
-    }
-
-    function logFriendSearchClick(){
-      const q = getFriendSearchQuery();
-      console.debug('[friends] search click', { q });
-    }
-
-    function handleFriendSearch(event, { explicit = true } = {}){
-      if(event?.preventDefault) event.preventDefault();
-      if(viewingProfile) return;
-      const query = getFriendSearchQuery();
-      socialFriendSearchError = '';
-      if(!query){
-        if(explicit){
-          socialFriendSearchResults = [];
-          socialFriendSearchLoading = false;
-          setFriendSearchNotice('Type a DJ name.', 'warn');
-          renderProfile();
-          setupEventListeners();
-        }
-        return;
-      }
-      const status = getFriendsOnlineStatus();
-      const gateMessage = getFriendsGateMessage(status);
-      if(gateMessage){
-        socialFriendSearchResults = [];
-        socialFriendSearchLoading = false;
-        setFriendSearchNotice(gateMessage, 'warn');
-        renderProfile();
-        setupEventListeners();
-        return;
-      }
-      setFriendSearchNotice('');
-      searchProfilesForFriends();
-    }
-
-    async function fetchProfilesByUids(uids){
-      const collection = getProfileCollection();
-      if(!collection) return {};
-      const unique = Array.from(new Set(uids)).filter(Boolean);
-      const results = await Promise.all(unique.map(async (uid)=>{
-        try{
-          const doc = await collection.doc(uid).get();
-          if(doc.exists) return [uid, normalizeProfileShape({ ...doc.data(), uid }, uid)];
-        }catch(err){ console.warn('profile fetch failed', err); }
-        return [uid, null];
-      }));
-      return results.reduce((acc, [uid, profile])=>{
-        if(profile) acc[uid] = profile;
-        return acc;
-      }, {});
-    }
-
-    async function refreshFriendsData(force=false){
-      if(!isOnlineProfileMode() || viewingProfile || friendsLoading) return;
-      const now = Date.now();
-      if(!force && now - friendsLoadedAt < 20000) return;
-      friendsLoading = true;
-      friendsError = '';
-      try{
-        const uid = firebaseAuth.currentUser.uid;
-        const requestsRef = firestore.collection('friendRequests');
-        const incomingSnap = await requestsRef.where('toUid','==',uid).where('status','==','pending').get();
-        const outgoingSnap = await requestsRef.where('fromUid','==',uid).where('status','==','pending').get();
-        const friendsSnap = await firestore.collection('friends').doc(uid).collection('list').get();
-        const incoming = incomingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
-        const outgoing = outgoingSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
-        const friendDocs = friendsSnap.docs.map(doc=>({ id: doc.id, ...doc.data() }));
-        const profileMap = await fetchProfilesByUids([
-          ...incoming.map(req=>req.fromUid),
-          ...outgoing.map(req=>req.toUid),
-          ...friendDocs.map(doc=>doc.friendUid || doc.id)
-        ]);
-        friendRequestsIncoming = incoming.map(req=>({ ...req, fromProfile: profileMap[req.fromUid] || null }));
-        friendRequestsOutgoing = outgoing.map(req=>({ ...req, toProfile: profileMap[req.toUid] || null }));
-        friendsList = friendDocs.map(doc=>({
-          friendUid: doc.friendUid || doc.id,
-          createdAt: doc.createdAt || null,
-          profile: profileMap[doc.friendUid || doc.id] || null
-        }));
-        friendsLoadedAt = now;
-      }catch(err){
-        console.warn('friends refresh failed', err);
-        friendsError = 'Unable to load friends right now.';
-      } finally {
-        friendsLoading = false;
-        if(!viewingProfile){
-          renderProfile();
-          setupEventListeners();
-        }
-      }
-    }
-
-    function getFriendStatus(currentUid, otherUid){
-      if(!currentUid || !otherUid) return 'none';
-      if(currentUid === otherUid) return 'self';
-      if(friendsList.some(item=> item.friendUid === otherUid)) return 'friends';
-      if(friendRequestsIncoming.some(req=> req.fromUid === otherUid)) return 'incoming_pending';
-      if(friendRequestsOutgoing.some(req=> req.toUid === otherUid)) return 'outgoing_pending';
-      return 'none';
-    }
-
-    async function searchProfilesForFriends(){
-      if(viewingProfile) return;
-      const queryRaw = (socialFriendSearchQuery || socialFriendSearchTerm || '').trim();
-      socialFriendSearchQuery = queryRaw;
-      socialFriendSearchError = '';
-      socialFriendSearchResults = [];
-      if(!queryRaw){
-        socialFriendSearchLoading = false;
-        renderProfile();
-        setupEventListeners();
-        return;
-      }
-      socialFriendSearchLoading = true;
-      setFriendSearchNotice('');
-      renderProfile();
-      setupEventListeners();
-      try{
-        const queryLower = normalizeUsernameLower(queryRaw);
-        const collection = getProfileCollection();
-        if(!collection) throw new Error('Profile collection unavailable');
-        const resultsMap = {};
-        const prefixQuery = async (field)=>{
-          const snap = await collection
-            .where(field, '>=', queryLower)
-            .where(field, '<=', queryLower + '\uf8ff')
-            .where('isPublic', '==', true)
-            .limit(20)
-            .get();
-          snap.docs.forEach(doc=>{ resultsMap[doc.id] = normalizeProfileShape({ ...doc.data(), uid: doc.id }, doc.id); });
-        };
-        await Promise.all([
-          prefixQuery('displayNameLower'),
-          prefixQuery('usernameLower'),
-          prefixQuery('djNameLower'),
-          prefixQuery('searchNameLower')
-        ]);
-        const currentUid = firebaseAuth.currentUser.uid;
-        socialFriendSearchResults = Object.values(resultsMap)
-          .filter(profile=> profile?.uid !== currentUid)
-          .slice(0, 20);
-      }catch(err){
-        console.error('[friends] search failed', err);
-        socialFriendSearchError = 'Search failed. Try again later.';
-      } finally {
-        socialFriendSearchLoading = false;
-        renderProfile();
-        setupEventListeners();
-      }
-    }
-
-    function getEditableDraftProfile(){
-      if(viewingProfile) return null;
-      draftProfile = draftProfile || cloneProfile(currentUser) || {};
-      return draftProfile;
-    }
-
-    function updateDraftProfile(patch){
-      const draft = getEditableDraftProfile();
-      if(!draft) return null;
-      Object.assign(draft, patch);
-      return draft;
-    }
-
-    function updateDraftPersona(patch){
-      const draft = getEditableDraftProfile();
-      if(!draft) return null;
-      const persona = ensurePersona(draft);
-      const next = { ...persona, ...patch };
-      draft.personaId = next.personaId;
-      draft.personaTheme = next.personaTheme;
-      draft.personaSeed = next.personaSeed;
-      return next;
-    }
-
-    function persistPersonaSelection(persona){
-      if(!persona || viewingProfile) return;
-      persistPersonaToStorage(persona);
-      const updated = { ...(currentUser || {}), ...persona };
-      currentUser = updated;
-      if(draftProfile) Object.assign(draftProfile, persona);
-      saveUserProfileToBackend(updated).catch(err => console.warn('persona save failed', err));
-    }
-
-    function updatePersonaPreview(persona){
-      const resolved = persona || ensurePersona(draftProfile || currentUser || {});
-      const energy = (PERSONAS[resolved.personaId] || PERSONAS.turntablist).energy || '⚡';
-      const preview = document.getElementById('profilePersonaPreview');
-      if(preview) preview.innerHTML = `
-        ${renderPersonaSVG({
-          personaId: resolved.personaId,
-          themeId: resolved.personaTheme,
-          seed: resolved.personaSeed,
-          size: 96
-        })}
-        <span class="persona-energy">${energy}</span>
-      `;
-      const builderPreview = document.getElementById('personaBuilderPreview');
-      if(builderPreview) builderPreview.innerHTML = renderPersonaSVG({
-        personaId: resolved.personaId,
-        themeId: resolved.personaTheme,
-        seed: resolved.personaSeed,
-        size: 80
-      });
-      const seedLabel = document.getElementById('personaSeedLabel');
-      if(seedLabel) seedLabel.textContent = resolved.personaSeed;
-      const themeLabel = document.getElementById('profilePersonaThemeLabel');
-      if(themeLabel){
-        const themeName = getPersonaTheme(resolved.personaTheme).label;
-        themeLabel.textContent = `Energy: ${themeName}`;
-      }
-    }
-
-    function updatePersonaSelection(selector, activeValue, dataAttr){
-      document.querySelectorAll(selector).forEach(btn=>{
-        const key = dataAttr ? btn.dataset[dataAttr] : (btn.dataset.personaTheme || btn.dataset.personaId || btn.dataset.themeAccent);
-        const isActive = key === activeValue;
-        btn.classList.toggle('active', isActive);
-      });
+      return profiles[username] || null;
     }
 
     function applyThemeAccentPreview(accentId){
@@ -5903,7 +4231,18 @@ function track(eventName, payload = {}){
               ${viewOnly ? `<button data-action="exit-profile-view" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 rounded-lg">Back to My Profile</button>` : ''}
             </div>
             <div id="profileStatus" class="text-sm text-cyan-200"></div>
+              </div>
+              <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">FORTNITE JAM MIXER</h1>
+              <p class="text-xl md:text-2xl text-cyan-300 mb-6">Track Your Festival Song Library</p>
+              <div class="mt-6">
+                <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 START BROWSING</button>
+              </div>
+            </div>
           </div>
+        </div>
+      `;
+    }
+    window.hideLanding = () => { localStorage.setItem('hasSeenLanding','true'); checkAuth(); };
 
           ${liveNowPanel}
           ${ratingPanel}
@@ -5930,12 +4269,19 @@ function track(eventName, payload = {}){
                 <span class="text-xs font-semibold px-2 py-1 rounded-full ${epicLinked ? 'bg-emerald-500/20 text-emerald-100 border border-emerald-400/40' : 'bg-white/10 text-gray-200 border border-white/20'}">${epicLinked ? 'Linked' : 'Not linked'}</span>
                 ${epicLinked ? `<button data-action="unlink-oauth" data-provider="epic" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-sm">Unlink</button>` : `<button data-action="start-oauth" data-provider="epic" class="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-lg text-sm font-semibold">Link Epic</button>`}
               </div>
+    // -------------------- Login / Profile handlers ---------------------
+    function showLoginScreen(){
+      document.getElementById('app').innerHTML = `
+        <div class="min-h-screen flex items-center justify-center p-6">
+          <div class="max-w-md w-full">
+            <div class="text-center mb-8">
+              <div class="w-24 h-24 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 vinyl-spin">🎧</div>
+              <h1 class="text-4xl font-bold text-white graffiti-text mb-2">JAM MIXER</h1>
+              <p class="text-cyan-300">Your Personal Library</p>
             </div>
-            <p class="text-xs text-gray-400">Redirects through Epic, then returns here to store a link in your profile. Firebase email/password stays your primary sign-in.</p>
-          </div>
-          ` : ''}
 
-          ${deleteAccountPanel}
+            <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
+              <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
 
           <div class="panel space-y-4">
             <div class="flex items-start justify-between gap-3 flex-wrap">
@@ -5965,8 +4311,20 @@ function track(eventName, payload = {}){
             </div>
             <div id="profileOwnedList" class="grid grid-cols-1 md:grid-cols-2 gap-3">
               ${ownedCards || ownedEmpty}
+              ${firebaseEnabled ? `
+                <form onsubmit="handleFirebaseLogin(event)" class="space-y-4">
+                  <div><label class="block text-sm text-gray-300 mb-2">Email</label><input id="email" type="email" required placeholder="you@example.com" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <div><label class="block text-sm text-gray-300 mb-2">Password</label><input id="password" type="password" required placeholder="password" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <div class="flex gap-2"><button type="submit" class="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-bold text-white">Sign In</button><button type="button" onclick="handleFirebaseRegister()" class="px-4 py-3 bg-green-600 rounded-lg font-bold text-white">Register</button></div>
+                </form>
+              ` : `
+                <form onsubmit="handleLogin(event)" class="space-y-4">
+                  <div><label class="block text-sm text-gray-300 mb-2">Username</label><input id="username" type="text" required minlength="3" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <div><label class="block text-sm text-gray-300 mb-2">DJ Name (optional)</label><input id="djName" type="text" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <button type="submit" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter</button>
+                </form>
+              `}
             </div>
-            <div id="profileOwnedPagination"></div>
           </div>
         </div>`;
       const ownedPaginationEl = document.getElementById('profileOwnedPagination');
@@ -5991,75 +4349,31 @@ function track(eventName, payload = {}){
         }, { totalItems: ownedFiltered.length, totalPages: ownedPagination.totalPages, from: ownedPagination.from, to: ownedPagination.to });
       }
       updateTourUI();
+        </div>
+      `;
     }
 
-    function updateStreamControlsFromInput(){
-      const input = document.getElementById('profileStreamUrl');
-      if(!input) return;
-      const normalized = normalizeStreamUrlInput(input.value || '');
-      const valid = isValidStreamUrl(normalized);
-      const helper = document.getElementById('streamUrlHelper');
-      if(helper){
-        helper.textContent = valid ? '' : (viewingProfile ? 'Stream link not provided.' : 'Add a valid stream link to enable Live.');
-        helper.style.display = valid ? 'none' : 'block';
-      }
-      const toggleBtn = document.getElementById('liveToggleBtn');
-      if(toggleBtn){
-        if(viewingProfile || !profileEditMode){
-          toggleBtn.disabled = true;
-          toggleBtn.style.opacity = '0.6';
-          toggleBtn.style.cursor = 'not-allowed';
-        } else {
-          toggleBtn.disabled = !valid;
-          toggleBtn.style.opacity = valid ? '1' : '0.6';
-          toggleBtn.style.cursor = valid ? 'pointer' : 'not-allowed';
-        }
-      }
-      const pill = document.getElementById('liveStatusPill');
-      if(pill && valid && pill.tagName === 'A'){
-        pill.setAttribute('href', normalized);
-      }
-      if(pill && !valid){
-        pill.removeAttribute('href');
-        pill.removeAttribute('target');
-        pill.removeAttribute('rel');
-        pill.textContent = 'OFFLINE';
-        pill.className = 'px-3 py-1 rounded-full text-xs font-semibold bg-gray-600/60 text-gray-100 border border-gray-500/70';
-        pill.style.boxShadow = '';
-      }
-      const watchBtn = document.getElementById('watchStreamBtn');
-      if(watchBtn){
-        if(valid){
-          watchBtn.setAttribute('href', normalized);
-          watchBtn.style.display = 'inline-flex';
-        } else {
-          watchBtn.style.display = 'none';
-        }
-      }
+    async function handleFirebaseRegister(){
+      if(!firebaseEnabled||!firebaseAuth) return alert('Firebase not enabled/configured');
+      const email=document.getElementById('email').value.trim();
+      const password=document.getElementById('password').value;
+      if(!email||!password) return alert('Enter email & password');
+      try{
+        const cred = await firebaseAuth.createUserWithEmailAndPassword(email,password);
+        const username = email.split('@')[0];
+        currentUser = { username, djName: username, ownedTracks: [], setlists: [], genreOverrides:{} };
+        await saveUserProfileToBackend(currentUser);
+        localStorage.setItem('currentUser', username);
+        checkAuth();
+        alert('Registered! Welcome.');
+      }catch(e){ console.error(e); alert('Registration failed: '+(e.message||e)); }
     }
 
-    window.toggleLiveStatus = async () => {
-      if(viewingProfile) return;
-      if(!currentUser) return;
-      if(!profileEditMode) return;
-      const status = document.getElementById('profileStatus');
-      const input = document.getElementById('profileStreamUrl');
-      const normalizedStreamUrl = normalizeStreamUrlInput(input?.value || currentUser.streamUrl || '');
-      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
-      if(!streamUrlValid){
-        if(status) status.textContent = 'Add a valid stream link to enable Live.';
-        updateStreamControlsFromInput();
-        return;
-      }
-      draftProfile = draftProfile || cloneProfile(currentUser) || {};
-      const nextIsLive = !(draftProfile.isLive ?? currentUser.isLive ?? false);
-      const nextLiveStartedAt = nextIsLive ? (draftProfile.liveStartedAt || currentUser.liveStartedAt || currentUser.liveSince || new Date().toISOString()) : null;
-      draftProfile.streamUrl = normalizedStreamUrl;
-      draftProfile.isLive = nextIsLive;
-      draftProfile.liveStartedAt = nextLiveStartedAt;
-      const previousProfile = currentUser;
-      currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt });
-      await persistAdminFlagIfNeeded(previousProfile, currentUser);
+    async function handleFirebaseLogin(e){
+      e.preventDefault();
+      if(!firebaseEnabled||!firebaseAuth) return alert('Firebase not enabled/configured');
+      const email=document.getElementById('email').value.trim();
+      const password=document.getElementById('password').value;
       try{
         if(status) status.textContent = nextIsLive ? 'Going live...' : 'Ending live...';
         await persistCurrentUserProfile();
@@ -6138,76 +4452,89 @@ function track(eventName, payload = {}){
           </div>
         </div>
       `;
+        const res = await firebaseAuth.signInWithEmailAndPassword(email,password);
+        const username = email.split('@')[0];
+        const profile = await loadUserProfileFromBackend(username);
+        if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; genreOverrides = profile.genreOverrides || {}; }
+        else { currentUser = { username, djName: username, ownedTracks: [], setlists: [], genreOverrides: {} }; await saveUserProfileToBackend(currentUser); }
+        localStorage.setItem('currentUser', currentUser.username);
+        loadSongs();
+      }catch(err){ console.error(err); alert('Sign-in failed: '+(err.message||err)); }
     }
 
-    function updateBandReferencesLocal(oldUsername,newUsername,newDj){
-      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
-      Object.keys(profiles).forEach(key=>{
-        const memberList = profiles[key].bandMembers || [];
-        const updated = memberList.map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDj } : m);
-        profiles[key].bandMembers = updated;
-      });
-      localStorage.setItem('userProfiles', JSON.stringify(profiles));
-      bandMembers = (bandMembers||[]).map(m=> m.username===oldUsername ? { ...m, username:newUsername, djName:newDj } : m);
-      currentUser.bandMembers = bandMembers;
+    window.handleLogin = async (event) => {
+      event.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const djName = (document.getElementById('djName').value || username).trim() || username;
+      if(username.length<3){ alert('Username must be at least 3 characters'); return; }
+      const profile = await loadUserProfile(username);
+      if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; genreOverrides = profile.genreOverrides || {}; }
+      else { currentUser = { username, djName, ownedTracks: [], setlists: [], genreOverrides: {} }; await saveUserProfileToBackend(currentUser); }
+      localStorage.setItem('currentUser', username);
+      loadSongs();
+    };
+
+    async function logoutUser(){
+      saveUserProfile();
+      if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
+      currentUser = null; ownedTracks = []; setlist = []; genreOverrides = {};
+      localStorage.removeItem('currentUser');
+      showLoginScreen();
     }
 
-    async function saveProfileSettings(){
-      if(viewingProfile){ const status = document.getElementById('profileStatus'); if(status) status.textContent = 'View-only mode: cannot save this profile.'; return; }
-      if(!currentUser) return;
-      if(!profileEditMode) return;
-      const status = document.getElementById('profileStatus');
-      const newUsername = (document.getElementById('profileUsername')?.value || '').trim();
-      const newDjName = (document.getElementById('profileDjName')?.value || '').trim() || newUsername;
-      const streamUrlInput = (document.getElementById('profileStreamUrl')?.value || '').trim();
-      const normalizedStreamUrl = normalizeStreamUrlInput(streamUrlInput);
-      const streamUrlValid = isValidStreamUrl(normalizedStreamUrl);
-      const existingLiveStartedAt = draftProfile?.liveStartedAt || currentUser.liveStartedAt || currentUser.liveSince || null;
-      const nextIsLive = streamUrlValid ? (draftProfile?.isLive ?? currentUser.isLive ?? false) : false;
-      const nextLiveStartedAt = nextIsLive ? (existingLiveStartedAt || new Date().toISOString()) : null;
-      if(!usernamePattern.test(newUsername)){
-        if(status) status.textContent = 'Username must be 3-20 chars, letters/numbers/underscore only';
-        alert('Username must be 3-20 chars, letters/numbers/underscore only');
-        return;
+    // -------------------- Songs loading -----------------------
+    async function loadSongs(){
+      console.log('Loading tracks...');
+      // Load owned tracks from localStorage first
+      const savedOwned = localStorage.getItem('ownedTracks');
+      if(savedOwned) {
+        try {
+          ownedTracks = JSON.parse(savedOwned);
+          console.log('Loaded owned tracks:', ownedTracks.length);
+        } catch(e) {
+          console.warn('Failed to parse ownedTracks', e);
+          ownedTracks = [];
+        }
       }
-      draftProfile = draftProfile || cloneProfile(currentUser) || {};
-      draftProfile.username = newUsername;
-      draftProfile.djName = newDjName;
-      draftProfile.streamUrl = normalizedStreamUrl;
-      draftProfile.isLive = nextIsLive;
-      draftProfile.liveStartedAt = nextLiveStartedAt;
-      currentUser = { ...currentUser, streamUrl: normalizedStreamUrl, isLive: nextIsLive, liveStartedAt: nextLiveStartedAt };
-      const previousUsername = currentUser.username;
-      const usernameChanged = newUsername !== currentUser.username;
-      const djChanged = newDjName !== currentUser.djName;
-      try{
-        if(status) status.textContent = 'Saving profile...';
-        const previousProfile = currentUser;
-        currentUser = applyAdminFlag({ ...currentUser, ...draftProfile, username:newUsername, djName:newDjName });
-        await persistAdminFlagIfNeeded(previousProfile, currentUser);
-        if(usernameChanged || djChanged) updateBandReferencesLocal(previousUsername, newUsername, newDjName);
-        console.log('[profile-save] streamUrl=', currentUser.streamUrl);
-        await persistCurrentUserProfile();
-        refreshLiveNowUsers();
-        render(); setupEventListeners();
-        const statusEl = document.getElementById('profileStatus');
-        if(statusEl) statusEl.textContent = 'Saved ✅';
-      }catch(e){ const statusEl = document.getElementById('profileStatus'); if(statusEl) statusEl.textContent = 'Save failed ❌: ' + (e.message||e); console.error('[profile] save failed', e); }
+      const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
+      for(let i=0;i<endpoints.length;i++){
+        try{
+          const res = await fetch(endpoints[i]);
+          if(!res.ok) continue;
+          const data = await res.json();
+          songs = Object.entries(data).filter(([k])=>!k.startsWith('_')).map(([id,item])=>{
+            const track = item?.track || {};
+            if(!track?.tt) return null;
+            const detectedGenre = detectGenre(track.an||'', track.tt);
+            const finalGenre = genreOverrides[id] || detectedGenre;
+            return { id, title: track.tt, artist: track.an || 'Unknown', bpm: Number(track.mt) || 0, key: track.mk || '?', mode:track.mm||'', camelot:convertToCamelot(track.mk||''), duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre };
+          }).filter(s=>s && s.bpm>0);
+          songs.sort((a,b)=>a.title.localeCompare(b.title));
+          if(songs.length>0){ render(); setupEventListeners(); return; }
+        }catch(e){ console.warn('endpoint err',e); }
+      }
+      console.warn('endpoints failed, using fallback sample');
+      songs = [
+        { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, key:'C', mode:'major', camelot:'8B', duration:180, albumArt:'', genre:'Pop'},
+        { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, key:'C', mode:'minor', camelot:'8A', duration:210, albumArt:'', genre:'Rock'},
+        { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, key:'D', mode:'major', camelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
+        { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, key:'G', mode:'minor', camelot:'9A', duration:190, albumArt:'', genre:'Indie'},
+        { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, key:'A', mode:'minor', camelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
+      ];
+      render(); setupEventListeners();
     }
 
+    // ---------------------- Render list & setlist -----------------------
+    function formatDuration(sec){ const m=Math.floor(sec/60); const s=sec%60; return `${m}:${s.toString().padStart(2,'0')}`; }
+    function updateOwnedCount(){ const el=document.getElementById('ownedCount'); if(el){ el.textContent = `You own ${ownedTracks.length}/${songs.length} tracks`; } }
 
-function renderCommunityStat(id, label, icon, value, caption=''){
-  return `<div class="flex items-center justify-between px-3 py-2 rounded-lg border border-white/10 bg-white/5">
-    <div class="flex items-center gap-2">
-      <span>${icon}</span>
-      <div class="flex flex-col leading-tight">
-        <span class="text-[10px] uppercase tracking-wide text-gray-300">${label}</span>
-        <span class="text-sm font-bold text-white" data-community-stat="${id}">${formatStatValue(value)}</span>
-      </div>
-    </div>
-    ${caption ? `<span class="text-[11px] text-cyan-100/80">${caption}</span>` : ''}
-  </div>`;
-}
+    function renderSongList(){
+      const filtered = songs.filter(s=>{
+        const matchesSearch = !searchTerm || s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesOwned = !showOwnedOnly || ownedTracks.includes(s.id);
+        const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+        return matchesSearch && matchesOwned && matchesMixable;
+      });
 
 function render(){
   logEvent('ui_render', { view });
@@ -6335,9 +4662,40 @@ function render(){
           <div class="flex items-center justify-between gap-4 flex-wrap">
             <div class="flex items-center gap-3">
               <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
+      // Sort by BPM proximity if a song is selected
+      if(selectedSong) {
+        filtered.sort((a,b)=> Math.abs(a.bpm - selectedSong.bpm) - Math.abs(b.bpm - selectedSong.bpm));
+      }
+      
+      const totalPages = Math.ceil(filtered.length / songsPerPage);
+      const startIdx = (currentPage - 1) * songsPerPage;
+      const endIdx = startIdx + songsPerPage;
+      const songsToDisplay = filtered.slice(startIdx, endIdx);
+      
+      const songListEl = document.getElementById('songList'); if(!songListEl) return;
+      songListEl.innerHTML = songsToDisplay.map(song=>{
+        const isOwned = ownedTracks.includes(song.id);
+        const hasOverride = genreOverrides[song.id];
+        const isSelected = selectedSong && selectedSong.id === song.id;
+        const comp = selectedSong && selectedSong.id !== song.id ? mashupCompatibility(selectedSong, song) : null;
+        const pct = comp ? Math.round(comp.total) : null;
+        const glowClass = pct>=80 ? 'glow-perfect' : pct>=60 ? 'glow-good' : (pct!==null ? 'glow-bad' : '');
+        
+        return `
+          <div class="song-card panel p-4 hover:border-cyan-400 transition-all ${isSelected ? 'border-2 border-purple-500' : ''} ${glowClass}" onclick="selectSong('${song.id}')">
+            ${isSelected ? '<div class="absolute top-2 left-2 text-xl">🎯</div>' : ''}
+            ${selectedSong && selectedSong.id !== song.id && isMixable(selectedSong,song) ? '<div class="absolute top-2 right-2 text-xl">🎧</div>' : ''}
+            <div class="flex flex-col gap-3 mb-3">
+              ${song.albumArt ? `<img src="${song.albumArt}" class="w-full aspect-square rounded-lg object-cover"/>` : `<div class="w-full aspect-square bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
               <div>
-                <h1 class="text-2xl font-bold text-white graffiti-text">${BRAND.APP_NAME.toUpperCase()}</h1>
-                <div class="text-xs text-cyan-200 font-semibold">Festival Pro Mixer 1.2</div>
+                <div class="font-bold text-lg mb-1 text-white line-clamp-2">${song.title}</div>
+                <div class="text-gray-300 mb-2 text-sm line-clamp-1">${song.artist}</div>
+                <div class="flex items-center gap-2 text-sm flex-wrap mb-2">
+                  <button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${currentUser && currentUser.username === 'BattleNeBody' ? 'cursor-pointer' : 'cursor-default opacity-75'}" onclick="event.stopPropagation()">${song.genre}${hasOverride ? ' ✓' : ''}</button>
+                  <span class="px-2 py-1 rounded-lg font-mono font-bold text-white text-xs" style="background:${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
+                  <span class="font-semibold text-cyan-300 text-xs">${song.bpm} BPM</span>
+                  ${selectedSong && selectedSong.id !== song.id && isMixable(selectedSong,song) ? `<span class="px-2 py-1 bg-purple-600/40 border border-purple-400/40 rounded text-xs text-purple-200 font-bold">${bpmShiftSuggestion(selectedSong.bpm, song.bpm)}</span>` : ''}
+                </div>
               </div>
             </div>
             <div class="flex items-center flex-wrap justify-end header-actions">
@@ -6353,22 +4711,41 @@ function render(){
                 : `<button class="px-3 py-2 bg-purple-500/20 border border-purple-500/50 rounded-lg text-purple-200 text-sm" ${disabledFeatureAttrs}>Profile</button>`}
               <button data-action="open-help" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
               <button data-action="${firebaseAuth?.currentUser ? 'logout' : 'open-login'}" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">${authButtonLabel}</button>
+            <div class="flex gap-2">
+              <button onclick="event.stopPropagation(); toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition">${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
+              <button class="addSetBtn px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}" onclick="event.stopPropagation()">+ Set</button>
+              ${pct !== null ? `<div class="px-3 py-2 score-badge font-bold">${pct}%</div>` : ''}
             </div>
           </div>
-          <div class="header-secondary ${headerMoreOpen ? 'is-open' : ''}">
-            <div class="flex items-center flex-wrap gap-2">
-              ${ownedSyncEnabled ? `<p id="ownedCount" class="text-xs text-cyan-300 font-semibold">Owned: ${ownedCount}/${songs.length}</p>` : ''}
-              ${ownedLibraryBadge}
-              ${networkBadge}
-              ${trackSourceBadge}
-              ${cloudStatusLine}
-              <div class="text-sm text-gray-200">${signedLabel}${adminBadge}</div>
+        `;
+      }).join('');
+      
+      // Pagination controls
+      const paginationContainer = document.getElementById('paginationContainer');
+      if(paginationContainer){
+        if(totalPages <= 1){
+          paginationContainer.innerHTML = '';
+        } else {
+          const showingStart = startIdx + 1;
+          const showingEnd = Math.min(endIdx, filtered.length);
+          paginationContainer.innerHTML = `
+            <div class="flex items-center justify-center gap-4">
+              <button onclick="prevPage()" ${currentPage === 1 ? 'disabled' : ''} class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition disabled:opacity-30 disabled:cursor-not-allowed">‹ Previous</button>
+              <div class="text-sm">
+                <span class="text-cyan-300 font-bold">Page ${currentPage} of ${totalPages}</span>
+                <span class="text-gray-400 ml-2">(${showingStart}-${showingEnd} of ${filtered.length} songs)</span>
+              </div>
+              <button onclick="nextPage()" ${currentPage === totalPages ? 'disabled' : ''} class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg font-medium transition disabled:opacity-30 disabled:cursor-not-allowed">Next ›</button>
             </div>
-            ${communityStatsRow}
-            ${stabilizationMode ? `<div class="inline-banner mt-2">Stabilization mode: some features temporarily disabled.</div>` : ''}
-          </div>
-        </div>
-      </header>
+          `;
+        }
+      }
+      
+      // attach right-click genre handlers
+      document.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
+        btn.addEventListener('click',(e)=>{ e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); });
+      });
+    }
 
       <main class="max-w-[1400px] mx-auto px-4 py-6 space-y-4" style="padding-bottom: calc(6rem + var(--safe-bottom));">
         <div class="flex items-center justify-between gap-3 flex-wrap">
@@ -6449,8 +4826,40 @@ function render(){
                       <input id="includeOppositeModeToggle" type="checkbox" class="w-5 h-5 accent-cyan-400" ${includeOppositeMode ? 'checked' : ''} />
                       <span>Include</span>
                     </label>
+    window.nextPage = () => {
+      currentPage++;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      renderSongList();
+    };
+
+    window.prevPage = () => {
+      currentPage--;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      renderSongList();
+    };
+
+    function renderSetlist(){
+      const setlistEl = document.getElementById('setlistContent'); if(!setlistEl) return;
+      if(setlist.length===0){
+        setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button onclick="switchView('browser')" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
+      } else {
+        setlistEl.innerHTML = `<div class="space-y-4">${setlist.map((song,i)=>`<div class="bg-black/40 backdrop-blur-sm border border-gray-700 rounded-xl p-4 flex items-center gap-4 hover:border-cyan-400 transition"><div class="text-2xl font-bold text-pink-400">${i+1}</div>${song.albumArt?`<img src="${song.albumArt}" class="w-16 h-16 rounded-lg"/>`:''}<div class="flex-1"><div class="font-bold text-lg text-white">${song.title}</div><div class="text-gray-300">${song.artist}</div><div class="text-xs text-orange-300">${song.genre}</div></div><div class="text-xl font-mono font-bold" style="color:${camelotColors[song.camelot]}">${song.camelot}</div><button onclick="removeFromSetlist('${song.id}')" class="p-2 hover:bg-red-500/20 rounded text-red-400 text-xl">✕</button></div>`).join('')}</div>`;
+      }
+    }
+
+    function render(){
+      const ownedCount = ownedTracks.length;
+      document.getElementById('app').innerHTML = `
+        <div class="min-h-screen">
+          <div class="bg-black/60 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg">
+            <div class="max-w-7xl mx-auto px-6 py-4">
+              <div class="flex items-center justify-between gap-4 mb-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
+                  <div>
+                    <h1 class="text-2xl font-bold text-white graffiti-text">JAM MIXER</h1>
+                    <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">You own ${ownedCount}/${songs.length} tracks</p>
                   </div>
-                  <p class="text-[11px] text-gray-400">Semitone mode prioritizes the most natural-sounding blends; Camelot is better for DJ-style key transitions.</p>
                 </div>
               </div>
               <div class="panel space-y-3 dim-when-sticky">
@@ -6492,111 +4901,75 @@ function render(){
                     <div class="font-bold text-white">Sandbox</div>
                     <div class="text-xs text-gray-400">${FEATURE_DISABLED_COPY}</div>
                   </div>`}
+                <div class="flex items-center gap-3">
+                  <div class="text-right"><div class="text-sm text-pink-300 font-bold">${currentUser?currentUser.djName:''}</div><div class="text-xs text-gray-400">@${currentUser?currentUser.username:''}${Object.keys(genreOverrides).length>0?` • ${Object.keys(genreOverrides).length} corrections`:''}</div></div>
+                  <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
+                  <button onclick="logoutUser()" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">Logout</button>
+                </div>
+              </div>
+
+              <div class="flex gap-2">
+                <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
+                <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="max-w-7xl mx-auto px-6 py-6 pb-20">
+            <div id="browserView" style="display:${view==='browser'?'block':'none'}">
+              <div class="mb-6 space-y-4">
+                <div class="relative">
+                  <input type="text" id="searchInput" placeholder="🔍 Search songs..." class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                  <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
+                  <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
+                  ${selectedSong ? `<button onclick="clearSelection()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">✕ Clear Selection</button>` : ''}
+                  <button id="markAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button>
+                  <button id="clearAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>
+                </div>
+              </div>
+              <div id="songList"></div>
+              <div id="paginationContainer" class="text-center mt-6"></div>
             </div>
 
-            <div class="space-y-4">
-              <div class="flex items-center justify-between flex-wrap gap-3">
-                <div class="text-xl font-bold text-white">Song Browser</div>
-                <div class="text-sm text-cyan-200 font-semibold">Selected: ${selectedSong ? selectedSong.title : 'None'}</div>
-              </div>
-              <div id="songList" class="space-y-4"></div>
+            <div id="setlistView" style="display:${view==='setlist'?'block':'none'}">
+              <div id="setlistContent"></div>
             </div>
           </div>
         </div>
-
-        <div id="setlistView" style="display:${view==='setlist'?'block':'none'}">
-          <div id="setlistContent"></div>
-        </div>
-        <div id="profileView" style="display:${view==='profile'?'block':'none'}"></div>
-        <div id="auditView" style="display:${view==='audit'?'block':'none'}"></div>
-      </main>
-      <div id="stickyCtaBar" class="sticky-cta-bar hidden" aria-live="polite">
-        <button id="stickyCtaButton" class="sticky-cta-button" data-action="stickyCta" type="button"></button>
-        <div id="stickyCtaCopy" class="sticky-cta-copy"></div>
-      </div>
-    </div>
-  `;
-  if(view==='browser'){
-    renderMatches();
-    if(isFeatureOn('SANDBOX')){
-      sandboxInit();
-      renderSandbox();
+      `;
+      if(view==='browser'){ renderSongList(); } else { renderSetlist(); }
     }
-  } else if(view==='setlist'){ renderSetlist(); } else if(view==='audit'){ renderAuditView(); } else { renderProfile(); }
-  syncCommunityStatsUI();
-  bindTourEvents();
-  updateTourUI();
-  updateStickyCTA();
-  maybeAutoOpenQuickStart();
-}
-
 
     // ------------------ Genre context menu ------------------------
     function showGenreMenu(songId,event){
-      if(!currentUser?.isAdmin) { alert('🔒 Admin only.'); return; }
+      if(!currentUser||currentUser.username!=='BattleNeBody'){ alert('🔒 Only the admin (BattleNeBody) can correct genre tags!'); return; }
       const existing = document.getElementById('genreContextMenu'); if(existing) existing.remove();
       const menu=document.createElement('div'); menu.id='genreContextMenu'; menu.className='context-menu';
-      const anchor = getEventElement(event) || event.currentTarget;
-      if(!anchor?.getBoundingClientRect) return;
-      const rect = anchor.getBoundingClientRect();
+      const rect = event.target.getBoundingClientRect();
       let left=rect.left, top=rect.bottom+5;
       if(left+220>window.innerWidth) left=rect.right-220;
       if(top+300>window.innerHeight) top=rect.top-305;
-      menu.style.left = left+'px'; menu.style.top = top+'px';
+      menu.style.cssText = `position:fixed;left:${left}px;top:${top}px;background:rgba(0,0,0,0.95);border-radius:8px;padding:8px;z-index:10000;backdrop-filter:blur(8px);border:1px solid rgba(0,217,255,0.12);color:#e6f7ff;`;
       const genres = Object.keys(genreMap).concat(['Other']);
       menu.innerHTML = `<div style="padding:8px 12px;color:#00d9ff;font-weight:bold;border-bottom:1px solid rgba(0,217,255,0.3);margin-bottom:6px;">Select Genre:</div>`;
       genres.forEach(g=>{
-        const btn=document.createElement('button'); btn.textContent=g; btn.style.display='block'; btn.style.width='100%'; btn.style.padding='8px 12px'; btn.style.background='transparent'; btn.style.border='none'; btn.style.textAlign='left'; btn.style.color='#e6f7ff'; btn.style.cursor='pointer';
+        const btn=document.createElement('button'); btn.textContent=g; btn.style.cssText='display:block;width:100%;padding:8px 12px;background:transparent;border:none;text-align:left;color:#e6f7ff;cursor:pointer;';
         btn.addEventListener('click',async()=>{ await setGenreOverride(songId,g); menu.remove(); });
         menu.appendChild(btn);
       });
       document.body.appendChild(menu);
-      setTimeout(()=>{
-        const closeMenu = (e)=>{
-          const target = getEventElement(e);
-          if(!target || !menu.contains(target)){
-            menu.remove();
-            document.removeEventListener('click', closeMenu);
-          }
-        };
-        document.addEventListener('click', closeMenu);
-      },100);
+      setTimeout(()=>{ const closeMenu=(e)=>{ if(!menu.contains(e.target)){ menu.remove(); document.removeEventListener('click', closeMenu); } }; document.addEventListener('click', closeMenu); },100);
     }
 
-    function bindGenreEditors(scope=document){
-      if(!isAdmin()) return;
-      scope.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
-        const handler = (e)=>{ e.preventDefault(); e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); };
-        btn.onclick = handler;
-        btn.oncontextmenu = handler;
-      });
-    }
-
-    const setGenreOverride = async (songId,newGenre) => {
-      if(!isAdmin()) return alert('Admin only');
-      if(!currentUser && firebaseAuth?.currentUser){
-        const tempProfile = normalizeProfileShape({
-          username: firebaseAuth.currentUser.email?.split('@')[0] || firebaseAuth.currentUser.uid || 'admin',
-          djName: firebaseAuth.currentUser.displayName || firebaseAuth.currentUser.email || 'Admin',
-          ownedTracks,
-          genreOverrides,
-          isAdmin: false
-        }, firebaseAuth.currentUser.uid || firebaseAuth.currentUser.email);
-        const appliedProfile = applyAdminFlag(tempProfile);
-        await persistAdminFlagIfNeeded(tempProfile, appliedProfile);
-        currentUser = appliedProfile;
-        refreshDraftProfileFromCurrentUser();
-      }
-      if(!currentUser) return alert('Sign in required for admin edits');
+    window.setGenreOverride = async (songId,newGenre) => {
+      if(!currentUser) return;
       genreOverrides[songId] = newGenre;
-      const song = songs.find(s=>s.id===songId);
-      if(song){
-        song.genre = newGenre;
-        refreshSongOverrides(song);
-      }
-      scheduleProfileCacheSync();
-      refreshRegressionWarnings();
-      renderAuditView();
+      const song = songs.find(s=>s.id===songId); if(song) song.genre = newGenre;
+      localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
+      await saveUserProfile();
       renderSongList();
       const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
       if(genreTag){ genreTag.textContent = newGenre + ' ✓'; genreTag.classList.add('animate-pulse'); setTimeout(()=>genreTag.classList.remove('animate-pulse'),1000); }
@@ -7210,195 +5583,97 @@ function render(){
       render();
       setupEventListeners();
     };
+    // ------------------ Event listeners and interactions --------------
+    function setupEventListeners(){
+      const searchInput = document.getElementById('searchInput');
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+      if(searchInput && clearSearchBtn){
+        searchInput.oninput = (e)=>{ searchTerm = e.target.value; clearSearchBtn.style.display = searchTerm ? 'block' : 'none'; currentPage = 1; renderSongList(); };
+        clearSearchBtn.onclick = ()=>{ searchInput.value=''; searchTerm=''; clearSearchBtn.style.display='none'; currentPage = 1; renderSongList(); };
+      }
+      document.getElementById('browserBtn')?.addEventListener('click', ()=> switchView('browser'));
+      document.getElementById('setlistBtn')?.addEventListener('click', ()=> switchView('setlist'));
+      document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
+      document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
+      document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned);
+      document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned);
+      document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); addToSetlist(btn.dataset.id); }; });
+    }
 
     window.selectSong = (id) => {
       selectedSong = songs.find(s=>s.id===id);
-      console.debug('[selectTrack]', id, selectedSong?.title);
-      resetMainPagination();
-      refreshSelectedSongCriteria();
-      updateMobileWindowState({ reset: true });
+      currentPage = 1; // Reset to page 1 when selecting
       render();
       setupEventListeners();
     };
 
-    window.clearSelection = (event) => {
-      if(event){ event.preventDefault(); event.stopPropagation(); }
+    window.clearSelection = () => {
       selectedSong = null;
       showMixableOnly = false;
-      refreshSelectedSongCriteria();
-      updateMobileWindowState({ reset: true });
+      currentPage = 1;
       render();
       setupEventListeners();
-    };
-
-    window.disableMixable = () => {
-      if(!showMixableOnly) return;
-      showMixableOnly = false;
-      render();
-      setupEventListeners();
-    };
-
-    window.clearSearch = () => {
-      searchTerm = '';
-      if(searchDebounceTimer){ clearTimeout(searchDebounceTimer); searchDebounceTimer = null; }
-      searchDebouncePending = false;
-      const searchInput = document.getElementById('searchInput');
-      const clearSearchBtn = document.getElementById('clearSearchBtn');
-      if(searchInput) searchInput.value = '';
-      if(clearSearchBtn) clearSearchBtn.style.display = 'none';
-      const searchStatus = document.getElementById('searchStatus');
-      if(searchStatus) searchStatus.style.display = 'none';
-      const panelClearBtn = document.getElementById('panelClearSearchBtn');
-      if(panelClearBtn){ panelClearBtn.disabled = true; panelClearBtn.style.opacity = '0.55'; panelClearBtn.style.cursor = 'not-allowed'; }
-      resetMainPagination();
-      updateMobileWindowState({ reset: true });
-      scheduleSongListRender('clear-search');
-    };
-
-    window.clearFilters = () => {
-      searchTerm = '';
-      showOwnedOnly = false;
-      showMixableOnly = false;
-      selectedGenre = 'All';
-      resetMainPagination();
-      updateMobileWindowState({ reset: true });
-      render();
-      setupEventListeners();
-    };
-
-    window.openProfileView = () => {
-      if(!guardFeature('PROFILE')) return;
-      view = 'profile';
-      render();
-      setupEventListeners();
-      renderProfile();
-    };
-
-    window.toggleOwned = async (id) => {
-      if(!guardFeature('OWNED_SYNC')) return;
-      if(viewingProfile){ alert("You can't edit other people's collections!"); return; }
-      const nextOwned = ownedTracks.includes(id) ? ownedTracks.filter(t=>t!==id) : [...ownedTracks, id];
-      const savePromise = saveOwnedTracksSafe(nextOwned, { reason: 'toggle' });
-      updateOwnedCount();
-      updateSongCardOwnedState(id);
-      updateStickyCTA();
-      if(showOwnedOnly){
-        updateMobileWindowState({ reset: true });
-        scheduleSongListRender('owned-filter-change');
-      }
-      await savePromise;
-    };
-
-    window.exitProfileViewMode = () => {
-      clearViewedProfile();
-      refreshDraftProfileFromCurrentUser();
-      render();
-      setupEventListeners();
-    };
-
-    function updateSetlistCountUI(){
-      const el = document.getElementById('setlistCount');
-      if(el) el.textContent = setlist.length;
-    }
-
-    window.addToSetlist = (id) => {
-      if(!id) return;
-      const exists = setlist.includes(id);
-      if(exists){
-        setlist = setlist.filter(x => x !== id);
-      } else {
-        setlist.push(id);
-      }
-      scheduleProfileCacheSync();
-      updateSetlistCountUI();
-      updateSongCardSetlistState(id);
-      if(view === 'setlist') renderSetlist();
-    };
-
-    window.removeFromSetlist = (id) => {
-      setlist = setlist.filter(x => x !== id);
-      scheduleProfileCacheSync();
-      updateSetlistCountUI();
-      updateSongCardSetlistState(id);
-      renderSetlist();
-    };
-
-    window.switchView = (newView) => {
-      if(newView === 'audit' && !isAdmin()){
-        alert('Admin only');
-        newView = 'browser';
-      }
-      if(newView === 'profile' && !guardFeature('PROFILE')){
-        return;
-      }
-      adminMenuOpen = false;
-      logEvent('view_switch', { from: view, to: newView });
-      view = newView;
-      if(view === 'browser'){ updateMobileWindowState({ reset: true }); }
-      const browserView = document.getElementById('browserView');
-      const setlistView = document.getElementById('setlistView');
-      const profileView = document.getElementById('profileView');
-      const auditViewEl = document.getElementById('auditView');
-      if(browserView) browserView.style.display = view==='browser' ? 'block' : 'none';
-      if(setlistView) setlistView.style.display = view==='setlist' ? 'block' : 'none';
-      if(profileView) profileView.style.display = view==='profile' ? 'block' : 'none';
-      if(auditViewEl) auditViewEl.style.display = view==='audit' ? 'block' : 'none';
-      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn'); const profileBtn = document.getElementById('profileBtn'); const auditBtn = document.getElementById('auditBtn');
-      if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
-      if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
-      if(profileBtn) profileBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='profile'?'bg-gradient-to-r from-indigo-500 to-blue-500':'bg-white/10 hover:bg-white/20'}`;
-      if(auditBtn) auditBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='audit'?'bg-gradient-to-r from-amber-500 to-yellow-500':'bg-white/10 hover:bg-white/20'}`;
-      if(view==='browser'){
-        renderSongList();
-        setupEventListeners();
-        if(isFeatureOn('SANDBOX')){
-          sandboxInit();
-          renderSandbox();
-        }
-      }
-      else if(view==='setlist'){ renderSetlist(); setupEventListeners(); }
-      else if(view==='audit'){ renderAuditView(); setupEventListeners(); }
-      else { renderProfile(); setupEventListeners(); }
-      updateTourUI();
     };
 
     window.toggleMixableFilter = () => {
-      if(!selectedSong){
-        setMixableInlineNotice('Select a song first to see mixable matches.');
-        return;
-      }
+      if(!selectedSong){ alert('Select a song first to see mixable tracks!'); return; }
       showMixableOnly = !showMixableOnly;
-      resetMainPagination();
-      updateMobileWindowState({ reset: true });
+      currentPage = 1;
       render();
       setupEventListeners();
+    };
+
+    window.toggleOwned = (id) => {
+      if(ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t=>t!==id); else ownedTracks.push(id);
+      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      saveUserProfile();
+      updateOwnedCount();
+      renderSongList();
+    };
+
+    window.addToSetlist = (id) => {
+      const song = songs.find(s=>s.id===id); if(!song) return;
+      if(!setlist.find(s=>s.id===id)){
+        setlist.push(song);
+        localStorage.setItem('setlist', JSON.stringify(setlist));
+        const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
+        if(view==='setlist') renderSetlist(); else { if(countEl){ countEl.classList.add('animate-pulse'); setTimeout(()=>countEl.classList.remove('animate-pulse'),800); } }
+      }
+    };
+
+    window.removeFromSetlist = (id) => {
+      setlist = setlist.filter(s=>s.id!==id);
+      localStorage.setItem('setlist', JSON.stringify(setlist));
+      renderSetlist();
+      const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
+    };
+
+    window.switchView = (newView) => {
+      view = newView;
+      currentPage = 1; // Reset to page 1 when switching views
+      document.getElementById('browserView').style.display = view==='browser' ? 'block' : 'none';
+      document.getElementById('setlistView').style.display = view==='setlist' ? 'block' : 'none';
+      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn');
+      if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
+      if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
+      if(view==='browser'){ renderSongList(); setupEventListeners(); } else { renderSetlist(); setupEventListeners(); }
     };
 
     window.toggleOwnedFilter = () => {
-      if(!guardFeature('OWNED_SYNC')) return;
       showOwnedOnly = !showOwnedOnly;
-      resetMainPagination();
-      updateMobileWindowState({ reset: true });
+      currentPage = 1; // Reset to page 1 when toggling filter
       render();
       setupEventListeners();
     };
 
-    window.markAllOwned = async () => {
-      if(!guardFeature('OWNED_SYNC')) return;
-      if(viewingProfile) return;
+    window.markAllOwned = () => {
       if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
       ownedTracks = songs.map(s=>s.id);
-      scheduleProfileCacheSync();
-      updateOwnedCount();
-      updateMobileWindowState({ reset: true });
-      scheduleSongListRender('mark-all-owned');
-      updateStickyCTA();
-      alert(`✅ Marked all ${songs.length} songs as owned!`);
+      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`✅ Marked all ${songs.length} songs as owned!`);
     };
 
-    window.clearAllOwned = async () => {
-      if(!guardFeature('OWNED_SYNC')) return;
-      if(viewingProfile) return;
+    window.clearAllOwned = () => {
       if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
       const count = ownedTracks.length;
       await saveOwnedTracksSafe([], { reason: 'explicit_clear', allowEmpty: true });
@@ -7511,249 +5786,35 @@ function render(){
       cant_see_setlist: 'hasSetlist',
       offline_mode: 'hasOfflineMode',
       owned_count_wrong: 'hasOwnedToggle'
+      const count = ownedTracks.length; ownedTracks = []; localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks)); saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
     };
 
-    function getWhatsNewItems(){
-      if(Array.isArray(whatsNewState?.items)) return whatsNewState.items;
-      if(Array.isArray(whatsNewState)) return whatsNewState;
-      if(Array.isArray(window.DEFAULT_WHATS_NEW?.items)) return window.DEFAULT_WHATS_NEW.items;
-      return [];
-    }
-
-    function buildListElement(items, listTag = 'ol'){
-      const list = document.createElement(listTag);
-      items.forEach((line) => {
-        const li = document.createElement('li');
-        li.textContent = line;
-        list.appendChild(li);
-      });
-      return list;
-    }
-
-    function buildHelpSectionElement(section, { listTag = 'ol', includeFeatures = true, includeIds = true } = {}){
-      const wrapper = document.createElement('div');
-      wrapper.className = 'helpSection';
-      if(includeIds && section?.id){
-        const sectionId = HELP_SECTION_IDS[section.id] || `help-${section.id}`;
-        wrapper.id = sectionId;
-      }
-      const featureKey = HELP_SECTION_FEATURES[section?.id];
-      if(includeFeatures && featureKey){
-        wrapper.dataset.helpFeature = featureKey;
-      }
-      const title = document.createElement('h3');
-      title.textContent = section?.title || '';
-      wrapper.appendChild(title);
-
-      const content = document.createElement('div');
-      if(includeFeatures && featureKey){
-        content.dataset.helpContent = '';
-      }
-      const bullets = Array.isArray(section?.bullets)
-        ? section.bullets
-        : Array.isArray(section?.body)
-          ? section.body
-          : [];
-      if(bullets.length){
-        content.appendChild(buildListElement(bullets, listTag));
-      }
-      const steps = Array.isArray(section?.steps) ? section.steps : [];
-      if(steps.length){
-        const stepsLabel = document.createElement('p');
-        stepsLabel.className = 'small-muted';
-        stepsLabel.textContent = 'Steps';
-        content.appendChild(stepsLabel);
-        content.appendChild(buildListElement(steps, 'ol'));
-      }
-      wrapper.appendChild(content);
-
-      if(includeFeatures && featureKey){
-        const coming = document.createElement('p');
-        coming.className = 'helpComing';
-        coming.dataset.helpComing = '';
-        coming.textContent = 'Coming soon.';
-        wrapper.appendChild(coming);
-      }
-      return wrapper;
-    }
-
-    function renderHelpContentInto({ helpData, quickStartEl, basicSectionsEl, faqListEl, advancedSectionsEl, includeFeatures = true, includeIds = true } = {}){
-      if(!helpData) return;
-      const quickStart = Array.isArray(helpData?.basic?.quickStart) ? helpData.basic.quickStart : [];
-      if(quickStartEl){
-        quickStartEl.innerHTML = '';
-        const isListEl = ['OL','UL'].includes(quickStartEl.tagName);
-        if(isListEl){
-          quickStart.forEach((line) => {
-            const li = document.createElement('li');
-            li.textContent = line;
-            quickStartEl.appendChild(li);
-          });
-        } else {
-          quickStartEl.appendChild(buildListElement(quickStart, 'ol'));
-        }
-      }
-      if(basicSectionsEl){
-        basicSectionsEl.innerHTML = '';
-        const sections = Array.isArray(helpData?.basic?.sections) ? helpData.basic.sections : [];
-        sections.forEach(section => {
-          basicSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ol', includeFeatures, includeIds }));
-        });
-      }
-      if(faqListEl){
-        faqListEl.innerHTML = '';
-        const faqs = Array.isArray(helpData?.basic?.faq) ? helpData.basic.faq : [];
-        faqs.forEach((faq) => {
-          const detail = document.createElement('details');
-          detail.className = 'helpFaq';
-          detail.dataset.questionId = faq.id || '';
-          const featureKey = HELP_FAQ_FEATURES[faq.id];
-          if(includeFeatures && featureKey){
-            detail.dataset.helpFeature = featureKey;
-            detail.dataset.helpFeatureMode = 'item';
-          }
-          const summary = document.createElement('summary');
-          summary.textContent = faq.q || '';
-          detail.appendChild(summary);
-          const answers = Array.isArray(faq.a) ? faq.a : [];
-          answers.forEach((line) => {
-            const p = document.createElement('p');
-            p.textContent = line;
-            detail.appendChild(p);
-          });
-          faqListEl.appendChild(detail);
-        });
-      }
-      if(advancedSectionsEl){
-        advancedSectionsEl.innerHTML = '';
-        const sections = Array.isArray(helpData?.advanced?.sections) ? helpData.advanced.sections : [];
-        sections.forEach(section => {
-          advancedSectionsEl.appendChild(buildHelpSectionElement(section, { listTag: 'ul', includeFeatures: false, includeIds }));
-        });
-      }
-    }
-
-    function renderHelpContent(){
-      const helpData = helpContentState || window.DEFAULT_HELP_CONTENT;
-      renderHelpContentInto({
-        helpData,
-        quickStartEl: document.getElementById('helpQuickStartList'),
-        basicSectionsEl: document.getElementById('helpBasicSections'),
-        faqListEl: document.getElementById('helpFaqList'),
-        advancedSectionsEl: document.getElementById('helpAdvancedSections'),
-        includeFeatures: true
-      });
-      bindHelpFaqTracking();
-      applyHelpFlags(getHelpFlags());
-    }
-
-    function renderHelpPreview(targetEl, helpData){
-      if(!targetEl) return;
-      targetEl.innerHTML = '';
-      const basicWrapper = document.createElement('div');
-      const basicTitle = document.createElement('h4');
-      basicTitle.textContent = 'Basic';
-      basicWrapper.appendChild(basicTitle);
-      const quickTitle = document.createElement('div');
-      quickTitle.className = 'text-xs text-cyan-200 font-semibold';
-      quickTitle.textContent = 'Quick Start';
-      basicWrapper.appendChild(quickTitle);
-      const quickList = document.createElement('div');
-      basicWrapper.appendChild(quickList);
-      const sectionsContainer = document.createElement('div');
-      const faqContainer = document.createElement('div');
-      renderHelpContentInto({
-        helpData,
-        quickStartEl: quickList,
-        basicSectionsEl: sectionsContainer,
-        faqListEl: faqContainer,
-        advancedSectionsEl: null,
-        includeFeatures: false,
-        includeIds: false
-      });
-      basicWrapper.appendChild(sectionsContainer);
-      if(faqContainer.children.length){
-        const faqTitle = document.createElement('div');
-        faqTitle.className = 'text-xs text-cyan-200 font-semibold mt-2';
-        faqTitle.textContent = 'FAQ';
-        basicWrapper.appendChild(faqTitle);
-        basicWrapper.appendChild(faqContainer);
-      }
-      targetEl.appendChild(basicWrapper);
-
-      const advancedWrapper = document.createElement('div');
-      advancedWrapper.className = 'mt-3';
-      const advancedTitle = document.createElement('h4');
-      advancedTitle.textContent = 'Advanced';
-      advancedWrapper.appendChild(advancedTitle);
-      const advancedContainer = document.createElement('div');
-      renderHelpContentInto({
-        helpData,
-        quickStartEl: null,
-        basicSectionsEl: null,
-        faqListEl: null,
-        advancedSectionsEl: advancedContainer,
-        includeFeatures: false,
-        includeIds: false
-      });
-      advancedWrapper.appendChild(advancedContainer);
-      targetEl.appendChild(advancedWrapper);
-    }
-
-    function cloneConfig(data){
-      return data ? JSON.parse(JSON.stringify(data)) : null;
-    }
-
-    function splitLines(value){
-      return (value || '')
-        .split('\\n')
-        .map(line => line.trim())
-        .filter(Boolean);
-    }
-
-    function escapeHtml(value){
-      return String(value ?? '')
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/\"/g,'&quot;')
-        .replace(/'/g,'&#39;');
-    }
-
-    function parseCommaList(value){
-      return (value || '')
-        .split(',')
-        .map(item => item.trim())
-        .filter(Boolean);
-    }
-
-    function moveItem(list, fromIndex, toIndex){
-      if(!Array.isArray(list)) return;
-      if(fromIndex < 0 || fromIndex >= list.length) return;
-      if(toIndex < 0 || toIndex >= list.length) return;
-      const [item] = list.splice(fromIndex, 1);
-      list.splice(toIndex, 0, item);
-    }
-
-    async function loadRemoteConfig(){
-      if(configLoadPromise) return configLoadPromise;
-      if(!window.configService){
-        renderHelpContent();
-        return null;
-      }
-      configLoadPromise = Promise.all([
-        window.configService.getHelpContent({ firestore, defaults: window.DEFAULT_HELP_CONTENT }),
-        window.configService.getWhatsNew({ firestore, defaults: window.DEFAULT_WHATS_NEW })
-      ]).then(([helpData, whatsNewData]) => {
-        if(helpData) helpContentState = helpData;
-        if(whatsNewData) whatsNewState = whatsNewData;
-        renderHelpContent();
-      }).catch((err) => {
-        console.warn('[config] load failed', err);
-        renderHelpContent();
-      });
-      return configLoadPromise;
-    }
+    // --------------------- Data Management -----------------------
+    window.deleteAllData = () => {
+      if(!confirm('⚠️ DELETE ALL DATA?\n\nThis will permanently erase:\n• All owned tracks\n• All setlists\n• All genre corrections\n• Your profile\n\nThis CANNOT be undone.\n\nAre you absolutely sure?')) return;
+      
+      // Double confirmation
+      if(!confirm('This is your last chance.\n\nClick OK to permanently delete everything, or Cancel to keep your data.')) return;
+      
+      // Clear everything
+      localStorage.removeItem('ownedTracks');
+      localStorage.removeItem('setlist');
+      localStorage.removeItem('genreOverrides');
+      localStorage.removeItem('userProfiles');
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('hasSeenLanding');
+      
+      // Reset state
+      currentUser = null;
+      ownedTracks = [];
+      setlist = [];
+      genreOverrides = {};
+      
+      alert('✅ All data has been deleted.\n\nYou will now be returned to the login screen.');
+      
+      closeHelp();
+      showLoginScreen();
+    };
 
     // --------------------- Help modal functions -----------------------
     let helpEditorState = null;
@@ -8384,92 +6445,27 @@ function render(){
         friendLookupError = `No profile found for ‘${profileParam}’`;
       }
     }
-
-    const helpModal = document.getElementById('helpModal');
-    if(helpModal){
-      helpModal.addEventListener('click',(e)=>{
-        const target = getEventElement(e);
-        if(target === helpModal) closeHelp();
-      });
-      bindHelpTabs();
-      bindHelpFaqTracking();
-      renderHelpContent();
-    }
-    bindTourEvents();
-    window.addEventListener('resize', ()=>{ if(tourState.isOpen) updateTourUI(); });
-    window.addEventListener('scroll', ()=>{ if(tourState.isOpen) updateTourUI(); }, true);
-    document.addEventListener('keydown', safeOn('keydown', (e)=>{
-      if(tourState.isOpen){
-        if(e.key === 'Escape'){
-          skipTour();
-          return;
-        }
-        trapTourFocus(e);
-        return;
-      }
-      if(e.key === 'Escape'){ closeHelp(); }
-    }, { action: 'global-keydown' }));
+    function openHelp(){ document.getElementById('helpModal').style.display = 'flex'; document.getElementById('helpModal').focus(); }
+    function closeHelp(){ document.getElementById('helpModal').style.display = 'none'; }
 
     // ----------------------- Init / Auth check ------------------------
-    loadOverridesFromStorage();
-    handleNetworkStatusChange();
-    window.addEventListener('online', ()=>{ handleNetworkStatusChange(); if(!songs.length) loadSongs(); });
-    window.addEventListener('offline', handleNetworkStatusChange);
-    if('serviceWorker' in navigator){
-      window.addEventListener('load', ()=>{
-        navigator.serviceWorker.register('/sw.js').catch(err=>console.warn('SW registration failed', err));
-      });
-    }
-    initCommunityMetrics();
-    async function checkAuth(){
-      if (firebaseEnabled && firebaseAuth) {
-        setupFirebaseAuthListener();
-        const fbUser = firebaseAuth.currentUser;
-        if (fbUser) return;
-      }
-      const cachedProfile = await hydrateFromLocalCacheOnly();
-      if(cachedProfile){
-        await enterAppWithProfile(cachedProfile, { loadOverrides: false, skipPersist: true });
-        renderSignedOutState();
-        return;
-      }
-      await loadRemoteConfig();
-      showLoginScreen();
-    }
+    function openHelp(){ document.getElementById('helpModal').style.display = 'flex'; document.getElementById('helpModal').focus(); }
+    function closeHelp(){ document.getElementById('helpModal').style.display = 'none'; }
 
-    updatePerformanceMode();
-    reducedMotionQuery?.addEventListener?.('change', updatePerformanceMode);
-    navigator?.connection?.addEventListener?.('change', updatePerformanceMode);
-    if(mobileViewportQuery?.addEventListener){
-      mobileViewportQuery.addEventListener('change', () => {
-        updateMobileWindowState({ reset: true });
-        scheduleSongListRender('viewport-change');
-        updateStickyCTA();
-      });
-    } else {
-      window.addEventListener('resize', () => {
-        updateMobileWindowState({ reset: true });
-        scheduleSongListRender('viewport-resize');
-        updateStickyCTA();
-      }, { passive: true });
+    // ----------------------- Init / Auth check ------------------------
+    async function checkAuth(){
+      const savedUsername = localStorage.getItem('currentUser');
+      if(savedUsername){
+        const profile = await loadUserProfile(savedUsername);
+        if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; genreOverrides = profile.genreOverrides || {}; loadSongs(); return; }
+      }
+      showLoginScreen();
     }
 
     if(!localStorage.getItem('hasSeenLanding')) showLandingPage(); else checkAuth();
 
-    // ------------------ Drag/drop support ---------------------------
-    document.addEventListener('dragstart', safeOn('dragstart', (e)=>{
-      const card = closestFromEvent(e, '.song-card');
-      if(card){
-        const songId = card.getAttribute('data-song-id');
-        if(songId) e.dataTransfer.setData('text/plain', songId);
-      }
-    }, { action: 'drag-song-card' }));
     // ---------------- Expose some helpers for debugging ----------------
-    window.openHelp = openHelp; window.openHelpModal = openHelpModal; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist; window.viewFriendProfile = viewFriendProfile; window.startTour = startTour; window.refreshLiveNowUsers = refreshLiveNowUsers;
-    window.__perfState = {
-      get listRenderCount(){ return listRenderCount; },
-      get maxMobileCards(){ return maxMobileCardsRendered; }
-    };
+    window.openHelp = openHelp; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist;
   </script>
 </body>
 </html>

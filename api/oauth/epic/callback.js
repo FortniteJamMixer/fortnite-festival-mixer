@@ -20,7 +20,7 @@ function buildProfileRedirect(req) {
   const proto = (req.headers["x-forwarded-proto"] || "https").split(",")[0];
   const host = req.headers.host;
   const origin = process.env.APP_ORIGIN || `${proto}://${host}`;
-  return `${origin.replace(/\/$/, "")}/?view=profile`;
+  return `${origin.replace(/\/$/, "")}/`;
 }
 
 function parseCookies(cookieHeader = "") {
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
     sendError(
       res,
       400,
-      "Epic sign-in was cancelled. Restart linking from your profile when ready.",
+      "Epic sign-in was cancelled. Restart linking from the app when ready.",
       ERROR_CODES.accessDenied,
       redirectBack
     );
@@ -95,7 +95,7 @@ export default async function handler(req, res) {
     sendError(
       res,
       400,
-      "Missing Epic authorization details. Restart the link from your profile.",
+      "Missing Epic authorization details. Restart the link from the app.",
       ERROR_CODES.badRequest,
       redirectBack
     );
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
     sendError(
       res,
       400,
-      "Epic sign-in expired. Restart the link from your profile.",
+      "Epic sign-in expired. Restart the link from the app.",
       ERROR_CODES.expired,
       redirectBack
     );
@@ -150,7 +150,7 @@ export default async function handler(req, res) {
     sendError(
       res,
       400,
-      "Epic sign-in could not be verified. Restart the link from your profile.",
+      "Epic sign-in could not be verified. Restart the link from the app.",
       ERROR_CODES.stateMismatch,
       redirectBack
     );
@@ -177,7 +177,7 @@ export default async function handler(req, res) {
     sendError(
       res,
       400,
-      "Epic session incomplete. Restart the link from your profile.",
+      "Epic session incomplete. Restart the link from the app.",
       ERROR_CODES.incomplete,
       redirectBack
     );
@@ -228,7 +228,7 @@ export default async function handler(req, res) {
         sendError(
           res,
           resp.status,
-          "That Epic sign-in link was already used or expired. Restart the link from your profile.",
+          "That Epic sign-in link was already used or expired. Restart the link from the app.",
           ERROR_CODES.codeReplay,
           redirectBack
         );
