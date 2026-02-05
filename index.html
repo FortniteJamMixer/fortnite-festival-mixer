@@ -3567,7 +3567,6 @@
         const selectedStyles = isSelected ? 'selected-card' : '';
         const genrePill = adminUser
           ? `<button data-action="open-genre-menu" data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
-          ? `<button data-action="edit-genre" data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-pointer hover:border-cyan-400/60" title="Click to edit genre">${song.genre}${hasOverride ? ' ✓' : ''}</button>`
           : `<span class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs cursor-default">${song.genre}${hasOverride ? ' ✓' : ''}</span>`;
         return `
           <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all ${selectedStyles}" data-song-id="${song.id}" data-action="select-track" data-id="${song.id}" draggable="true">
