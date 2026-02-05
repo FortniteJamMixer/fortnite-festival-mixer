@@ -267,6 +267,27 @@
       'Soul': ['aretha franklin','otis redding','sam cooke']
     };
 
+    const genreColors = {
+      'Rock': '#ef4444',           // Red
+      'Classic Rock': '#dc2626',   // Dark Red
+      'Alternative': '#f97316',    // Orange
+      'Punk': '#ea580c',           // Dark Orange
+      'Metal': '#7f1d1d',          // Very Dark Red
+      'Pop': '#ec4899',            // Pink
+      'Hip-Hop': '#8b5cf6',        // Purple
+      'R&B': '#a855f7',            // Light Purple
+      'Electronic': '#06b6d4',     // Cyan
+      'Indie': '#14b8a6',          // Teal
+      'Country': '#eab308',        // Yellow
+      'Disco/Funk': '#f59e0b',     // Amber
+      'Blues': '#3b82f6',          // Blue
+      'Jazz': '#6366f1',           // Indigo
+      'Reggae': '#22c55e',         // Green
+      'Latin': '#f43f5e',          // Rose
+      'Soul': '#9333ea',           // Violet
+      'Other': '#6b7280'           // Gray
+    };
+
     // -------------------------- State -----------------------------
     let currentUser = null;
     let songs = [];
@@ -277,6 +298,7 @@
     let view = 'browser';
     let showOwnedOnly = false;
     let showMixableOnly = false;
+    let searchMode = 'camelot'; // 'camelot' or 'key'
     let genreOverrides = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
     let currentPage = 1;
     const songsPerPage = 15;
