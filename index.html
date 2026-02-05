@@ -45,6 +45,11 @@
       transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
     .btn:hover { transform: translateY(-1px); }
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
     .btn-primary { background: linear-gradient(90deg,#22d3ee,#3b82f6); color:#07132d; }
     .btn-secondary { background: rgba(255,255,255,0.12); color:#e7f9ff; }
     .btn-danger { background: linear-gradient(90deg,#ef4444,#dc2626); color:#fff; }
@@ -53,7 +58,22 @@
     .grid-cards {
       display: grid;
       gap: 14px;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    @media (max-width: 1280px) {
+      .grid-cards {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 900px) {
+      .grid-cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 600px) {
+      .grid-cards {
+        grid-template-columns: 1fr;
+      }
     }
     .card {
       background: rgba(13, 20, 42, 0.9);
@@ -68,6 +88,31 @@
     .card.selected {
       outline: 2px solid rgba(34,211,238,0.7);
       box-shadow: 0 0 22px rgba(34,211,238,0.2);
+    }
+    .album-art {
+      width: 100%;
+      height: 120px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(59,130,246,0.2));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.7);
+      font-size: 26px;
+      position: relative;
+    }
+    .album-art img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .album-art::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(9,13,30,0.1), rgba(9,13,30,0.55));
     }
     .help-modal {
       position: fixed;
@@ -173,8 +218,12 @@
       searchTerm: '',
       showOwnedOnly: false,
       showMixableOnly: false,
-      selectedSongId: null
+      selectedSongId: null,
+      currentPage: 1,
+      dataStatus: ''
     };
+
+    const pageSize = 15;
 
     const camelotColorMap = {
       '1A': '#ff6b6b', '1B': '#ff8f8f',
@@ -222,6 +271,42 @@
         }
       }
       return 'Other';
+    }
+
+    function extractAlbumArt(value, depth = 0) {
+      if (!value || depth > 3) return '';
+      if (typeof value === 'string') return value;
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          const found = extractAlbumArt(entry, depth + 1);
+          if (found) return found;
+        }
+      }
+      if (typeof value === 'object') {
+        const keys = ['url', 'src', 'image', 'imageUrl', 'link', 'm', 's', 'l'];
+        for (const key of keys) {
+          const found = extractAlbumArt(value[key], depth + 1);
+          if (found) return found;
+        }
+      }
+      return '';
+    }
+
+    function resolveAlbumArt(track) {
+      return extractAlbumArt(track?.au)
+        || extractAlbumArt(track?.ai)
+        || extractAlbumArt(track?.im)
+        || extractAlbumArt(track?.ju)
+        || extractAlbumArt(track?.albumArt)
+        || '';
+    }
+
+    async function fetchSongs(url, expectsJson = true) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (expectsJson) return res.json();
+      const text = await res.text();
+      return JSON.parse(text);
     }
 
     function convertToCamelot(key, mode) {
@@ -285,14 +370,26 @@
 
     async function loadSongs() {
       const endpoints = [
-        'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
-        'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks'
+        {
+          url: 'https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
+          expectsJson: true
+        },
+        {
+          url: 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
+          expectsJson: true
+        },
+        {
+          url: 'https://r.jina.ai/http://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
+          expectsJson: false
+        },
+        {
+          url: 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks',
+          expectsJson: true
+        }
       ];
       for (const endpoint of endpoints) {
         try {
-          const res = await fetch(endpoint);
-          if (!res.ok) continue;
-          const data = await res.json();
+          const data = await fetchSongs(endpoint.url, endpoint.expectsJson);
           const entries = Object.entries(data).filter(([key]) => !key.startsWith('_'));
           state.songs = entries.map(([id, item]) => {
             const track = item?.track || {};
@@ -308,16 +405,20 @@
               mode: track.mm || '',
               camelot: convertToCamelot(track.mk || '', track.mm || ''),
               duration: Number(track.dn) || 0,
-              albumArt: track.au || '',
+              albumArt: resolveAlbumArt(track),
               genre: finalGenre
             };
           }).filter(Boolean);
           state.songs.sort((a, b) => a.title.localeCompare(b.title));
-          if (state.songs.length) return;
+          if (state.songs.length) {
+            state.dataStatus = '';
+            return;
+          }
         } catch (error) {
           console.warn('Song fetch failed', error);
         }
       }
+      state.dataStatus = 'Live song data is temporarily unavailable. Showing a small sample list.';
       state.songs = [
         { id: 's1', title: 'Bad Guy', artist: 'Billie Eilish', bpm: 135, key: 'C', mode: 'major', camelot: '8B', duration: 180, albumArt: '', genre: 'Pop' },
         { id: 's2', title: 'Need You Tonight', artist: 'INXS', bpm: 115, key: 'C', mode: 'minor', camelot: '8A', duration: 210, albumArt: '', genre: 'Rock' },
@@ -370,6 +471,9 @@
       const totalOwned = state.ownedTracks.length;
       const totalSongs = state.songs.length;
       const ownedLabel = totalSongs ? `${totalOwned}/${totalSongs} owned` : '0 owned';
+      const statusNotice = state.dataStatus
+        ? `<div class="mt-3 text-xs text-amber-200">${state.dataStatus}</div>`
+        : '';
 
       appEl.innerHTML = `
         <section class="panel mb-6">
@@ -378,6 +482,7 @@
               <div class="text-sm muted">Welcome, <strong>${state.currentUser}</strong></div>
               <h2 class="text-2xl font-bold">Song Browser</h2>
               <div class="text-xs muted">${ownedLabel} • Select a track to unlock mixable scores.</div>
+              ${statusNotice}
             </div>
             <div class="flex flex-wrap gap-2">
               <button class="btn btn-secondary" id="logoutBtn">Log out</button>
@@ -396,6 +501,13 @@
               Show Mixable Only →
             </label>
             <div class="text-sm muted">Compatibility uses Camelot + BPM ±</div>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-3 mt-4" id="paginationControls">
+            <div class="text-sm muted" id="pageInfo"></div>
+            <div class="flex gap-2">
+              <button class="btn btn-secondary" id="prevPageBtn">← Prev</button>
+              <button class="btn btn-secondary" id="nextPageBtn">Next →</button>
+            </div>
           </div>
         </section>
 
@@ -424,14 +536,25 @@
       });
       document.getElementById('searchInput').addEventListener('input', (event) => {
         state.searchTerm = event.target.value;
+        state.currentPage = 1;
         renderSongList();
       });
       document.getElementById('ownedOnlyToggle').addEventListener('change', (event) => {
         state.showOwnedOnly = event.target.checked;
+        state.currentPage = 1;
         renderSongList();
       });
       document.getElementById('mixableToggle').addEventListener('change', (event) => {
         state.showMixableOnly = event.target.checked;
+        state.currentPage = 1;
+        renderSongList();
+      });
+      document.getElementById('prevPageBtn').addEventListener('click', () => {
+        state.currentPage = Math.max(1, state.currentPage - 1);
+        renderSongList();
+      });
+      document.getElementById('nextPageBtn').addEventListener('click', () => {
+        state.currentPage += 1;
         renderSongList();
       });
 
@@ -479,15 +602,31 @@
         const matchesMixable = !state.showMixableOnly || (selectedSong && isMixable(selectedSong, song));
         return matchesSearch && matchesOwned && matchesMixable;
       });
-      listEl.innerHTML = filtered.map(song => {
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      state.currentPage = Math.min(state.currentPage, totalPages);
+      const startIndex = (state.currentPage - 1) * pageSize;
+      const visibleSongs = filtered.slice(startIndex, startIndex + pageSize);
+      const pageInfo = document.getElementById('pageInfo');
+      if (pageInfo) {
+        const totalLabel = filtered.length ? `${filtered.length} songs` : '0 songs';
+        pageInfo.textContent = `Page ${state.currentPage} of ${totalPages} • ${totalLabel}`;
+      }
+      const prevBtn = document.getElementById('prevPageBtn');
+      const nextBtn = document.getElementById('nextPageBtn');
+      if (prevBtn) prevBtn.disabled = state.currentPage <= 1;
+      if (nextBtn) nextBtn.disabled = state.currentPage >= totalPages;
+
+      listEl.innerHTML = visibleSongs.map(song => {
         const isOwned = state.ownedTracks.includes(song.id);
         const inSetlist = state.setlist.includes(song.id);
         const camelotColorValue = camelotColor(song.camelot);
         const isSelected = state.selectedSongId === song.id;
         const score = selectedSong && song.id !== selectedSong.id ? compatibilityScore(selectedSong, song) : null;
         const scoreLabel = score !== null ? `<div class="text-xs muted">Compatibility: ${score}%</div>` : '';
+        const albumArt = song.albumArt ? `<img src="${song.albumArt}" alt="Album art for ${song.title}"/>` : '🎧';
         return `
           <div class="card ${isSelected ? 'selected' : ''}" data-id="${song.id}">
+            <div class="album-art">${albumArt}</div>
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold">${song.title}</div>
               <div class="text-xs muted">${song.bpm} BPM</div>
