@@ -154,82 +154,73 @@
       <p>Browse every Fortnite Festival track, mark what you own, and find songs that mix together using the <strong>Camelot Wheel</strong> — the same system pro DJs use. Everything saves to your device. No login needed.</p>
       <h3>🎡 Camelot Wheel (Key Matching)</h3>
       <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">
-        <svg viewBox="0 0 320 320" style="width:200px;height:200px;flex-shrink:0" xmlns="http://www.w3.org/2000/svg">
-          <!-- Outer B ring (major) - 12 segments, each 30deg, clockwise from top -->
-          <!-- Using real Camelot wheel colors from reference image -->
-          <!-- Segment math: center=160,160. Outer r=150, inner r=95 -->
-          <!-- Angles: seg i starts at -90 + i*30 degrees -->
-          <!-- 1B=cyan, 2B=blue, 3B=purple, 4B=pink, 5B=red, 6B=orange, 7B=yellow, 8B=lime, 9B=green, 10B=teal, 11B=sky, 12B=aqua -->
-          <path d="M160,160 L220,37 A150,150 0 0,1 283,83 Z" fill="#7ecece"/>
-          <path d="M160,160 L283,83 A150,150 0 0,1 307,160 Z" fill="#5b8fd4"/>
-          <path d="M160,160 L307,160 A150,150 0 0,1 283,237 Z" fill="#9b6fd4"/>
-          <path d="M160,160 L283,237 A150,150 0 0,1 220,283 Z" fill="#d46e8f"/>
-          <path d="M160,160 L220,283 A150,150 0 0,1 143,310 Z" fill="#d47060"/>
-          <path d="M160,160 L143,310 A150,150 0 0,1 67,283 Z" fill="#d4a060"/>
-          <path d="M160,160 L67,283 A150,150 0 0,1 13,220 Z" fill="#d4cc60"/>
-          <path d="M160,160 L13,220 A150,150 0 0,1 13,100 Z" fill="#a8d460"/>
-          <path d="M160,160 L13,100 A150,150 0 0,1 67,37 Z" fill="#60d478"/>
-          <path d="M160,160 L67,37 A150,150 0 0,1 143,10 Z" fill="#60d4b4"/>
-          <path d="M160,160 L143,10 A150,150 0 0,1 220,37 Z" fill="#60b4d4"/>
-          <!-- 12B reuses 1B slot - shown as separate arc -->
-          <!-- Inner A ring (minor) -->
-          <path d="M160,160 L213,64 A95,95 0 0,1 252,113 Z" fill="#5aafb5"/>
-          <path d="M160,160 L252,113 A95,95 0 0,1 252,207 Z" fill="#4272b5"/>
-          <path d="M160,160 L252,207 A95,95 0 0,1 213,256 Z" fill="#7a52b5"/>
-          <path d="M160,160 L213,256 A95,95 0 0,1 160,265 Z" fill="#b5526e"/>
-          <path d="M160,160 L160,265 A95,95 0 0,1 107,256 Z" fill="#b55848"/>
-          <path d="M160,160 L107,256 A95,95 0 0,1 68,207 Z" fill="#b58048"/>
-          <path d="M160,160 L68,207 A95,95 0 0,1 68,113 Z" fill="#b5aa48"/>
-          <path d="M160,160 L68,113 A95,95 0 0,1 107,64 Z" fill="#88b548"/>
-          <path d="M160,160 L107,64 A95,95 0 0,1 160,55 Z" fill="#48b560"/>
-          <path d="M160,160 L160,55 A95,95 0 0,1 213,64 Z" fill="#48b595"/>
-          <!-- Dividers -->
-          <g stroke="rgba(0,0,0,0.35)" stroke-width="1">
-            <line x1="160" y1="160" x2="220" y2="37"/>
-            <line x1="160" y1="160" x2="283" y2="83"/>
-            <line x1="160" y1="160" x2="307" y2="160"/>
-            <line x1="160" y1="160" x2="283" y2="237"/>
-            <line x1="160" y1="160" x2="220" y2="283"/>
-            <line x1="160" y1="160" x2="143" y2="310"/>
-            <line x1="160" y1="160" x2="67" y2="283"/>
-            <line x1="160" y1="160" x2="13" y2="220"/>
-            <line x1="160" y1="160" x2="13" y2="100"/>
-            <line x1="160" y1="160" x2="67" y2="37"/>
-            <line x1="160" y1="160" x2="143" y2="10"/>
-          </g>
-          <circle cx="160" cy="160" r="150" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.5"/>
+        <svg viewBox="0 0 320 320" style="width:210px;height:210px;flex-shrink:0" xmlns="http://www.w3.org/2000/svg">
+          <path d="M 160.0,12.0 A 148,148 0 0,1 234.0,31.8 L 207.5,77.7 A 95,95 0 0,0 160.0,65.0 Z" fill="#7ecece"/>
+          <path d="M 160.0,65.0 A 95,95 0 0,1 207.5,77.7 L 185.0,116.7 A 50,50 0 0,0 160.0,110.0 Z" fill="#5aafb5"/>
+          <text x="191.4" y="42.6" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">12B</text>
+          <text x="178.8" y="90.0" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">12A</text>
+          <path d="M 234.0,31.8 A 148,148 0 0,1 288.2,86.0 L 242.3,112.5 A 95,95 0 0,0 207.5,77.7 Z" fill="#7dd4d4"/>
+          <path d="M 207.5,77.7 A 95,95 0 0,1 242.3,112.5 L 203.3,135.0 A 50,50 0 0,0 185.0,116.7 Z" fill="#55b0b8"/>
+          <text x="245.9" y="74.1" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">1B</text>
+          <text x="211.3" y="108.7" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">1A</text>
+          <path d="M 288.2,86.0 A 148,148 0 0,1 308.0,160.0 L 255.0,160.0 A 95,95 0 0,0 242.3,112.5 Z" fill="#5b8fd4"/>
+          <path d="M 242.3,112.5 A 95,95 0 0,1 255.0,160.0 L 210.0,160.0 A 50,50 0 0,0 203.3,135.0 Z" fill="#4272b5"/>
+          <text x="277.4" y="128.6" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">2B</text>
+          <text x="230.0" y="141.2" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">2A</text>
+          <path d="M 308.0,160.0 A 148,148 0 0,1 288.2,234.0 L 242.3,207.5 A 95,95 0 0,0 255.0,160.0 Z" fill="#9b6fd4"/>
+          <path d="M 255.0,160.0 A 95,95 0 0,1 242.3,207.5 L 203.3,185.0 A 50,50 0 0,0 210.0,160.0 Z" fill="#7a52b5"/>
+          <text x="277.4" y="191.4" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">3B</text>
+          <text x="230.0" y="178.8" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">3A</text>
+          <path d="M 288.2,234.0 A 148,148 0 0,1 234.0,288.2 L 207.5,242.3 A 95,95 0 0,0 242.3,207.5 Z" fill="#d46e8f"/>
+          <path d="M 242.3,207.5 A 95,95 0 0,1 207.5,242.3 L 185.0,203.3 A 50,50 0 0,0 203.3,185.0 Z" fill="#b5526e"/>
+          <text x="245.9" y="245.9" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">4B</text>
+          <text x="211.3" y="211.3" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">4A</text>
+          <path d="M 234.0,288.2 A 148,148 0 0,1 160.0,308.0 L 160.0,255.0 A 95,95 0 0,0 207.5,242.3 Z" fill="#d47060"/>
+          <path d="M 207.5,242.3 A 95,95 0 0,1 160.0,255.0 L 160.0,210.0 A 50,50 0 0,0 185.0,203.3 Z" fill="#b55848"/>
+          <text x="191.4" y="277.4" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">5B</text>
+          <text x="178.8" y="230.0" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">5A</text>
+          <path d="M 160.0,308.0 A 148,148 0 0,1 86.0,288.2 L 112.5,242.3 A 95,95 0 0,0 160.0,255.0 Z" fill="#d4a060"/>
+          <path d="M 160.0,255.0 A 95,95 0 0,1 112.5,242.3 L 135.0,203.3 A 50,50 0 0,0 160.0,210.0 Z" fill="#b58048"/>
+          <text x="128.6" y="277.4" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">6B</text>
+          <text x="141.2" y="230.0" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">6A</text>
+          <path d="M 86.0,288.2 A 148,148 0 0,1 31.8,234.0 L 77.7,207.5 A 95,95 0 0,0 112.5,242.3 Z" fill="#d4cc60"/>
+          <path d="M 112.5,242.3 A 95,95 0 0,1 77.7,207.5 L 116.7,185.0 A 50,50 0 0,0 135.0,203.3 Z" fill="#b5aa48"/>
+          <text x="74.1" y="245.9" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">7B</text>
+          <text x="108.7" y="211.3" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">7A</text>
+          <path d="M 31.8,234.0 A 148,148 0 0,1 12.0,160.0 L 65.0,160.0 A 95,95 0 0,0 77.7,207.5 Z" fill="#a8d460"/>
+          <path d="M 77.7,207.5 A 95,95 0 0,1 65.0,160.0 L 110.0,160.0 A 50,50 0 0,0 116.7,185.0 Z" fill="#88b548"/>
+          <text x="42.6" y="191.4" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">8B</text>
+          <text x="90.0" y="178.8" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">8A</text>
+          <path d="M 12.0,160.0 A 148,148 0 0,1 31.8,86.0 L 77.7,112.5 A 95,95 0 0,0 65.0,160.0 Z" fill="#60d478"/>
+          <path d="M 65.0,160.0 A 95,95 0 0,1 77.7,112.5 L 116.7,135.0 A 50,50 0 0,0 110.0,160.0 Z" fill="#48b560"/>
+          <text x="42.6" y="128.6" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">9B</text>
+          <text x="90.0" y="141.2" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">9A</text>
+          <path d="M 31.8,86.0 A 148,148 0 0,1 86.0,31.8 L 112.5,77.7 A 95,95 0 0,0 77.7,112.5 Z" fill="#60d4b4"/>
+          <path d="M 77.7,112.5 A 95,95 0 0,1 112.5,77.7 L 135.0,116.7 A 50,50 0 0,0 116.7,135.0 Z" fill="#48b595"/>
+          <text x="74.1" y="74.1" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">10B</text>
+          <text x="108.7" y="108.7" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">10A</text>
+          <path d="M 86.0,31.8 A 148,148 0 0,1 160.0,12.0 L 160.0,65.0 A 95,95 0 0,0 112.5,77.7 Z" fill="#60b4d4"/>
+          <path d="M 112.5,77.7 A 95,95 0 0,1 160.0,65.0 L 160.0,110.0 A 50,50 0 0,0 135.0,116.7 Z" fill="#489ab5"/>
+          <text x="128.6" y="42.6" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">11B</text>
+          <text x="141.2" y="90.0" text-anchor="middle" dominant-baseline="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">11A</text>
+          <line x1="160" y1="160" x2="160.0" y2="12.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="234.0" y2="31.8" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="288.2" y2="86.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="308.0" y2="160.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="288.2" y2="234.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="234.0" y2="288.2" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="160.0" y2="308.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="86.0" y2="288.2" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="31.8" y2="234.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="12.0" y2="160.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="31.8" y2="86.0" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <line x1="160" y1="160" x2="86.0" y2="31.8" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>
+          <circle cx="160" cy="160" r="148" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.5"/>
           <circle cx="160" cy="160" r="95" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1.5"/>
           <circle cx="160" cy="160" r="50" fill="none" stroke="rgba(0,0,0,0.2)" stroke-width="1"/>
-          <!-- Center -->
           <circle cx="160" cy="160" r="49" fill="#0f172a"/>
-          <text x="160" y="156" text-anchor="middle" font-size="9" fill="#a5f3fc" font-weight="700" font-family="Arial">CAMELOT</text>
-          <text x="160" y="168" text-anchor="middle" font-size="8" fill="rgba(230,247,255,.5)" font-family="Arial">SYSTEM</text>
-          <!-- Outer B labels -->
-          <text x="234" y="55"  text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">1B</text>
-          <text x="295" y="105" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">2B</text>
-          <text x="310" y="168" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">3B</text>
-          <text x="290" y="240" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">4B</text>
-          <text x="235" y="290" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">5B</text>
-          <text x="160" y="314" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">6B</text>
-          <text x="85"  y="290" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">7B</text>
-          <text x="28"  y="240" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">8B</text>
-          <text x="10"  y="168" text-anchor="middle" font-size="9" font-weight="800" fill="#fff" font-family="Arial">9B</text>
-          <text x="28"  y="105" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">10B</text>
-          <text x="85"  y="55"  text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">11B</text>
-          <text x="160" y="12"  text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">12B</text>
-          <!-- Inner A labels -->
-          <text x="220" y="88"  text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">1A</text>
-          <text x="246" y="160" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">2A</text>
-          <text x="220" y="232" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">3A</text>
-          <text x="183" y="256" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">4A</text>
-          <text x="137" y="256" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">5A</text>
-          <text x="100" y="232" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">6A</text>
-          <text x="74"  y="160" text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">7A</text>
-          <text x="100" y="88"  text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">8A</text>
-          <text x="137" y="64"  text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">9A</text>
-          <text x="183" y="64"  text-anchor="middle" font-size="8" font-weight="800" fill="#fff" font-family="Arial">10A</text>
-          <text x="218" y="74"  text-anchor="middle" font-size="7.5" font-weight="800" fill="#fff" font-family="Arial">11A</text>
-          <text x="160" y="60"  text-anchor="middle" font-size="7.5" font-weight="800" fill="#fff" font-family="Arial">12A</text>
+          <text x="160" y="156" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#a5f3fc" font-weight="700" font-family="Arial">CAMELOT</text>
+          <text x="160" y="170" text-anchor="middle" dominant-baseline="middle" font-size="8" fill="rgba(230,247,255,.5)" font-family="Arial">SYSTEM</text>
         </svg>
         <div style="flex:1;min-width:160px">
           <div class="help-diagram">
@@ -395,7 +386,7 @@ let selected=null,showMixable=false,showOwnedOnly=false;
 let camLevel=3,priority="tempo",page=1;
 
 /* ── Filter ── */
-function applyFilters(){
+function applyFilters(keepPage){
   const q=(document.getElementById("searchInput")?.value||"").trim().toLowerCase();
   filtered=songs.filter(s=>{
     if(q&&!(s.title.toLowerCase().includes(q)||s.artist.toLowerCase().includes(q)||(s.genre||"").toLowerCase().includes(q)))return false;
@@ -416,8 +407,9 @@ function applyFilters(){
   }else{
     filtered.sort((a,b)=>a.title.localeCompare(b.title));
   }
-  page=1;renderPage();
+  if(!keepPage)page=1;renderPage();
 }
+function applyFiltersKeepPage(){applyFilters(true);}
 
 /* ── Render ── */
 function renderPage(){
@@ -512,7 +504,7 @@ function selectSong(id){
 function toggleOwned(id){
   owned=owned.includes(id)?owned.filter(x=>x!==id):[...owned,id];
   localStorage.setItem("fjm_owned",JSON.stringify(owned));
-  updateCounter();applyFilters();
+  updateCounter();applyFiltersKeepPage();
 }
 
 function previewClick(id){
