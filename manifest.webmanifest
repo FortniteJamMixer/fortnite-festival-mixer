@@ -1,0 +1,9 @@
+{
+  "name": "Fortnite Jam Mixer",
+  "short_name": "Jam Mixer",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1020",
+  "theme_color": "#0f1020",
+  "icons": []
+}
