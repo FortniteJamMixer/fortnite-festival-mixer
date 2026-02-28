@@ -700,14 +700,13 @@ async function loadSongs(){
   const TARGET="https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks";
   const PROXIES=[
     "https://api.allorigins.win/raw?url="+encodeURIComponent(TARGET),
-    "https://corsproxy.io/?"+encodeURIComponent(TARGET)
+    "https://corsproxy.io/?"+encodeURIComponent(TARGET),
+    "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(TARGET)
   ];
   for(const url of PROXIES){
     try{
-      document.getElementById("loadStatus").textContent="Connecting... "+url.slice(8,30);
-      const controller=new AbortController();
-      const timer=setTimeout(()=>controller.abort(),14000);
-      const res=await fetch(url,{signal:controller.signal}).finally(()=>clearTimeout(timer));
+      document.getElementById("loadStatus").textContent="Connecting...";
+      const res=await fetch(url);
       if(!res.ok)continue;
       const data=await res.json();
       const parsed=Object.entries(data)
