@@ -23,16 +23,31 @@ export default function handler(req, res) {
 
   if (!config.measurementId) delete config.measurementId;
 
-  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+
+  const wantsJson =
+    req.query.format === "json" ||
+    (req.headers.accept || "").includes("application/json");
 
   if (missingKeys.length > 0) {
-    res
-      .status(500)
-      .send(
-        `console.error('Firebase config missing env vars: ${missingKeys.join(", ")}');window.firebaseConfig = null;`
-      );
+    if (wantsJson) {
+      res.status(500).json({ error: "Missing Firebase env vars", missingKeys });
+    } else {
+      res
+        .status(500)
+        .send(
+          `console.error('Firebase config missing env vars: ${missingKeys.join(", ")}');window.firebaseConfig = null;`
+        );
+    }
     return;
   }
+
+  if (wantsJson) {
+    res.status(200).json(config);
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
 
   res.status(200).send(`window.firebaseConfig = ${JSON.stringify(config)};`);
 }
