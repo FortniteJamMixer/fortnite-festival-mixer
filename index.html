@@ -439,7 +439,7 @@ function buildCard(s){
   const art=s.albumArt||"";
   const safeArt=art.replace(/"/g,"&quot;");
 
-  return `<div class="song-card${isOwned?" owned-card":""}${isSel?" selected-card":""}">
+  return `<div class="song-card${isOwned?" owned-card":""}${isSel?" selected-card":""}" data-id="${s.id}">
   <div class="card-art">
     ${art?`<img src="${safeArt}" loading="lazy" alt="" onerror="this.style.display='none'">`:`<div class="no-art">🎵</div>`}
     <div class="art-badge" style="background:${kc}">${s.camelot||"?"}</div>
@@ -504,7 +504,29 @@ function selectSong(id){
 function toggleOwned(id){
   owned=owned.includes(id)?owned.filter(x=>x!==id):[...owned,id];
   localStorage.setItem("fjm_owned",JSON.stringify(owned));
-  updateCounter();applyFiltersKeepPage();
+  updateCounter();
+  // Just update the card visuals in place — no re-sort, no page change
+  const card=document.querySelector(`.song-card[data-id="${id}"]`);
+  if(card){
+    const isOwned=owned.includes(id);
+    card.classList.toggle("owned-card",isOwned);
+    const ownedBadge=card.querySelector(".owned-badge");
+    if(isOwned&&!ownedBadge){
+      const artDiv=card.querySelector(".card-art");
+      const badge=document.createElement("div");
+      badge.className="owned-badge";badge.textContent="OWNED";
+      artDiv.appendChild(badge);
+    }else if(!isOwned&&ownedBadge){
+      ownedBadge.remove();
+    }
+    const ownBtn=card.querySelector(".card-btn.owned-btn, .card-btn:not(.owned-btn)");
+    // update all card-btns to find the own button (3rd one)
+    const btns=card.querySelectorAll(".card-btn");
+    if(btns[2]){
+      btns[2].textContent=isOwned?"✓ Owned":"Own?";
+      btns[2].classList.toggle("owned-btn",isOwned);
+    }
+  }
 }
 
 function previewClick(id){
