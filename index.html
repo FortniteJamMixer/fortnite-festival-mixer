@@ -1,1419 +1,1262 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FESTIVAL JAM MIXER</title>
-
-  <!-- Tailwind (utility classes mostly for layout) -->
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Fortnite Festival Pro Mixer — Final</title>
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Firebase config injected from Vercel env vars -->
-  <script src="/api/firebase-config.js"></script>
+  <!-- Firebase config injected from Vercel (serverless /api/firebase-config) -->
+  <script src="/api/firebase-config"></script>
 
-  <!-- Firebase Compat SDKs -->
+  <!-- Optional Firebase SDKs (compat). Enable only if you use Firebase. -->
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-analytics-compat.js"></script>
 
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    html,body{height:100%}
-    body{
-      background:radial-gradient(circle at 10% 0%,#42275a 0,#14122a 40%,#050816 75%,#0b1f3b 100%);
-      color:#e9f7ff;
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;
-      -webkit-font-smoothing:antialiased;
-      -moz-osx-font-smoothing:grayscale;
+    /* ---------------- Theme & Layout ---------------- */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html,body { height: 100%; }
+    body {
+      background: linear-gradient(135deg, #0f1020 0%, #14122a 40%, #071130 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      color: #e9f7ff;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
-    body:before{
-      content:'';
-      position:fixed;
-      inset:0;
-      z-index:-1;
-      background:
-        radial-gradient(circle at 8% 20%,rgba(255,107,157,.15),transparent 45%),
-        radial-gradient(circle at 82% 80%,rgba(139,92,246,.18),transparent 50%),
-        radial-gradient(circle at 50% 50%,rgba(0,217,255,.12),transparent 55%);
-      filter:blur(22px);
-      animation:bgShift 22s linear infinite;
-      opacity:.85;
-      pointer-events:none;
-    }
-    @keyframes bgShift{
-      0%{transform:translate3d(0,0,0)}
-      50%{transform:translate3d(0,-18px,0)}
-      100%{transform:translate3d(0,0,0)}
-    }
-    .content-wrapper{max-width:1200px;margin:18px auto;padding:12px}
-    .panel{
-      background:radial-gradient(circle at top left,rgba(24,31,68,.97),rgba(5,9,29,.99));
-      border-radius:16px;
-      border:1px solid rgba(148,163,184,0.28);
-      box-shadow:0 20px 50px rgba(0,0,0,.75);
-      padding:14px;
-    }
-    .vinyl-spin{animation:spin 4s linear infinite}
-    @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-    .graffiti-text{
-      text-shadow:3px 3px 0 #ff6b9d,6px 6px 0 rgba(255,107,157,.22);
-      letter-spacing:1px;
-    }
-    .camelot-pill{
-      padding:4px 8px;
-      border-radius:8px;
-      font-weight:700;
-      color:#fff;
-      display:inline-block;
-      font-size:10px;
-    }
-    .small-muted{color:rgba(230,247,255,.75);font-size:13px}
-    .energy-bar{height:12px;border-radius:8px;background:rgba(255,255,255,0.06);overflow:hidden}
-    .sandbox-drop{min-height:110px;border-radius:12px;padding:10px;border:2px dashed rgba(255,255,255,0.08)}
-    .song-card{
-      transition:box-shadow .12s,transform .12s;
-      overflow:hidden;
-      border-radius:0; /* sharp edges for song card */
-      min-height:300px; /* H2-ish */
-    }
-    .song-card:hover{
-      transform:translateY(-4px);
-      box-shadow:0 16px 32px rgba(0,0,0,.75);
-    }
-    .btn{
-      padding:7px 13px;
-      border-radius:4px; /* square-ish DJ style */
-      background:linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,64,175,0.96));
-      color:#e6f7ff;
-      border:1px solid rgba(59,130,246,0.5);
-      cursor:pointer;
-      font-size:12px;
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-      white-space:nowrap;
-      box-shadow:0 8px 18px rgba(15,23,42,0.7);
-    }
-    .btn:hover{
-      background:linear-gradient(135deg,rgba(56,189,248,0.98),rgba(59,130,246,0.98));
-      box-shadow:0 0 14px rgba(56,189,248,0.7);
-    }
-    .art-tile{
-      width:96px;
-      height:96px;
-      border-radius:0; /* square art */
-      position:relative;
-      overflow:hidden;
-      flex:0 0 96px;
-      background:#050816;
-      border:2px solid #3b82f6;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-    }
-    .art-tile img{width:100%;height:100%;object-fit:cover;display:block}
+    .content-wrapper { max-width: 1200px; margin: 18px auto; padding: 12px; }
+    .panel { background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.45)); border-radius: 12px; border: 1px solid rgba(255,255,255,0.03); padding: 12px; }
+    .vinyl-spin { animation: spin 4s linear infinite; }
+    .bounce-icon { animation: bounce 2s ease-in-out infinite; }
+    @keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
+    @keyframes bounce { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-8px) } }
+    .graffiti-text { text-shadow: 3px 3px 0 #ff6b9d, 6px 6px 0 rgba(255,107,157,0.22); letter-spacing: 1px; }
+    .camelot-pill { padding: 6px 10px; border-radius: 10px; font-weight: 700; color: #fff; }
+    .score-badge { font-weight: 800; letter-spacing: .6px; padding: 6px 10px; border-radius: 8px; display:inline-block; }
+    .small-muted { color: rgba(230,247,255,0.7); font-size: 13px; }
+    .energy-bar { height: 12px; border-radius: 8px; background: rgba(255,255,255,0.06); overflow: hidden; }
+    .sandbox-drop { min-height: 110px; border-radius: 12px; padding: 10px; border: 2px dashed rgba(255,255,255,0.04); }
+    .context-menu { position: fixed; background: rgba(0,0,0,0.95); border-radius: 8px; padding: 8px; z-index:10000; backdrop-filter: blur(8px); border: 1px solid rgba(0,217,255,0.12); color: #e6f7ff; }
+    .glow-perfect { box-shadow: 0 0 18px rgba(57,255,20,0.85), 0 0 48px rgba(57,255,20,0.12); }
+    .glow-good { box-shadow: 0 0 12px rgba(255,230,65,0.9), 0 0 36px rgba(255,230,65,0.08); }
+    .glow-bad { box-shadow: 0 0 12px rgba(255,63,63,0.9), 0 0 36px rgba(255,63,63,0.08); }
 
     /* Help modal */
-    #helpModal{
-      display:none;
-      position:fixed;
-      inset:0;
-      z-index:20000;
-      background:radial-gradient(circle at top,rgba(15,23,42,.96),rgba(3,6,20,.98));
-      backdrop-filter:blur(8px);
-      align-items:center;
-      justify-content:center;
+    #helpModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(6px);
     }
-    .helpBox{
-      width:92%;
-      max-width:880px;
-      height:82vh;
-      border-radius:18px;
-      border:2px solid rgba(0,217,255,.22);
-      background:radial-gradient(circle at top left,rgba(56,189,248,.2),rgba(15,23,42,.98));
-      box-shadow:0 24px 60px rgba(0,0,0,.85);
-      padding:0;
-      display:flex;
-      flex-direction:column;
-      overflow:hidden;
+    .helpBox {
+      width: 92%;
+      max-width: 760px;
+      height: 80vh;
+      background: linear-gradient(180deg, rgba(12,10,25,0.96), rgba(20,16,38,0.98));
+      border-radius: 14px;
+      border: 2px solid rgba(0,217,255,0.14);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 50px rgba(0,217,255,0.06);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
-    .helpHeader{
-      padding:12px 16px;
-      border-bottom:1px solid rgba(148,163,184,.4);
-      background:linear-gradient(120deg,rgba(15,23,42,.98),rgba(30,64,175,.85));
+    .helpHeader {
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(0,217,255,0.06);
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:12px;
     }
-    .helpTitle{display:flex;gap:10px;align-items:center}
-    .helpContent{padding:14px 18px;overflow-y:auto;color:#e5f3ff;font-size:14px;line-height:1.45}
-    .helpTag{font-size:11px;border-radius:999px;padding:3px 10px;border:1px solid rgba(148,163,184,.7);color:#bfdbfe}
+    .helpTitle { font-size:20px; font-weight:800; color:#fff; display:flex; gap:10px; align-items:center; }
+    .helpContent {
+      padding: 14px 18px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      color: #dff7ff;
+      line-height:1.45;
+      font-size:14px;
+    }
+    .helpFooter { padding: 10px 14px; border-top: 1px solid rgba(0,217,255,0.04); text-align:right; }
 
-    /* Fun tutorial blocks for HG3 + D2 style */
-    .help-section{margin-bottom:16px;}
-    .help-section h2{font-weight:800;font-size:18px;margin-bottom:4px;}
-    .help-section p{margin-top:4px;}
-    .help-diagram{
-      margin-top:8px;
-      margin-bottom:6px;
-      padding:8px 10px;
-      border-radius:10px;
-      background:linear-gradient(135deg,rgba(15,23,42,.95),rgba(30,64,175,.9));
-      border:1px solid rgba(56,189,248,.5);
-      font-size:13px;
+    /* Profile modal */
+    #profileModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 20010;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(6px);
     }
-    .help-diagram-title{
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:.08em;
-      color:#a5f3fc;
-      margin-bottom:4px;
+    .profileBox {
+      width: 92%;
+      max-width: 520px;
+      background: linear-gradient(180deg, rgba(10,10,22,0.96), rgba(18,16,32,0.98));
+      border-radius: 14px;
+      border: 2px solid rgba(0,217,255,0.14);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 50px rgba(0,217,255,0.06);
+      overflow: hidden;
     }
-    .help-try{
-      margin-top:6px;
-      padding:8px 10px;
-      border-radius:10px;
-      background:linear-gradient(135deg,rgba(22,163,74,.15),rgba(16,185,129,.18));
-      border:1px dashed rgba(52,211,153,.6);
-      font-size:13px;
+
+    /* Custom neon scrollbar for helpContent */
+    .helpContent::-webkit-scrollbar { width: 12px; }
+    .helpContent::-webkit-scrollbar-track { background: linear-gradient(180deg, rgba(0,0,0,0.12), rgba(0,0,0,0.06)); border-radius:8px; }
+    .helpContent::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, rgba(0,217,255,0.9), rgba(255,107,157,0.9));
+      border-radius: 8px;
+      border: 2px solid rgba(0,0,0,0.2);
+      box-shadow: 0 0 12px rgba(0,217,255,0.14);
     }
-    .help-badge{
-      display:inline-flex;
-      align-items:center;
-      gap:4px;
-      padding:2px 7px;
-      border-radius:999px;
-      font-size:11px;
-      background:rgba(15,23,42,.9);
-      border:1px solid rgba(148,163,184,.6);
+    .helpCloseBtn {
+      background: linear-gradient(90deg,#ff6b9d,#8b5cf6);
+      padding: 8px 12px;
+      border-radius: 10px;
+      color: #fff;
+      font-weight:700;
+      cursor:pointer;
+      border: none;
+      box-shadow: 0 6px 24px rgba(139,92,246,0.12);
     }
-    @keyframes wheelSpin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+
+    /* responsive tweaks */
+    @media (max-width: 980px) {
+      .two-col { flex-direction: column; }
+      .rightCol { width: 100% !important; min-width: auto; }
+    }
   </style>
 </head>
 <body>
   <div class="content-wrapper">
-    <div id="app"></div>
-  </div>
-
-  <!-- Help Modal -->
-  <div id="helpModal" aria-hidden="true">
-    <div class="helpBox" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
-      <div class="helpHeader">
-        <div class="helpTitle" id="helpTitle">
-          <div style="width:46px;height:46px;border-radius:14px;background:conic-gradient(from 210deg at 30% 30%,#22d3ee,#8b5cf6,#f97316,#22d3ee);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(15,23,42,.8);font-size:22px;">🎧</div>
-          <div>
-            <div style="font-size:18px;font-weight:900;letter-spacing:.06em" class="graffiti-text">FESTIVAL JAM MIXER – GUIDE</div>
-            <div style="font-size:12px;color:#bfdbfe">Learn how to build clean Fortnite Festival mixes step-by-step.</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class="helpTag">Camelot • BPM • Energy • Sandbox • Band</span>
-          <button class="btn" onclick="closeHelp()">Close</button>
-        </div>
-      </div>
-
-      <div class="helpContent">
-        <!-- 1. What this app does -->
-        <div class="help-section">
-          <h2>1. What Is FESTIVAL JAM MIXER?</h2>
-          <p class="small-muted">
-            This tool helps you pick Fortnite Festival tracks that sound good together. It:
-          </p>
-          <ul class="small-muted" style="margin-left:16px;margin-top:4px">
-            <li>Shows your tracks with BPM, Camelot key and energy.</li>
-            <li>Finds songs that match your main track in key &amp; tempo.</li>
-            <li>Lets you test ideas in a <strong>Sandbox</strong>.</li>
-            <li>Lets you plan a <strong>Setlist</strong> for your in-game show.</li>
-            <li>Lets you see what <strong>your bandmates own</strong> too.</li>
-          </ul>
-
-          <div class="help-diagram">
-            <div class="help-diagram-title">App Layout</div>
-            <div class="small-muted">
-              <strong>Top bar:</strong> app name, who you’re signed in as, owned counter.<br>
-              <strong>Left column:</strong> controls + band + sandbox.<br>
-              <strong>Right column:</strong> song browser + setlist.
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. Song Cards Explained -->
-        <div class="help-section">
-          <h2>2. Song Cards – What Everything Means</h2>
-          <p class="small-muted">
-            Each big box in the Song Browser is one track. It looks something like this:
-          </p>
-          <div class="help-diagram">
-            <div class="help-diagram-title">Song Card Example</div>
-            <div style="display:flex;gap:8px;align-items:flex-start">
-              <div style="width:52px;height:52px;background:#020617;border:2px solid #3b82f6;"></div>
-              <div style="flex:1">
-                <div class="small-muted"><strong>Song Title</strong></div>
-                <div class="small-muted">Artist Name</div>
-                <div class="small-muted" style="margin-top:4px">
-                  <span class="help-badge">💨 128 BPM</span>
-                  <span class="help-badge">🎵 Genre</span>
-                  <span class="help-badge">🎨 Camelot: <strong>8A</strong></span>
-                </div>
-                <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
-                  <span class="help-badge">Select</span>
-                  <span class="help-badge">+ Set</span>
-                  <span class="help-badge">✓ Owned</span>
-                  <span class="help-badge">▶ Preview</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <p class="small-muted">
-            <strong>Buttons on a song card:</strong>
-          </p>
-          <ul class="small-muted" style="margin-left:16px;margin-top:4px">
-            <li><strong>Select:</strong> chooses this as your main track. All other songs are compared to it.</li>
-            <li><strong>+ Set:</strong> adds the song to your Setlist at the bottom.</li>
-            <li><strong>Mark Owned / ✓ Owned:</strong> toggle that you own this track in Fortnite.</li>
-            <li><strong>Preview:</strong> compares this song to the selected one and pops up a compatibility summary.</li>
-          </ul>
-          <div class="help-try">
-            <strong>Try this:</strong> pick any song, click <strong>Select</strong>, then click <strong>Preview</strong> on another song.  
-            You’ll see how well they match and how many BPM to shift.
-          </div>
-        </div>
-
-        <!-- 3. Camelot Wheel & Tiers -->
-        <div class="help-section">
-          <h2>3. Camelot Wheel &amp; Tiers (Key Matching)</h2>
-          <p class="small-muted">
-            Camelot turns music keys into codes like <strong>8A</strong> or <strong>10B</strong>.
-            You don’t need music theory – just match the codes in a smart way.
-          </p>
-
-          <div style="display:flex;flex-wrap:wrap;gap:18px;margin-top:8px;align-items:center">
-            <div style="flex:0 0 auto">
-              <!-- Spinning Camelot wheel with segment colors -->
-              <svg width="150" height="150" viewBox="0 0 120 120" style="transform-origin:center;animation:wheelSpin 18s linear infinite">
-                <circle cx="60" cy="60" r="46" fill="#020617" opacity="0.9"></circle>
-                <g transform="translate(60,60)" stroke-width="1.6">
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(0)"   stroke="#FF6B9D"/>  <!-- 1 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(30)"  stroke="#FFA07A"/>  <!-- 2 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(60)"  stroke="#FFD700"/>  <!-- 3 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(90)"  stroke="#98D8C8"/>  <!-- 4 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(120)" stroke="#6BCB77"/>  <!-- 5 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(150)" stroke="#4D96FF"/>  <!-- 6 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(180)" stroke="#9D4EDD"/>  <!-- 7 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(210)" stroke="#E84A5F"/>  <!-- 8 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(240)" stroke="#00D9FF"/>  <!-- 9 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(270)" stroke="#FFA400"/>  <!-- 10 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(300)" stroke="#FE6D73"/>  <!-- 11 -->
-                  <line x1="0" y1="-46" x2="0" y2="-36" transform="rotate(330)" stroke="#A8E6CF"/>  <!-- 12 -->
-                </g>
-                <circle cx="60" cy="60" r="30" fill="rgba(15,23,42,.96)" stroke="rgba(148,163,184,.6)" stroke-width="1.2"></circle>
-                <text x="60" y="55" text-anchor="middle" font-size="11" fill="#e5e7eb" font-weight="600">HARMONIC</text>
-                <text x="60" y="70" text-anchor="middle" font-size="13" fill="#f9fafb" font-weight="800">CAMELOT</text>
-              </svg>
-            </div>
-            <div style="flex:1 1 220px">
-              <div class="help-diagram">
-                <div class="help-diagram-title">Tier Rules (Super Simple)</div>
-                <ul class="small-muted" style="margin-left:16px;">
-                  <li><strong>Tier 1:</strong> same number &amp; same letter (8A → 8A) = smoothest.</li>
-                  <li><strong>Tier 2:</strong> same letter, ±1 number (8A → 7A or 9A) = very good.</li>
-                  <li><strong>Tier 3:</strong> same number, swap letter (8A → 8B) = color change but safe.</li>
-                </ul>
-              </div>
-              <div class="help-try">
-                <strong>Try this:</strong> Select a song in <strong>8A</strong>.  
-                Turn <strong>Camelot</strong> to <em>Tiers 1–2</em> and hit <strong>Show Mixable</strong>.  
-                You’ll only see keys that should blend nicely with it.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 4. Controls Panel -->
-        <div class="help-section">
-          <h2>4. Controls Panel (Left Side)</h2>
-          <p class="small-muted">
-            On the left, you control how the song list behaves.
-          </p>
-          <div class="help-diagram">
-            <div class="help-diagram-title">Controls Explained</div>
-            <ul class="small-muted" style="margin-left:16px;">
-              <li><strong>Search bar:</strong> type part of a title, artist, or genre to filter songs.</li>
-              <li><strong>Show Mixable:</strong> only show songs that match your <em>Selected</em> track’s key &amp; BPM.</li>
-              <li><strong>Show All / Owned Only:</strong> switch between everything and just the tracks you own.</li>
-              <li><strong>Clear Selection:</strong> unselect your main song so the list goes back to normal.</li>
-              <li><strong>Mark All Owned:</strong> quickly mark every loaded song as owned (use if you truly have them all).</li>
-              <li><strong>Camelot Tier:</strong> switch between Tier 1 only, Tiers 1–2, or All tiers.</li>
-              <li><strong>Priority:</strong> choose if we sort suggestions mainly by <em>Tempo</em> or by <em>Camelot tier</em>.</li>
-            </ul>
-          </div>
-          <div class="help-try">
-            <strong>Try this:</strong>  
-            1) Pick a main song and hit <strong>Select</strong>.  
-            2) Press <strong>Show Mixable</strong>.  
-            3) Flip <strong>Camelot</strong> from Tier 1 → All tiers and watch how many options appear.
-          </div>
-        </div>
-
-        <!-- 5. Priority Mode -->
-        <div class="help-section">
-          <h2>5. Priority – Tempo vs Camelot</h2>
-          <p class="small-muted">
-            The Priority button changes how we sort songs when you have a <strong>Selected</strong> track.
-          </p>
-          <div class="help-diagram">
-            <div class="help-diagram-title">How Priority Works</div>
-            <ul class="small-muted" style="margin-left:16px;">
-              <li><strong>Tempo Priority:</strong> best overall matches first (key + BPM). If two songs tie, closer BPM wins.</li>
-              <li><strong>Camelot Priority:</strong> best key tiers first (Tier 1 at the very top), then the score, then BPM closeness.</li>
-            </ul>
-          </div>
-          <div class="help-try">
-            <strong>Tip:</strong>  
-            Use <strong>Tempo</strong> when you care about staying near the same speed.  
-            Use <strong>Camelot</strong> when you care more about musical key blending.
-          </div>
-        </div>
-
-        <!-- 6. Sandbox -->
-        <div class="help-section">
-          <h2>6. Sandbox – Your “Test Stage”</h2>
-          <p class="small-muted">
-            The Sandbox is where you drag a few songs you might want to play in a row. It helps you check:
-          </p>
-          <ul class="small-muted" style="margin-left:16px;margin-top:4px">
-            <li>How far the BPM jumps between songs.</li>
-            <li>How the <strong>energy level</strong> rises or falls.</li>
-            <li>How many different keys you’re using.</li>
-          </ul>
-
-          <div class="help-diagram">
-            <div class="help-diagram-title">What You See in Sandbox</div>
-            <ul class="small-muted" style="margin-left:16px;">
-              <li><strong>BPM range:</strong> lowest → highest, plus how big the jump is.</li>
-              <li><strong>Avg energy:</strong> a number from 1–5 showing overall hype level.</li>
-              <li><strong>Keys list:</strong> which Camelot keys appear in that cluster.</li>
-              <li><strong>Energy graph:</strong> bar for each song, showing its energy rating.</li>
-            </ul>
-          </div>
-          <div class="help-try">
-            <strong>Try this:</strong>  
-            Drag 3–5 songs that you think could be a mini-set into the Sandbox.  
-            If BPM jumps are huge or keys look chaotic, swap a track for a closer match.
-          </div>
-        </div>
-
-        <!-- 7. Setlist -->
-        <div class="help-section">
-          <h2>7. Setlist – Planning Your Show</h2>
-          <p class="small-muted">
-            The Setlist panel is a simple list of songs you want to play, in order.
-          </p>
-          <div class="help-diagram">
-            <div class="help-diagram-title">How to Build a Setlist</div>
-            <ul class="small-muted" style="margin-left:16px;">
-              <li>Click <strong>+ Set</strong> on any song card to add it to the Setlist.</li>
-              <li>Each line shows track number, title, artist, BPM and Camelot.</li>
-              <li>Press the <strong>✕</strong> button next to a song to remove it from the Setlist.</li>
-            </ul>
-          </div>
-          <div class="help-try">
-            <strong>Tip:</strong>  
-            Use Setlist to write down your “dream” order. Then in Fortnite Festival, try to follow that flow when you actually queue songs.
-          </div>
-        </div>
-
-        <!-- 8. Owned Tracks & Profiles -->
-        <div class="help-section">
-          <h2>8. Owned Tracks, Profiles &amp; Band Members</h2>
-          <p class="small-muted">
-            The app can remember which tracks you own and save that to your <strong>profile</strong>. You can also look at your <strong>band members’</strong> libraries.
-          </p>
-
-          <div class="help-diagram">
-            <div class="help-diagram-title">Owned &amp; Profile</div>
-            <ul class="small-muted" style="margin-left:16px;">
-              <li>Use <strong>Mark Owned</strong> / <strong>✓ Owned</strong> on song cards to track what you have.</li>
-              <li>The top bar shows <strong>Owned: X / Y</strong> (how many songs are marked vs total songs loaded).</li>
-              <li>If you sign in, your owned list can sync between browser and Firebase.</li>
-            </ul>
-          </div>
-          <div class="help-diagram">
-            <div class="help-diagram-title">Band Members</div>
-            <ul class="small-muted" style="margin-left:16px;">
-              <li>Click <strong>+ Add Band Member</strong> and enter their username.</li>
-              <li>Click <strong>View</strong> next to a band member to see only their owned tracks.</li>
-              <li>Use <strong>↩ Back to Me</strong> to return to your own collection.</li>
-              <li>You <strong>cannot</strong> change another user’s owned tracks – only your own.</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- 9. First Time Recipe -->
-        <div class="help-section">
-          <h2>9. First Time? Do This Step-By-Step</h2>
-          <div class="help-diagram">
-            <div class="help-diagram-title">Quick Start</div>
-            <ol class="small-muted" style="margin-left:16px;">
-              <li>Scroll the Song Browser and press <strong>Mark Owned</strong> on each track you actually own.</li>
-              <li>Pick your favorite track and click <strong>Select</strong>.</li>
-              <li>Press <strong>Show Mixable</strong> to see only songs that match it.</li>
-              <li>Set <strong>Camelot</strong> to <em>Tiers 1–2</em> for safe mixes.</li>
-              <li>Click <strong>Preview</strong> on a song you like to compare them.</li>
-              <li>If it looks good, click <strong>+ Set</strong> to add it to your Setlist.</li>
-              <li>Drag a few of those songs into the <strong>Sandbox</strong> and check BPM &amp; energy flow.</li>
-              <li>Keep going until you have a small show planned.</li>
-            </ol>
-          </div>
-        </div>
-
-        <!-- 10. Extra Tips -->
-        <div class="help-section">
-          <h2>10. Extra Tips for Better Mixes</h2>
-          <ul class="small-muted" style="margin-left:16px;">
-            <li>Keep BPM jumps under ~5 if you want smooth transitions.</li>
-            <li>Stay within Tier 1–2 for “safe” mixes; use Tier 3 when you want a bigger change in mood.</li>
-            <li>Watch the energy graph in the Sandbox – let the show build, then cool down, then build again.</li>
-            <li>Use <strong>Priority: Camelot</strong> when you care more about musical key than speed.</li>
-            <li>Use <strong>Priority: Tempo</strong> when you want to stay near the same speed and just slightly bend key.</li>
-          </ul>
+    <div id="app">
+      <div class="min-h-screen flex items-center justify-center">
+        <div class="text-center">
+          <div class="text-6xl mb-4 animate-pulse">🎵</div>
+          <div class="text-2xl font-bold text-white">Loading Festival Mixer...</div>
         </div>
       </div>
     </div>
   </div>
 
-<script>
-  /************ Firebase compat init ************/
-  const firebaseConfig = window.firebaseConfig || null;
-  const firebaseEnabled = true;
-
-  let firebaseApp=null,firebaseAuth=null,firestore=null;
-  if(firebaseEnabled && firebaseConfig){
-    try{
-      firebaseApp = firebase.initializeApp(firebaseConfig);
-      firebaseAuth = firebase.auth();
-      firestore   = firebase.firestore();
-      if(firebase.analytics){ try{ firebase.analytics(); }catch(e){} }
-    }catch(e){
-      console.warn("Firebase init failed, using local-only mode", e);
-    }
-  }else if(!firebaseConfig){
-    console.error("Firebase config missing. Ensure /api/firebase-config.js is serving values.");
-  }
-
-  /************ Camelot + scoring ************/
-  const camelotColors={
-    "1A":"#FF6B9D","1B":"#FF8FAB","2A":"#FFA07A","2B":"#FFB699","3A":"#FFD700","3B":"#FFE55C",
-    "4A":"#98D8C8","4B":"#7FD8BE","5A":"#6BCB77","5B":"#8FD89F","6A":"#4D96FF","6B":"#6FB1FF",
-    "7A":"#9D4EDD","7B":"#B877FF","8A":"#E84A5F","8B":"#FF6B81","9A":"#00D9FF","9B":"#4DFFFF",
-    "10A":"#FFA400","10B":"#FFBB5C","11A":"#FE6D73","11B":"#FF8C94","12A":"#A8E6CF","12B":"#C1F0DD"
-  };
-  const keyToCamelot={
-    "C":"8B","Am":"8A","A Minor":"8A","C Major":"8B",
-    "G":"9B","Em":"9A","E Minor":"9A","G Major":"9B",
-    "D":"10B","Bm":"10A","B Minor":"10A","D Major":"10B",
-    "A":"11B","F#m":"11A","F# Minor":"11A","A Major":"11B",
-    "E":"12B","C#m":"12A","C# Minor":"12A","E Major":"12B",
-    "B":"1B","G#m":"1A","G# Minor":"1A","B Major":"1B",
-    "F#":"2B","D#m":"2A","D# Minor":"2A","F# Major":"2B",
-    "Db":"3B","Bbm":"3A","Bb Minor":"3A","Db Major":"3B",
-    "Ab":"4B","Fm":"4A","F Minor":"4A","Ab Major":"4B",
-    "Eb":"5B","Cm":"5A","C Minor":"5A","Eb Major":"5B",
-    "Bb":"6B","Gm":"6A","G Minor":"6A","Bb Major":"6B",
-    "F":"7B","Dm":"7A","D Minor":"7A","F Major":"7B"
-  };
-  function convertToCamelot(key){
-    if(!key)return"?";
-    return keyToCamelot[(key||"").trim()]||"?";
-  }
-  function getCamelotTier(a,b){
-    if(!a||!b||a==="?"||b==="?")return 99;
-    const ma=a.match(/^(\d+)([AB])$/),mb=b.match(/^(\d+)([AB])$/);
-    if(!ma||!mb)return 99;
-    const na=parseInt(ma[1]),la=ma[2],nb=parseInt(mb[1]),lb=mb[2];
-    if(na===nb && la===lb)return 1;
-    if(la===lb && (Math.abs(na-nb)===1 || Math.abs(na-nb)===11))return 2;
-    if(na===nb && la!==lb)return 3;
-    return 99;
-  }
-  function scoreKeyMatch(a,b){
-    const tier=getCamelotTier(a,b);
-    if(tier===1)return 40;
-    if(tier===2)return 30;
-    if(tier===3)return 20;
-    return 0;
-  }
-  function scoreBpmMatch(a,b){
-    const d=Math.abs(a-b);
-    if(d<=1)return 40;
-    if(d<=3)return 35;
-    if(d<=6)return 25;
-    if(d<=10)return 15;
-    return 0;
-  }
-  function scoreGenreMatch(a,b){
-    if(!a||!b)return 0;
-    return a===b?20:0;
-  }
-  function mashupCompatibility(a,b){
-    const key  = scoreKeyMatch(a.camelot,b.camelot);
-    const bpm  = scoreBpmMatch(a.bpm,b.bpm);
-    const genre= scoreGenreMatch(a.genre,b.genre);
-    return { total:key+bpm+genre, breakdown:{key,bpm,genre} };
-  }
-  function bpmShiftSuggestion(a,b){
-    const s=Math.round(b-a);
-    if(s===0)return "No change";
-    return (s>0?"+":"")+s+" BPM = Perfect Match";
-  }
-  function computeEnergy(track){
-    if(!track||!track.bpm)return 3;
-    let e=1, bpm=track.bpm;
-    if(bpm<90)e=1; else if(bpm<110)e=2; else if(bpm<125)e=3; else if(bpm<140)e=4; else e=5;
-    if(track.genre==="Electronic"||track.genre==="Rock")e=Math.min(5,e+1);
-    return e;
-  }
-
-  const genreMap={
-    "Rock":["foo fighters","nirvana","pearl jam","soundgarden","alice in chains","red hot chili peppers","radiohead","muse"],
-    "Pop":["taylor swift","ariana grande","billie eilish","dua lipa","lady gaga"],
-    "Electronic":["daft punk","deadmau5","skrillex","diplo","zedd","avicii"]
-  };
-  function detectGenre(artist,title){
-    artist=(artist||"").toLowerCase();
-    title =(title ||"").toLowerCase();
-    for(const[g,list] of Object.entries(genreMap)){
-      if(list.some(a=>artist.includes(a)||title.includes(a)))return g;
-    }
-    if(title.includes("rock"))return"Rock";
-    if(title.includes("electr"))return"Electronic";
-    return"Other";
-  }
-
-  /************ Global state ************/
-  let currentUser=null;
-  let songs=[];
-  let ownedTracks=JSON.parse(localStorage.getItem("ownedTracks")||"[]");
-  let setlist=JSON.parse(localStorage.getItem("setlist")||"[]");
-  let bandMembers=JSON.parse(localStorage.getItem("bandMembers")||"[]");
-  let genreOverrides=JSON.parse(localStorage.getItem("genreOverrides")||"{}");
-  let sandboxTracks=[];
-  let selectedSong=null;
-  let previewSong=null;
-  let viewingMember=null;
-  let showOwnedOnly=false;
-  let showMixableOnly=false;
-  let camelotTier=3;
-  let priorityMode="tempo";
-
-  /************ UI builder ************/
-  function buildMainUI(){
-    const userDisplay=currentUser?(currentUser.djName||currentUser.username):"Not signed in";
-    return `
-      <div class="panel mb-4">
-        <div class="flex justify-between items-center gap-3">
-          <div class="flex items-center gap-3">
-            <div class="vinyl-spin flex items-center justify-center rounded-2xl" style="width:58px;height:58px;background:conic-gradient(from 160deg,#22d3ee,#8b5cf6,#f97316,#22d3ee);box-shadow:0 12px 30px rgba(15,23,42,.85);">
-              <span class="text-2xl">🎵</span>
-            </div>
-            <div>
-              <div class="text-xl font-extrabold graffiti-text tracking-wide">FESTIVAL JAM MIXER</div>
-              <div class="small-muted flex flex-wrap items-center gap-2">
-                <span>Signed in as <strong>${userDisplay}</strong></span>
-                <span id="ownedCounter" class="small-muted px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-400/40">Owned: 0/0</span>
-              </div>
-            </div>
+  <!-- Help Modal (outside #app so it persists) -->
+  <div id="helpModal" aria-hidden="true">
+    <div class="helpBox" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="helpHeader">
+        <div class="helpTitle" id="helpTitle">
+          <div style="width:50px;height:50px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,#ff6b9d,#8b5cf6);box-shadow:0 8px 24px rgba(139,92,246,0.12);font-size:22px;">🎧</div>
+          <div>
+            <div style="font-size:18px;font-weight:800">HELP & FEATURES</div>
+            <div style="font-size:12px;color:#bdeeff">Everything the landing page explains — available anytime</div>
           </div>
-          <div class="flex flex-wrap gap-2 justify-end">
-            <button class="btn" onclick="openHelp()">❓ Help</button>
-            <button class="btn" onclick="exportCollection()">⬇ Export</button>
-            <button class="btn" onclick="importCollection()">⬆ Import</button>
-            <button class="btn" onclick="handleLogin()">🔓 Sign In</button>
-            <button class="btn" onclick="logoutUser()">🚪 Logout</button>
-          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="helpCloseBtn" onclick="closeHelp()" aria-label="Close help">✕ Close</button>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
-        <!-- Left column -->
-        <div class="space-y-4">
-          <div class="panel">
-            <div class="flex items-baseline justify-between mb-2">
-              <div class="font-semibold text-sm tracking-wide">Controls</div>
-              <div class="small-muted text-[11px]">Search • Filters • Mix Logic • Band</div>
-            </div>
-            <div class="space-y-2">
-              <div class="small-muted text-[11px]">Search your Festival library</div>
-              <input id="searchInput" placeholder="Search by title, artist, or genre..." class="w-full px-3 py-2 rounded-lg bg-black/40 border border-cyan-500/25 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"/>
-              <div class="small-muted text-[11px] mt-1">Quick filters</div>
-              <div class="flex flex-wrap gap-2">
-                <button id="mixableFilterBtn" class="btn">${showMixableOnly?"🎧 Mixable Only":"Show Mixable"}</button>
-                <button id="ownedFilterBtn" class="btn">${showOwnedOnly?"✓ Owned Only":"Show All"}</button>
-                <button id="clearSelectionBtn" class="btn">Clear Selection</button>
-                <button id="markAllBtn" class="btn">Mark All Owned</button>
-              </div>
-              <div class="small-muted text-[11px] mt-1">Mix logic</div>
-              <div class="flex flex-wrap gap-2 mt-1">
-                <button id="camelotTierBtn" class="btn">Camelot: All Tiers</button>
-                <button id="priorityBtn" class="btn">Priority: Tempo</button>
-              </div>
-              <div class="mt-3">
-                <div class="font-semibold mb-1">Band Members</div>
-                <div id="bandContainer" class="space-y-1 small-muted text-[12px]"></div>
-                <div class="flex gap-2 mt-2">
-                  <button id="addBandBtn" class="btn">+ Add Band Member</button>
-                  ${viewingMember?'<button class="btn" onclick="backToMyProfile()">↩ Back to Me</button>':""}
-                </div>
-              </div>
-            </div>
-          </div>
+      <div class="helpContent" id="helpContent">
+        <h3 style="font-weight:800;margin-bottom:6px;color:#fff;font-size:16px">Welcome — Quick Overview</h3>
+        <p class="small-muted">This panel holds the same guidance as the landing page, plus details about new mashup tools. Open it anytime by clicking the ❓ Help button in the header.</p>
 
-          <div class="panel">
-            <div class="flex items-center justify-between mb-2">
-              <div class="font-semibold">Sandbox (Drag tracks here)</div>
-              <div class="small-muted">Plan transitions &amp; energy flow</div>
-            </div>
-            <div id="sandbox" class="sandbox-drop mb-2 bg-black/30"></div>
-            <div id="sandboxInfo" class="small-muted mb-1"></div>
-            <div id="energyGraph"></div>
-          </div>
+        <hr style="margin:12px 0;border-color:rgba(0,217,255,0.06)">
+
+        <h4 style="margin-top:8px;font-weight:800;color:#ffb3d1">Mixer Basics</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li><strong>Mark Owned</strong> — Click <em>Mark Owned</em> on a track to mark it in your collection.</li>
+          <li><strong>Setlist</strong> — Use <em>+ Set</em> to add a track to your setlist. Open the Setlist view to see and reorder your picks.</li>
+          <li><strong>Search & Filters</strong> — Use the search box, <em>Show Mixable</em> and <em>Show All / ✓ Owned Only</em> to filter tracks.</li>
+          <li><strong>Band Members</strong> — Add bandmates to view and combine collections. You cannot edit other members' libraries.</li>
+        </ul>
+
+        <h4 style="margin-top:12px;font-weight:800;color:#9fe8ff">Camelot Key & BPM</h4>
+        <p class="small-muted">We use the Camelot Wheel for harmonic mixing. Each track shows its Camelot code (e.g., <span style="font-weight:700">8B</span>) and a colored pill. Compatible keys and ±1/±11 steps blend well.</p>
+        <p class="small-muted">BPM is shown on each card. The tool can recommend a BPM shift like <em>+3 BPM = Perfect Match</em>.</p>
+
+        <h4 style="margin-top:12px;font-weight:800;color:#ffd7a6">What is Mixable?</h4>
+        <p class="small-muted">Toggling <strong>Show Mixable</strong> filters to tracks compatible with your selected track by key and (optionally) BPM range. Selecting a track does <em>not</em> force the filter — you toggle it on/off.</p>
+
+        <h4 style="margin-top:12px;font-weight:800;color:#b0ffc8">Setlist & Sandbox</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li><strong>Add to setlist</strong> — Click <em>+ Set</em>. The Setlist view shows your list. Removing works with the ✕ button.</li>
+          <li><strong>Sandbox</strong> — Drag tracks into the sandbox to visualize BPM differences, compatible keys, and energy flow (limit 4 tracks).</li>
+        </ul>
+
+        <h4 style="margin-top:12px;font-weight:800;color:#ffd3e0">New Mashup Tools</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li><strong>Mash-up Compatibility Score</strong> — Shows a combined compatibility score (0–100%) using key (0–40), BPM (0–40), and genre (0–20).</li>
+          <li><strong>Auto BPM Suggestion</strong> — Displays <em>+N BPM = Perfect Match</em> calculated as otherBpm - selectedBpm.</li>
+          <li><strong>Two-Track Preview Panel</strong> — Compare two tracks: keys, BPM, energy, tips, and a suggested mash-up recipe.</li>
+          <li><strong>Auto-Suggest Transitions</strong> — Based on key/BPM/genre, suggestions like <em>Filter sweep + reverb tail → chorus</em>.</li>
+          <li><strong>Mash-up Recipe Generator</strong> — Recommends starting BPM, key-change advice, bars to mix, and techniques.</li>
+          <li><strong>AI Mash-up Naming</strong> — Fun name suggestions for your mashups.</li>
+          <li><strong>Energy Level Graph</strong> — Visualize energy (1–5) across your set or sandbox.</li>
+        </ul>
+
+        <h4 style="margin-top:12px;font-weight:800;color:#c5f1ff">Official Festival Jam Mixer Guide</h4>
+        <ol style="margin-left:18px;margin-top:6px;line-height:1.6">
+          <li><strong>Pick your anchor track</strong> — Click a card to lock it in. The list instantly prioritizes the closest matches.</li>
+          <li><strong>Choose a priority mode</strong> — Use the three Smart Match buttons: BPM, Camelot, or Genre. These act as tiebreakers while keeping the best compatibility score on top.</li>
+          <li><strong>Toggle Mixable</strong> — Want strict key/BPM filtering? Hit “🎧 Mixable Only.”</li>
+          <li><strong>Refine</strong> — Search, Owned/All, and Genre tags stack with Smart Match to dial in your set.</li>
+          <li><strong>Sandbox it</strong> — Drag top picks into the Sandbox to visualize energy and compatibility before performing.</li>
+        </ol>
+
+        <div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(0,217,255,0.06);border:1px solid rgba(0,217,255,0.12)">
+          <div style="font-weight:800;color:#9fe8ff;margin-bottom:6px">Smart Matching Explained</div>
+          <p class="small-muted">Every track gets a compatibility score (key > BPM > genre). Switching modes <em>never</em> breaks that order; it only decides the tie-break. Expect the closest harmonic matches first, then tempo closeness, then genre cohesion.</p>
         </div>
 
-        <!-- Right column -->
-        <div class="space-y-4">
-          <div class="panel">
-            <div class="flex items-center justify-between mb-2">
-              <div class="font-semibold">Song Browser</div>
-              <div class="small-muted">Selected: <span id="selectedInfo">None</span></div>
-            </div>
-            <div id="songList" class="grid gap-3 sm:grid-cols-2"></div>
-          </div>
+        <h4 style="margin-top:12px;font-weight:800;color:#ffe3b8">Troubleshooting & Tips</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li><strong>Help won’t close?</strong> Click outside the panel or press Esc.</li>
+          <li><strong>Offline mode</strong> — Works with localStorage + export/import. Firebase adds sync; it never removes offline play.</li>
+          <li><strong>Reset a view</strong> — Clear search, toggle filters off, or hit “Show Mixable” again.</li>
+          <li><strong>Bandmates</strong> — You can browse band collections but can’t edit their owned list.</li>
+        </ul>
 
-          <div class="panel">
-            <div class="flex items-center justify-between mb-2">
-              <div class="font-semibold">Setlist (<span id="setlistCount">${setlist.length}</span>)</div>
-              <div class="small-muted text-xs">Sketch your in-game playlist order.</div>
-            </div>
-            <div id="setlistContent"></div>
-          </div>
-        </div>
+        <h4 style="margin-top:12px;font-weight:800;color:#b6e0ff">Admin & Genre Overrides</h4>
+        <p class="small-muted">Admin (user <strong>BattleNeBody</strong>) can correct genre tags by clicking the genre pill. This opens the genre menu for corrections.</p>
+
+        <h4 style="margin-top:12px;font-weight:800;color:#ffe29a">Export / Import & Firebase</h4>
+        <p class="small-muted">By default the app uses localStorage and JSON export/import. If you enable Firebase (email sign-in + Firestore), profiles are saved to Firestore and exports can backup to the Firestore <em>backups</em> collection. Cloud email sending requires server-side functions/extensions (instructions included in the code).</p>
+
+        <hr style="margin:12px 0;border-color:rgba(0,217,255,0.06)">
+
+        <h4 style="margin-top:12px;font-weight:800;color:#ffd0ff">Tips & Pro Tricks</h4>
+        <ul style="margin-left:16px;margin-top:6px">
+          <li>Mix on phrase boundaries (8/16 bars).</li>
+          <li>Use FX (filter/reverb) to hide key clashes on cross-genre mixes.</li>
+          <li>When BPM differs by >6, consider tempo ramp or resampling for smoothness.</li>
+          <li>Use the sandbox to pre-visualize your energy curve and reorder for build-ups.</li>
+        </ul>
+
+        <p class="small-muted" style="margin-top:10px">That's it — open this panel anytime via the ❓ Help button. Stay in theme and keep the groove alive. 🎧</p>
       </div>
-    `;
-  }
 
-  /************ Render helpers ************/
-  function render(){
-    if(!firebaseConfig){
-      document.getElementById("app").innerHTML = `
-        <div class="panel" style="max-width:640px;margin:32px auto;text-align:center;">
-          <div class="text-2xl font-bold mb-2">Firebase Setup Needed</div>
-          <p class="small-muted mb-2">Add your Firebase environment variables to Vercel so /api/firebase-config.js can return them.</p>
-          <p class="small-muted">After redeploying, reload this page to enable email login and syncing.</p>
-        </div>
-      `;
-      return;
-    }
-    document.getElementById("app").innerHTML = buildMainUI();
-    renderBandPanel();
-    renderSongList();
-    renderSetlist();
-    sandboxInit();
-    setupEventListeners();
-    updateOwnedCounter();
-  }
-
-  function renderBandPanel(){
-    const container=document.getElementById("bandContainer");
-    if(!container)return;
-    if(!bandMembers || bandMembers.length===0){
-      container.innerHTML='<div class="small-muted">No band members yet.</div>';
-      return;
-    }
-    container.innerHTML=bandMembers.map(m=>{
-      const dj=m.djName||m.username;
-      return `
-        <div class="flex items-center justify-between py-1">
-          <div class="flex items-center gap-2">
-            <div class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold" style="background:${camelotColors["8B"]};box-shadow:0 0 10px rgba(248,113,113,.45);">
-              ${dj[0]||"?"}
-            </div>
-            <div>
-              <div class="font-semibold text-[12px]">${dj}</div>
-              <div class="small-muted text-[11px]">@${m.username}</div>
-            </div>
-          </div>
-          <div class="flex gap-1">
-            <button class="btn" style="padding-inline:8px" onclick="viewBandMember('${m.username}')">View</button>
-            <button class="btn" style="padding-inline:8px" onclick="removeBandMember('${m.username}')">Remove</button>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  function renderSongList(){
-    const listEl=document.getElementById("songList");
-    if(!listEl)return;
-    const selected=selectedSong;
-    const displayTracks=viewingMember?(viewingMember.ownedTracks||[]):(ownedTracks||[]);
-
-    let filtered=songs.slice();
-    const q=(document.getElementById("searchInput")?.value||"").trim().toLowerCase();
-    if(q){
-      filtered=filtered.filter(s=>
-        s.title.toLowerCase().includes(q) ||
-        s.artist.toLowerCase().includes(q) ||
-        (s.genre||"").toLowerCase().includes(q)
-      );
-    }
-    if(showOwnedOnly){
-      filtered=filtered.filter(s=>displayTracks.includes(s.id));
-    }
-    filtered=filtered.map(s=>Object.assign({},s,{ _isOwned:displayTracks.includes(s.id) }));
-
-    if(showMixableOnly && selected){
-      filtered=filtered.filter(s=>{
-        const tier=getCamelotTier(selected.camelot,s.camelot);
-        const bpmOk=Math.abs(s.bpm-selected.bpm)<=4;
-        return tier<=camelotTier && bpmOk;
-      });
-    }
-
-    if(selected){
-      filtered.sort((a,b)=>{
-        const compA=mashupCompatibility(selected,a).total;
-        const compB=mashupCompatibility(selected,b).total;
-        if(priorityMode==="tempo"){
-          if(compB!==compA)return compB-compA; // best overall match first
-          return Math.abs(a.bpm-selected.bpm)-Math.abs(b.bpm-selected.bpm);
-        }else{
-          const ta=getCamelotTier(selected.camelot,a.camelot);
-          const tb=getCamelotTier(selected.camelot,b.camelot);
-          if(ta!==tb)return ta-tb; // better tier first
-          if(compB!==compA)return compB-compA;
-          return Math.abs(a.bpm-selected.bpm)-Math.abs(b.bpm-selected.bpm);
-        }
-      });
-    }else{
-      filtered.sort((a,b)=>a.title.localeCompare(b.title));
-    }
-
-    listEl.innerHTML=filtered.map(song=>{
-      const isOwned=song._isOwned;
-      const keyColor=camelotColors[song.camelot]||"#4b5563";
-      const bpmDiff=selected?Math.abs(song.bpm-selected.bpm):null;
-      const bpmBadge=bpmDiff!==null && bpmDiff<=10 ? `<span class="small-muted ml-1 text-[11px]">±${bpmDiff} BPM</span>` : "";
-      const tier=selected?getCamelotTier(selected.camelot,song.camelot):null;
-      const mixableMarker=selected && tier<=camelotTier && bpmDiff!==null && bpmDiff<=4 ? "🎧" : "";
-      const art=song.albumArt?song.albumArt.replace(/"/g,"&quot;"):"";
-      const tierLabel=tier && tier<99 ? `T${tier}` : "";
-      const score=selected?mashupCompatibility(selected,song).total:null;
-
-      return `
-        <div class="song-card panel p-3 text-xs sm:text-[13px]" data-song-id="${song.id}" draggable="true">
-          <div class="flex gap-3">
-            <div class="art-tile">
-              ${art?`<img src="${art}" alt="${song.title} cover" loading="lazy" onerror="this.style.display='none'">`:""}
-            </div>
-            <div class="flex-1 flex flex-col gap-1 min-w-0">
-              <div class="flex flex-col">
-                <div class="font-semibold truncate text-[13px] sm:text-sm">${song.title}</div>
-                <div class="small-muted truncate">${song.artist}</div>
-              </div>
-              <div class="flex flex-wrap items-center gap-2 text-[11px] mt-1">
-                <span class="small-muted">${song.bpm} BPM</span>
-                <span class="small-muted">•</span>
-                <span class="small-muted">${song.genre||"Other"}</span>
-                <span class="camelot-pill" style="background:${keyColor};box-shadow:0 0 8px ${keyColor}66;">
-                  ${song.camelot||"?"}
-                </span>
-              </div>
-              <div class="flex flex-wrap gap-1 mt-2">
-                <button class="btn" onclick="selectSong('${song.id}')">${selected && selected.id===song.id?"Selected":"Select"}</button>
-                <button class="btn" onclick="addToSetlist('${song.id}')">+ Set</button>
-                <button class="btn" onclick="toggleOwned('${song.id}')" ${viewingMember?"disabled style='opacity:.55;cursor:not-allowed'":""}>${isOwned?"✓ Owned":"Mark Owned"}</button>
-                <button class="btn" onclick="onPreviewClick('${song.id}')">Preview</button>
-              </div>
-              <div class="flex flex-wrap items-center justify-between mt-2 text-[11px] small-muted">
-                <div class="flex flex-wrap items-center gap-1">
-                  ${mixableMarker?`<span class="text-lg">${mixableMarker}</span>`:""}
-                  ${tierLabel?`<span class="px-1 rounded border border-sky-500/60">${tierLabel}</span>`:""}
-                  ${score!==null?`<span>${Math.round(score)}%</span>`:""}
-                </div>
-                <div>
-                  ${bpmBadge}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    document.getElementById("selectedInfo").textContent = selected ? `${selected.title} • ${selected.artist}` : "None";
-
-    document.querySelectorAll(".song-card").forEach(card=>{
-      card.addEventListener("dragstart",e=>{
-        e.dataTransfer.setData("text/plain",card.getAttribute("data-song-id"));
-      });
-    });
-  }
-
-  function renderSetlist(){
-    const el=document.getElementById("setlistContent");
-    if(!el)return;
-    if(!setlist || setlist.length===0){
-      el.innerHTML='<div class="small-muted">Setlist is empty – add songs from the browser.</div>';
-      document.getElementById("setlistCount").textContent="0";
-      return;
-    }
-    el.innerHTML=setlist.map((s,i)=>`
-      <div class="panel mb-1 px-3 py-2 flex items-center justify-between text-xs">
-        <div>
-          <div class="font-semibold">${i+1}. ${s.title}</div>
-          <div class="small-muted">${s.artist} • ${s.bpm} BPM • ${s.camelot}</div>
-        </div>
-        <button class="btn" onclick="removeFromSetlist('${s.id}')">✕</button>
+      <div class="helpFooter">
+        <button class="helpCloseBtn" onclick="closeHelp()">Close</button>
       </div>
-    `).join("");
-    document.getElementById("setlistCount").textContent=setlist.length;
-  }
+    </div>
+  </div>
 
-  function updateOwnedCounter(){
-    const total=songs.length||0;
-    const owned=(ownedTracks||[]).length;
-    const el=document.getElementById("ownedCounter");
-    if(el)el.textContent=`Owned: ${owned}/${total}`;
-  }
-
-  /************ Sandbox (S3 hybrid) ************/
-  function sandboxInit(){
-    const el=document.getElementById("sandbox");
-    if(!el)return;
-    if(!sandboxTracks || sandboxTracks.length===0){
-      el.innerHTML='<div class="small-muted">Drop or drag tracks here to sandbox transitions.</div>';
-      document.getElementById("sandboxInfo").textContent="";
-      renderEnergyGraph([]);
-    }else{
-      renderSandbox();
-    }
-    el.addEventListener("dragover",e=>e.preventDefault());
-    el.addEventListener("drop",e=>{
-      e.preventDefault();
-      const id=e.dataTransfer.getData("text/plain");
-      const track=songs.find(s=>s.id===id);
-      if(!track)return;
-      if(sandboxTracks.find(s=>s.id===id))return;
-      if(sandboxTracks.length>=6){alert("Sandbox limit: 6 tracks");return;}
-      sandboxTracks.push(track);
-      renderSandbox();
-    });
-  }
-
-  function renderSandbox(){
-    const el=document.getElementById("sandbox");
-    if(!el)return;
-    if(!sandboxTracks || sandboxTracks.length===0){
-      sandboxInit();
-      return;
-    }
-    el.innerHTML=sandboxTracks.map((t,i)=>`
-      <div class="panel mb-1 px-2 py-1 flex items-center gap-2 text-xs">
-        <div class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px]" style="background:${camelotColors[t.camelot]||"#4b5563"}">
-          ${t.camelot||"?"}
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="font-semibold truncate">${i+1}. ${t.title}</div>
-          <div class="small-muted truncate">${t.artist} • ${t.bpm} BPM • ${t.genre||"Other"}</div>
-        </div>
-        <div class="small-muted mr-1">${computeEnergy(t)}</div>
-        <button class="btn" style="padding-inline:8px" onclick="removeSandbox('${t.id}')">✕</button>
-      </div>
-    `).join("");
-
-    const bpms=sandboxTracks.map(s=>s.bpm);
-    const keys=sandboxTracks.map(s=>s.camelot);
-    const minBpm=Math.min(...bpms);
-    const maxBpm=Math.max(...bpms);
-    const bpmSpread=maxBpm-minBpm;
-    const energyAvg=sandboxTracks.reduce((a,t)=>a+computeEnergy(t),0)/sandboxTracks.length;
-    const uniqueKeys=[...new Set(keys)];
-    document.getElementById("sandboxInfo").textContent=
-      `BPM range: ${minBpm}–${maxBpm} (Δ ${bpmSpread}) • Avg energy: ${energyAvg.toFixed(1)} • Keys: ${uniqueKeys.join(", ")}`;
-    renderEnergyGraph(sandboxTracks);
-  }
-
-  function removeSandbox(id){
-    sandboxTracks=sandboxTracks.filter(s=>s.id!==id);
-    renderSandbox();
-  }
-
-  function renderEnergyGraph(list){
-    const container=document.getElementById("energyGraph");
-    if(!container)return;
-    if(!list || list.length===0){
-      container.innerHTML='<div class="small-muted">No sandbox tracks yet.</div>';
-      return;
-    }
-    container.innerHTML=list.map((t,i)=>{
-      const e=computeEnergy(t);
-      const pct=(e/5)*100;
-      const color=e>=4
-        ? "linear-gradient(90deg,#f97316,#ef4444)"
-        : e>=3
-          ? "linear-gradient(90deg,#f59e0b,#f97316)"
-          : "linear-gradient(90deg,#34d399,#10b981)";
-      return `
-        <div class="flex items-center gap-2 mb-1">
-          <div class="w-5 text-[11px] small-muted">${i+1}</div>
-          <div class="flex-1">
-            <div class="small-muted text-[11px] truncate">${t.title} — <span style="color:${camelotColors[t.camelot]||"#e5e7eb"}">${t.camelot}</span></div>
-            <div class="energy-bar mt-0.5">
-              <div style="width:${pct}%;height:100%;border-radius:8px;background:${color};"></div>
-            </div>
+  <!-- Profile Modal -->
+  <div id="profileModal" aria-hidden="true">
+    <div class="profileBox" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+      <div class="helpHeader">
+        <div class="helpTitle" id="profileTitle">
+          <div style="width:46px;height:46px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:linear-gradient(90deg,#00d9ff,#8b5cf6);box-shadow:0 8px 24px rgba(139,92,246,0.12);font-size:18px;">👤</div>
+          <div>
+            <div style="font-size:17px;font-weight:800">Your Profile</div>
+            <div style="font-size:12px;color:#bdeeff">Update your display name and avatar</div>
           </div>
-          <div class="w-6 text-center text-[11px] font-bold">${e}</div>
         </div>
-      `;
-    }).join("");
-  }
+        <button class="helpCloseBtn" onclick="closeProfile()" aria-label="Close profile">✕</button>
+      </div>
+      <div class="helpContent" style="gap:10px;display:flex;flex-direction:column;">
+        <div class="flex items-center gap-4">
+          <div id="profileAvatarPreview" class="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-cyan-500 flex items-center justify-center text-2xl font-bold">👤</div>
+          <div class="text-xs text-gray-300">This image stays on your device or Firestore profile. Small PNG/JPG works best.</div>
+        </div>
+        <label class="text-sm font-semibold text-cyan-100">Display Name
+          <input id="profileDjName" type="text" class="mt-1 w-full px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white" placeholder="DJ name"/>
+        </label>
+        <label class="text-sm font-semibold text-cyan-100">Profile Handle (shown in app)
+          <input id="profileHandle" type="text" class="mt-1 w-full px-3 py-2 bg-black/40 border border-cyan-500/30 rounded-lg text-white" placeholder="username"/>
+        </label>
+        <label class="text-sm font-semibold text-cyan-100">Avatar Image
+          <input id="profileAvatar" type="file" accept="image/*" class="mt-1 w-full text-sm text-gray-200" />
+        </label>
+        <div class="text-xs text-gray-400">Login email/username stays the same for authentication; this handle is for how you appear in the app.</div>
+      </div>
+      <div class="helpFooter flex items-center gap-3 justify-end">
+        <button class="px-3 py-2 rounded-lg bg-white/10 text-gray-200" onclick="clearAvatar()">Remove Image</button>
+        <button class="helpCloseBtn" onclick="saveProfileSettings()">Save Profile</button>
+      </div>
+    </div>
+  </div>
 
-  /************ Song interactions ************/
-  function selectSong(id){
-    const s=songs.find(x=>x.id===id);
-    if(!s)return;
-    if(selectedSong && selectedSong.id===id)selectedSong=null;
-    else selectedSong=s;
-    renderSongList();
-  }
+  <script>
+    /**************************************************************************
+     * Final merged app
+     * - All fixes applied (setlist rendering, show-all toggle, mixable toggle, band member)
+     * - Optional Firebase (see firebaseEnabled & firebaseConfig)
+     * - Help modal integrated (manual open via header button)
+     **************************************************************************/
 
-  function onPreviewClick(id){
-    const s=songs.find(x=>x.id===id);
-    if(!s)return;
-    if(!selectedSong){
-      selectedSong=s;
-      renderSongList();
-      alert("Main track selected. Click Preview on another track to compare.");
-      return;
-    }
-    previewSong=s;
-    const comp=mashupCompatibility(selectedSong,previewSong);
-    alert(`${selectedSong.title} → ${previewSong.title}
-Compatibility: ${Math.round(comp.total)}%
-BPM diff: ${Math.abs(selectedSong.bpm-previewSong.bpm)}
-${bpmShiftSuggestion(selectedSong.bpm,previewSong.bpm)}`);
-  }
+    // -------------------- FIREBASE (auto-detect) ----------------------------
+// We auto-enable Firebase if /api/firebase-config injected window.firebaseConfig (Vercel env vars).
+// This prevents the "no signup option" problem when firebaseEnabled was left false.
+const firebaseConfig = (window.firebaseConfig && window.firebaseConfig.apiKey) ? window.firebaseConfig : null;
+const firebaseEnabled = !!firebaseConfig;
 
-  function toggleOwned(id){
-    if(!ensureEmailLogin())return;
-    if(viewingMember){
-      alert("You can't edit another band member's collection.");
-      return;
-    }
-    if(ownedTracks.includes(id))ownedTracks=ownedTracks.filter(x=>x!==id);
-    else ownedTracks.push(id);
-    localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
-    saveUserProfile();
-    renderSongList();
-    updateOwnedCounter();
+let firebaseApp = null, firebaseAuth = null, firestore = null;
+let firebaseAuthUnsub = null;
+let authSettledUser = null;
+let authProcessing = false;
+if (firebaseEnabled && window.firebase && firebaseConfig && firebaseConfig.apiKey) {
+  try {
+    firebaseApp = firebase.initializeApp(firebaseConfig);
+    firebaseAuth = firebase.auth();
+    firestore = firebase.firestore();
+    console.log('Firebase initialized');
+  } catch (e) {
+    console.warn('Firebase init failed', e);
+    firebaseApp = null;
+    firebaseAuth = null;
+    firestore = null;
   }
+}
 
-  function addToSetlist(id){
-    if(!ensureEmailLogin())return;
-    const s=songs.find(x=>x.id===id);
-    if(!s)return;
-    if(!setlist.find(x=>x.id===id)){
-      setlist.push(s);
-      localStorage.setItem("setlist",JSON.stringify(setlist));
-      renderSetlist();
-    }
-  }
 
-  function removeFromSetlist(id){
-    if(!ensureEmailLogin())return;
-    setlist=setlist.filter(x=>x.id!==id);
-    localStorage.setItem("setlist",JSON.stringify(setlist));
-    renderSetlist();
-  }
-
-  /************ Band members ************/
-  async function addBandMember(){
-    if(!ensureEmailLogin())return;
-    const username=prompt("Enter bandmate username (exact):");
-    if(!username)return;
-    if(bandMembers.find(m=>m.username===username)){
-      alert("This person is already in your band.");
-      return;
-    }
-    const profile=await loadUserProfile(username) || { username,djName:username,ownedTracks:[],bandMembers:[],genreOverrides:{} };
-    const memberProfile={
-      username:profile.username,
-      djName:profile.djName||profile.username,
-      ownedTracks:profile.ownedTracks||[],
-      bandMembers:profile.bandMembers||[],
-      genreOverrides:profile.genreOverrides||{}
-    };
-    bandMembers.push(memberProfile);
-    localStorage.setItem("bandMembers",JSON.stringify(bandMembers));
-    await saveUserProfile();
-    renderBandPanel();
-    alert(`Added ${memberProfile.djName} (@${memberProfile.username}) to your band.`);
-  }
-
-  async function removeBandMember(username){
-    if(!ensureEmailLogin())return;
-    const member=bandMembers.find(m=>m.username===username);
-    if(!member)return;
-    const label=member.djName||member.username;
-    if(!confirm(`Remove ${label} (@${member.username}) from your band?`))return;
-    bandMembers=bandMembers.filter(m=>m.username!==username);
-    localStorage.setItem("bandMembers",JSON.stringify(bandMembers));
-    if(viewingMember && viewingMember.username===username){
-      viewingMember=null;
-      showOwnedOnly=false;
-    }
-    await saveUserProfile();
-    render();
-  }
-
-  async function viewBandMember(username){
-    if(!ensureEmailLogin())return;
-    const profile=await loadUserProfile(username) || { username,djName:username,ownedTracks:[],bandMembers:[],genreOverrides:{} };
-    profile.ownedTracks=profile.ownedTracks||[];
-    viewingMember=profile;
-    showOwnedOnly=true;
-    render();
-    const btn=document.getElementById("ownedFilterBtn");
-    if(btn)btn.textContent="✓ Owned Only";
-  }
-
-  function backToMyProfile(){
-    viewingMember=null;
-    showOwnedOnly=false;
-    render();
-    const btn=document.getElementById("ownedFilterBtn");
-    if(btn)btn.textContent="Show All";
-  }
-
-  /************ Export / Import ************/
-  async function exportCollection(){
-    if(!ensureEmailLogin())return;
-    const data={
-      username: currentUser?currentUser.username:"guest",
-      djName:   currentUser?currentUser.djName:"",
-      ownedTracks,
-      genreOverrides,
-      exportDate:new Date().toISOString()
-    };
-    if(firestore && currentUser && confirm("Also back up to Firestore? (Cancel = local only)")){
-      try{
-        await firestore.collection("backups").doc(`${currentUser.username}_${Date.now()}`).set(data);
-        alert("Backed up to Firestore.");
-      }catch(e){ console.warn("backup failed",e); }
-    }
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download=`festival-mixer-${data.username||"guest"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function importCollection(){
-    if(!ensureEmailLogin())return;
-    const input=document.createElement("input");
-    input.type="file";
-    input.accept=".json";
-    input.onchange=async e=>{
-      const file=e.target.files[0];
-      if(!file)return;
-      const text=await file.text();
-      try{
-        const data=JSON.parse(text);
-        if(!Array.isArray(data.ownedTracks))throw new Error("bad");
-        if(!confirm(`Import ${data.ownedTracks.length} tracks from ${data.djName||data.username||"file"}?`))return;
-        ownedTracks=data.ownedTracks;
-        genreOverrides=data.genreOverrides||{};
-        localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
-        localStorage.setItem("genreOverrides",JSON.stringify(genreOverrides));
-        await saveUserProfile();
-        songs.forEach(song=>{ if(genreOverrides[song.id])song.genre=genreOverrides[song.id]; });
-        renderSongList();
-        updateOwnedCounter();
-        alert("Imported collection.");
-      }catch(err){
-        alert("Invalid file format.");
+    // Backend save/load wrappers (Firestore or localStorage)
+    async function saveUserProfileToBackend(profile) {
+      if (!profile) return;
+      if (firestore && profile.username) {
+        try {
+          await firestore.collection('users').doc(profile.username).set(profile, { merge: true });
+          return true;
+        } catch (e) { console.warn('Firestore save failed', e); return false; }
+      } else {
+        const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+        profiles[profile.username] = profile;
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+        return true;
       }
+    }
+    async function loadUserProfileFromBackend(username) {
+      if (!username) return null;
+      if (firestore) {
+        try {
+          const doc = await firestore.collection('users').doc(username).get();
+          return doc.exists ? doc.data() : null;
+        } catch (e) { console.warn('Firestore load failed', e); }
+      }
+      const profiles = JSON.parse(localStorage.getItem('userProfiles') || '{}');
+      return profiles[username] || null;
+    }
+
+    // ---------------------------- Data ------------------------------
+    const camelotColors = {
+      '1A':'#FF6B9D','1B':'#FF8FAB','2A':'#FFA07A','2B':'#FFB699','3A':'#FFD700','3B':'#FFE55C',
+      '4A':'#98D8C8','4B':'#7FD8BE','5A':'#6BCB77','5B':'#8FD89F','6A':'#4D96FF','6B':'#6FB1FF',
+      '7A':'#9D4EDD','7B':'#B877FF','8A':'#E84A5F','8B':'#FF6B81','9A':'#00D9FF','9B':'#4DFFFF',
+      '10A':'#FFA400','10B':'#FFBB5C','11A':'#FE6D73','11B':'#FF8C94','12A':'#A8E6CF','12B':'#C1F0DD'
     };
-    input.click();
-  }
+    const keyToCamelot = { 'C':'8B','Am':'8A','A Minor':'8A','C Major':'8B','G':'9B','Em':'9A','E Minor':'9A','G Major':'9B','D':'10B','Bm':'10A','B Minor':'10A','D Major':'10B','A':'11B','F#m':'11A','F# Minor':'11A','A Major':'11B','E':'12B','C#m':'12A','C# Minor':'12A','E Major':'12B','B':'1B','G#m':'1A','G# Minor':'1A','B Major':'1B','F#':'2B','D#m':'2A','D# Minor':'2A','F# Major':'2B','Db':'3B','Bbm':'3A','Bb Minor':'3A','Db Major':'3B','Ab':'4B','Fm':'4A','F Minor':'4A','Ab Major':'4B','Eb':'5B','Cm':'5A','C Minor':'5A','Eb Major':'5B','Bb':'6B','Gm':'6A','G Minor':'6A','Bb Major':'6B','F':'7B','Dm':'7A','D Minor':'7A','F Major':'7B' };
 
-  /************ Profiles + Firebase merge ************/
-  async function saveUserProfileToBackend(profile){
-    if(!profile || !firestore || !profile.username)return false;
-    try{
-      await firestore.collection("users").doc(profile.username).set(profile,{merge:true});
-      return true;
-    }catch(e){
-      console.warn("Firestore save failed",e);
-      return false;
-    }
-  }
-  async function saveUserProfile(){
-    if(!currentUser)return;
-    const profile={
-      username:currentUser.username,
-      djName:  currentUser.djName||currentUser.username,
-      ownedTracks,
-      setlist,
-      bandMembers,
-      genreOverrides
+    const genreMap = {
+      'Rock': ['foo fighters','nirvana','pearl jam','soundgarden','alice in chains','red hot chili peppers','radiohead','muse','queens of the stone age','rage against the machine'],
+      'Classic Rock': ['beatles','rolling stones','led zeppelin','pink floyd','queen','the who','aerosmith'],
+      'Alternative': ['green day','blink-182','sum 41','my chemical romance','fall out boy','arctic monkeys','the strokes','the killers'],
+      'Punk': ['ramones','sex pistols','the clash'],
+      'Metal': ['metallica','megadeth','slayer','anthrax','iron maiden'],
+      'Pop': ['taylor swift','ariana grande','billie eilish','dua lipa','lady gaga','katy perry'],
+      'Hip-Hop': ['eminem','dr. dre','snoop dogg','2pac','notorious b.i.g','jay-z','nas','kanye west','kendrick lamar','drake'],
+      'R&B': ['the weeknd','bruno mars','usher','beyonce','rihanna'],
+      'Electronic': ['daft punk','deadmau5','skrillex','diplo','zedd','avicii','calvin harris'],
+      'Indie': ['vampire weekend','tame impala','mgmt','arctic monkeys','the strokes'],
+      'Country': ['johnny cash','garth brooks','shania twain','tim mcgraw'],
+      'Disco/Funk': ['bee gees','donna summer','chic','earth wind & fire','bruno mars'],
+      'Blues': ['bb king','muddy waters','howlin wolf'],
+      'Jazz': ['miles davis','john coltrane'],
+      'Reggae': ['bob marley'],
+      'Latin': ['shakira','ricky martin','enrique iglesias'],
+      'Soul': ['aretha franklin','otis redding','sam cooke']
     };
-    const profiles=JSON.parse(localStorage.getItem("userProfiles")||"{}");
-    profiles[profile.username]=profile;
-    localStorage.setItem("userProfiles",JSON.stringify(profiles));
-    localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
-    localStorage.setItem("bandMembers",JSON.stringify(bandMembers));
-    localStorage.setItem("genreOverrides",JSON.stringify(genreOverrides));
-    await saveUserProfileToBackend(profile);
-  }
-  async function loadUserProfile(username){
-    if(!username)return null;
-    if(firestore){
-      try{
-        const doc=await firestore.collection("users").doc(username).get();
-        if(doc.exists)return doc.data();
-      }catch(e){ console.warn("Firestore load failed",e); }
-    }
-    const profiles=JSON.parse(localStorage.getItem("userProfiles")||"{}");
-    return profiles[username]||null;
-  }
 
-  /************ Auth ************/
-  function ensureEmailLogin(){
-    if(!firebaseAuth){
-      alert("Firebase email login is required. Check your Firebase config before continuing.");
-      return false;
-    }
-    if(!firebaseAuth.currentUser){
-      alert("Please sign in with your email to use this feature.");
-      return false;
-    }
-    return true;
-  }
+    // -------------------------- State -----------------------------
+    let currentUser = null;
+    let songs = [];
+    let ownedTracks = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
+    let selectedSong = null;
+    let sortMode = 'bpm';
+    let previewSong = null;
+    let setlist = JSON.parse(localStorage.getItem('setlist') || '[]');
+    let searchTerm = '';
+    let view = 'browser';
+    let showOwnedOnly = false;
+    let showMixableOnly = false;
+    let selectedGenre = 'All';
+    let bandMembers = [];
+    let viewingMember = null;
+    let genreOverrides = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
+    let sandboxTracks = [];
 
-  function usernameFromEmail(email,fallback){
-    if(email && email.includes("@"))return email.split("@")[0];
-    return fallback||"user";
-  }
-
-  async function hydrateProfileFromAuth(user){
-    const username=usernameFromEmail(user?.email,user?.uid||"dj");
-    const profile=await loadUserProfile(username);
-    if(profile){
-      currentUser=profile;
-      ownedTracks=profile.ownedTracks||[];
-      setlist=profile.setlist||[];
-      bandMembers=profile.bandMembers||[];
-      genreOverrides=profile.genreOverrides||{};
-    }else{
-      currentUser={
-        username,
-        djName:username,
-        ownedTracks:ownedTracks||[],
-        setlist:setlist||[],
-        bandMembers:bandMembers||[],
-        genreOverrides:genreOverrides||{}
-      };
-      await saveUserProfile();
+    // ---------------------- Utils & Scoring -----------------------
+    function convertToCamelot(key) {
+      if (!key) return '?';
+      return keyToCamelot[(key||'').trim()] || '?';
     }
-    localStorage.setItem("currentUser",username);
-    render();
-  }
-
-  async function handleLogin(e){
-    e && e.preventDefault && e.preventDefault();
-    if(!firebaseAuth){
-      alert("Firebase email login is required. Please configure Firebase before signing in.");
-      return;
+    function getCompatibleKeys(camelot) {
+      if (!camelot || camelot === '?') return [];
+      const matches = camelot.match(/^(\d+)([AB])$/);
+      if (!matches) return [];
+      const num = parseInt(matches[1]); const letter = matches[2];
+      const compatible = [camelot, `${num}${letter==='A'?'B':'A'}`];
+      const nextNum = num === 12 ? 1 : num + 1; const prevNum = num === 1 ? 12 : num - 1;
+      compatible.push(`${nextNum}${letter}`); compatible.push(`${prevNum}${letter}`);
+      return compatible;
     }
-    const email=prompt("Enter your email for Firebase login/register:");
-    if(!email)return;
-    const password=prompt("Enter password:");
-    if(!password)return;
-    try{
-      await firebaseAuth.signInWithEmailAndPassword(email,password);
-      await hydrateProfileFromAuth(firebaseAuth.currentUser);
-      alert("Signed in.");
-    }catch(err){
-      if(err.code==="auth/user-not-found" && confirm("No account found — create one?")){
+    function isMixable(song1,song2){ if(!song1||!song2) return false; const compatible = getCompatibleKeys(song1.camelot); return compatible.includes(song2.camelot); }
+
+    function scoreKeyMatch(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 0; if(aCamelot===bCamelot) return 50; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 0; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; const ringDiff=Math.min(Math.abs(numA-numB),12-Math.abs(numA-numB)); if(numA===numB&&letterA!==letterB) return 42; if(letterA===letterB&&ringDiff===1) return 38; if(letterA!==letterB&&ringDiff===1) return 30; if(letterA===letterB&&ringDiff===2) return 26; return 14 - Math.min(ringDiff,6); }
+    function scoreBpmMatch(aBpm,bBpm){ const diff=Math.abs(aBpm-bBpm); if(diff<=1) return 35; if(diff<=3) return 32; if(diff<=6) return 26; if(diff<=10) return 16; if(diff<=15) return 10; return 0; }
+    function scoreGenreMatch(aGenre,bGenre){ if(!aGenre||!bGenre) return 0; return aGenre===bGenre?15:5; }
+    function camelotDistance(aCamelot,bCamelot){ if(!aCamelot||!bCamelot||aCamelot==='?'||bCamelot==='?') return 99; const ma=aCamelot.match(/^(\d+)([AB])$/), mb=bCamelot.match(/^(\d+)([AB])$/); if(!ma||!mb) return 99; const numA=parseInt(ma[1]), letterA=ma[2], numB=parseInt(mb[1]), letterB=mb[2]; const numDiff=Math.min(Math.abs(numA-numB),12-Math.abs(numA-numB)); const letterDiff = letterA===letterB ? 0 : 0.5; return numDiff + letterDiff; }
+    function mashupCompatibility(a,b){ const key=scoreKeyMatch(a.camelot,b.camelot); const bpm=scoreBpmMatch(a.bpm,b.bpm); const genre=scoreGenreMatch(a.genre,b.genre); const total=key+bpm+genre; return {total,breakdown:{key,bpm,genre}}; }
+    function bpmShiftSuggestion(aBpm,bBpm){ const shift=Math.round(bBpm-aBpm); if(shift===0) return 'No change'; return (shift>0?'+':'')+shift+' BPM = Perfect Match'; }
+    function computeEnergy(track){ if(!track||!track.bpm) return 3; let e=1; const bpm=track.bpm; if(bpm<90) e=1; else if(bpm<110) e=2; else if(bpm<125) e=3; else if(bpm<140) e=4; else e=5; if(track.genre==='Electronic'||track.genre==='Rock') e=Math.min(5,e+1); return e; }
+
+    // ----------------------- Genre detection -----------------------
+    function detectGenre(artist, title){
+      artist=(artist||'').toLowerCase(); title=(title||'').toLowerCase();
+      for(const [genre,artists] of Object.entries(genreMap)){
+        if(artists.some(a=>artist.includes(a) || (a.length>3 && artist.includes(a.split(' ')[0])))) return genre;
+      }
+      if(title.includes('rock')||title.includes('metal')) return 'Rock';
+      if(title.includes('funk')||title.includes('disco')) return 'Disco/Funk';
+      if(title.includes('blues')) return 'Blues';
+      if(title.includes('jazz')) return 'Jazz';
+      if(title.includes('country')) return 'Country';
+      if(title.includes('reggae')) return 'Reggae';
+      return 'Other';
+    }
+
+    // ----------------------- Storage helpers -----------------------
+    async function saveUserProfile(){
+      if(!currentUser) return;
+      const profile = { username: currentUser.username, djName: currentUser.djName, avatar: currentUser.avatar || '', ownedTracks, setlists: currentUser.setlists||[], bandMembers, genreOverrides };
+      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      profiles[profile.username] = profile;
+      localStorage.setItem('userProfiles', JSON.stringify(profiles));
+      await saveUserProfileToBackend(profile);
+    }
+    async function loadUserProfile(username){
+      if(!username) return null;
+      if(firestore){
         try{
-          await firebaseAuth.createUserWithEmailAndPassword(email,password);
-          await hydrateProfileFromAuth(firebaseAuth.currentUser);
-          alert("Account created & signed in.");
-        }catch(e2){
-          alert("Register failed: "+(e2.message||e2));
+          const doc = await firestore.collection('users').doc(username).get();
+          if(doc.exists) return doc.data();
+        }catch(e){ console.warn('Firestore load failed',e); }
+      }
+      const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+      return profiles[username] || null;
+    }
+
+    // --------------------- UI: Landing / Auth ------------------------
+    function showLandingPage(){
+      document.getElementById('app').innerHTML = `
+        <div class="min-h-screen py-12 px-6">
+          <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+              <div class="flex justify-center mb-6">
+                <div class="w-32 h-32 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-6xl vinyl-spin">🎧</div>
+              </div>
+              <h1 class="text-5xl md:text-6xl font-bold text-white graffiti-text mb-4">FORTNITE FESTIVAL PRO MIXER</h1>
+              <p class="text-xl md:text-2xl text-cyan-300 mb-6">Create Epic Mashups & DJ Like a Pro on the Jam Stage!</p>
+              <div class="mt-6">
+                <button onclick="hideLanding()" class="px-8 py-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-xl md:text-2xl bounce-icon shadow-lg">🎵 START MIXING NOW</button>
+              </div>
+            </div>
+            <div class="bg-black/60 backdrop-blur-xl border border-pink-500/30 rounded-2xl p-6 md:p-8 mb-12">
+              <div class="flex flex-col lg:flex-row items-center gap-8">
+                <div class="flex-shrink-0">
+                  <div class="w-28 h-28 camelot-wheel rounded-full" style="background: conic-gradient(from 0deg,#FF6B9D 0deg 30deg,#FFA07A 30deg 60deg,#FFD700 60deg 90deg,#98D8C8 90deg 120deg,#6BCB77 120deg 150deg,#4D96FF 150deg 180deg,#9D4EDD 180deg 210deg,#E84A5F 210deg 240deg,#00D9FF 240deg 270deg,#FFA400 270deg 300deg,#FE6D73 300deg 330deg,#A8E6CF 330deg 360deg); width:140px;height:140px;border-radius:50%;box-shadow:0 0 40px rgba(0,217,255,0.2)"></div>
+                  <p class="text-center text-xs text-cyan-300 mt-4">The Camelot Wheel in Action</p>
+                </div>
+                <div class="flex-1">
+                  <h2 class="text-2xl md:text-3xl font-bold text-white mb-4 graffiti-text">🎛️ The Secret: The Camelot Wheel</h2>
+                  <p class="text-gray-300 mb-4 text-base md:text-lg">Professional DJs use the Camelot Wheel to create seamless mashups. It's a color-coded system that shows which songs are harmonically compatible.</p>
+                  <div class="space-y-3 text-gray-300 text-sm md:text-base">
+                    <div class="flex items-start gap-3"><span class="text-2xl">✅</span><div><strong class="text-cyan-300">Same Number = Perfect Match!</strong><br/><span class="text-sm">Example: 8B → 8B</span></div></div>
+                    <div class="flex items-start gap-3"><span class="text-2xl">✅</span><div><strong class="text-cyan-300">A/B Switch = Energy Shift</strong><br/><span class="text-sm">Example: 8B → 8A</span></div></div>
+                    <div class="flex items-start gap-3"><span class="text-2xl">✅</span><div><strong class="text-cyan-300">±1 Number = Smooth Blend</strong><br/><span class="text-sm">Example: 8B → 9B or 7B</span></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-center">
+              <button onclick="hideLanding()" class="px-8 md:px-12 py-4 md:py-5 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-xl font-bold text-white text-2xl md:text-3xl shadow-2xl">🎵 LET'S MIX!</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    window.hideLanding = () => { localStorage.setItem('hasSeenLanding','true'); checkAuth(); };
+
+    // -------------------- Login / Profile handlers ---------------------
+    function showLoginScreen(){
+      // default auth mode
+      setTimeout(()=>{ try{ if(window.setAuthMode) window.setAuthMode('signin'); }catch(e){} }, 50);
+
+      document.getElementById('app').innerHTML = `
+        <div class="min-h-screen flex items-center justify-center p-6">
+          <div class="max-w-md w-full">
+            <div class="text-center mb-8">
+              <div class="w-24 h-24 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 vinyl-spin">🎧</div>
+              <h1 class="text-4xl font-bold text-white graffiti-text mb-2">FESTIVAL PRO MIXER</h1>
+              <p class="text-cyan-300">Your Personal DJ Profile</p>
+            </div>
+
+            <div class="bg-black/60 backdrop-blur-xl border border-cyan-500/30 rounded-2xl p-8 shadow-2xl">
+              <h2 class="text-2xl font-bold text-white mb-6 text-center">Sign In / Create Profile</h2>
+
+              ${firebaseEnabled ? `
+                <div class="mb-5">
+                  <div class="flex gap-2 bg-black/30 p-1 rounded-xl border border-cyan-500/20">
+                    <button type="button" id="tabSignIn" onclick="setAuthMode('signin')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white bg-white/10">Already a member</button>
+                    <button type="button" id="tabSignUp" onclick="setAuthMode('signup')" class="flex-1 px-3 py-2 rounded-lg font-bold text-white opacity-80">Sign up</button>
+                  </div>
+                  <p class="text-xs text-gray-300 mt-3 text-center">
+                    Cloud sync works after you create an account once. If you just want to use your old saved data, hit <strong>Continue Offline</strong>.
+                  </p>
+                </div>
+
+                <form onsubmit="handleFirebaseAuth(event)" class="space-y-4" autocomplete="on">
+                  <input type="hidden" id="authMode" value="signin" />
+
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-2">Email</label>
+                    <input id="email" type="email" required placeholder="you@example.com"
+                      class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                  </div>
+
+                  <div>
+                    <label class="block text-sm text-gray-300 mb-2">Password</label>
+                    <input id="password" type="password" required placeholder="password"
+                      class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                  </div>
+
+                  <div id="confirmWrap" style="display:none">
+                    <label class="block text-sm text-gray-300 mb-2">Confirm Password</label>
+                    <input id="passwordConfirm" type="password" placeholder="confirm password"
+                      class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" />
+                    <p class="text-xs text-gray-400 mt-2">Tip: use at least 6 characters.</p>
+                  </div>
+
+                  <div class="flex gap-2">
+                    <button type="submit" id="authSubmit"
+                      class="flex-1 px-4 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-lg font-bold text-white">
+                      Sign In
+                    </button>
+                    <button type="button" onclick="continueOffline()"
+                      class="px-4 py-3 bg-black/50 border border-gray-600 rounded-lg font-bold text-white">
+                      Continue Offline
+                    </button>
+                  </div>
+
+                  <div class="text-center">
+                    <button type="button" onclick="forgotPassword()" class="text-xs text-cyan-300 hover:underline">Forgot password?</button>
+                  </div>
+                </form>
+              ` : `
+                <form onsubmit="handleLogin(event)" class="space-y-4">
+                  <div><label class="block text-sm text-gray-300 mb-2">Username</label><input id="username" type="text" required minlength="3" placeholder="Enter your username" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <div><label class="block text-sm text-gray-300 mb-2">DJ Name (optional)</label><input id="djName" type="text" placeholder="e.g., DJ Spinner" class="w-full px-4 py-3 bg-black/40 border border-gray-600 rounded-lg text-white" /></div>
+                  <button type="submit" class="w-full px-6 py-3 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-lg font-bold text-white text-lg">🎵 Enter the Mix</button>
+                </form>
+              `}
+              <div class="mt-6 pt-6 border-t border-gray-700">
+                <p class="text-xs text-gray-400 text-center mb-3">💡 Tip: Right-click any song's genre tag to correct it (admin only).</p>
+                <p class="text-xs text-gray-400 text-center">⚠️ Epic Games doesn't share inventory; mark songs you own manually.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+      // -------------------- Firebase Auth UI helpers ---------------------
+    window.setAuthMode = (mode) => {
+      const m = (mode === 'signup') ? 'signup' : 'signin';
+      const authMode = document.getElementById('authMode');
+      if (!authMode) return;
+      authMode.value = m;
+
+      const tabIn = document.getElementById('tabSignIn');
+      const tabUp = document.getElementById('tabSignUp');
+      const confirmWrap = document.getElementById('confirmWrap');
+      const submit = document.getElementById('authSubmit');
+
+      if (m === 'signup') {
+        if (tabUp) { tabUp.classList.add('bg-white/10'); tabUp.classList.remove('opacity-80'); }
+        if (tabIn) { tabIn.classList.remove('bg-white/10'); tabIn.classList.add('opacity-80'); }
+        if (confirmWrap) confirmWrap.style.display = 'block';
+        if (submit) submit.textContent = 'Create Account';
+      } else {
+        if (tabIn) { tabIn.classList.add('bg-white/10'); tabIn.classList.remove('opacity-80'); }
+        if (tabUp) { tabUp.classList.remove('bg-white/10'); tabUp.classList.add('opacity-80'); }
+        if (confirmWrap) confirmWrap.style.display = 'none';
+        if (submit) submit.textContent = 'Sign In';
+      }
+    };
+
+    window.continueOffline = () => {
+      // Stay in local mode using whatever is already in localStorage.
+      // We'll create a lightweight local profile if needed.
+      const username = localStorage.getItem('currentUser') || 'local';
+      currentUser = { username, djName: username, avatar: currentUser?.avatar || '', ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
+      localStorage.setItem('currentUser', currentUser.username);
+      loadSongs();
+    };
+
+    window.forgotPassword = async () => {
+      if (!firebaseAuth) return alert('Firebase not ready yet.');
+      const email = (document.getElementById('email')?.value || '').trim();
+      if (!email) return alert('Type your email first, then click "Forgot password?"');
+      try {
+        await firebaseAuth.sendPasswordResetEmail(email);
+        alert('Password reset email sent (check inbox/spam).');
+      } catch (e) {
+        alert('Could not send reset email: ' + (e.message || e));
+      }
+    };
+
+    async function migrateLocalToUserIfHelpful(username) {
+      // If user has empty cloud profile but local has data, merge local in.
+      const localOwned = JSON.parse(localStorage.getItem('ownedTracks') || '[]');
+      const localSet = JSON.parse(localStorage.getItem('setlist') || '[]');
+      const localGenre = JSON.parse(localStorage.getItem('genreOverrides') || '{}');
+      const hasLocal = (localOwned && localOwned.length) || (localSet && localSet.length) || (localGenre && Object.keys(localGenre).length);
+
+      if (!hasLocal) return;
+
+      const cloud = await loadUserProfileFromBackend(username);
+      const cloudOwned = cloud?.ownedTracks || [];
+      const cloudGenre = cloud?.genreOverrides || {};
+      const cloudEmpty = (!cloudOwned.length) && (!Object.keys(cloudGenre).length);
+
+      if (cloudEmpty) {
+        const ok = confirm('You already have saved local data from before email login.\n\nDo you want to import your local data into this new account for cloud sync?');
+        if (ok) {
+          ownedTracks = localOwned;
+          setlist = localSet;
+          genreOverrides = localGenre;
+          bandMembers = cloud?.bandMembers || bandMembers || [];
         }
-      }else{
-        alert("Sign in failed: "+(err.message||err));
       }
     }
-  }
 
-  async function logoutUser(){
-    await saveUserProfile();
-    if(firebaseAuth && firebaseAuth.currentUser){
-      try{await firebaseAuth.signOut();}catch(e){console.warn("signout error",e);}
+    async function resolveAuthSuccess(username) {
+      if (!username) return;
+      const normalized = username.trim();
+      if (!normalized) return;
+      if (authSettledUser === normalized) return;
+      authSettledUser = normalized;
+      if (authProcessing) return;
+      authProcessing = true;
+      try {
+        await migrateLocalToUserIfHelpful(normalized);
+        const profile = await loadUserProfileFromBackend(normalized);
+        if (profile) {
+          currentUser = profile;
+          ownedTracks = profile.ownedTracks || ownedTracks || [];
+          bandMembers = profile.bandMembers || bandMembers || [];
+          genreOverrides = profile.genreOverrides || genreOverrides || {};
+        } else {
+          currentUser = { username: normalized, djName: normalized, avatar: '', ownedTracks: ownedTracks || [], setlists: [], bandMembers: bandMembers || [], genreOverrides: genreOverrides || {} };
+          await saveUserProfileToBackend(currentUser);
+        }
+        localStorage.setItem('currentUser', currentUser.username);
+        await saveUserProfile();
+        loadSongs();
+      } finally {
+        authProcessing = false;
+      }
     }
-    currentUser=null;
-    ownedTracks=[];
-    setlist=[];
-    bandMembers=[];
-    viewingMember=null;
-    genreOverrides={};
-    localStorage.removeItem("currentUser");
-    render();
-    alert("Logged out.");
-  }
 
-  /************ Misc events ************/
-  function setupEventListeners(){
-    document.getElementById("mixableFilterBtn")?.addEventListener("click",()=>{
-      if(!selectedSong){alert("Select a song first to use Mixable Only.");return;}
-      showMixableOnly=!showMixableOnly;
-      const btn=document.getElementById("mixableFilterBtn");
-      if(btn)btn.textContent=showMixableOnly?"🎧 Mixable Only":"Show Mixable";
-      renderSongList();
-    });
-    document.getElementById("ownedFilterBtn")?.addEventListener("click",()=>{
-      showOwnedOnly=!showOwnedOnly;
-      const btn=document.getElementById("ownedFilterBtn");
-      if(btn)btn.textContent=showOwnedOnly?"✓ Owned Only":"Show All";
-      renderSongList();
-    });
-    document.getElementById("clearSelectionBtn")?.addEventListener("click",()=>{
-      selectedSong=null;
-      previewSong=null;
-      showMixableOnly=false;
-      const btn=document.getElementById("mixableFilterBtn");
-      if(btn)btn.textContent="Show Mixable";
-      renderSongList();
-    });
-    document.getElementById("markAllBtn")?.addEventListener("click",()=>{
-      if(!ensureEmailLogin())return;
-      if(!confirm("Mark ALL loaded songs as owned?"))return;
-      ownedTracks=songs.map(s=>s.id);
-      localStorage.setItem("ownedTracks",JSON.stringify(ownedTracks));
-      saveUserProfile();
-      renderSongList();
-      updateOwnedCounter();
-    });
-    document.getElementById("addBandBtn")?.addEventListener("click",()=>addBandMember());
-    document.getElementById("searchInput")?.addEventListener("input",()=>renderSongList());
-    document.getElementById("camelotTierBtn")?.addEventListener("click",()=>{
-      camelotTier++;
-      if(camelotTier>3)camelotTier=1;
-      const labels={1:"Camelot: Tier 1",2:"Camelot: Tiers 1–2",3:"Camelot: All Tiers"};
-      const btn=document.getElementById("camelotTierBtn");
-      if(btn)btn.textContent=labels[camelotTier];
-      renderSongList();
-    });
-    document.getElementById("priorityBtn")?.addEventListener("click",()=>{
-      priorityMode = priorityMode==="tempo" ? "camelot" : "tempo";
-      const btn=document.getElementById("priorityBtn");
-      if(btn)btn.textContent = priorityMode==="tempo" ? "Priority: Tempo" : "Priority: Camelot";
-      renderSongList();
-    });
-  }
+    function setupFirebaseAuthListener() {
+      if (!firebaseAuth || firebaseAuthUnsub) return;
+      firebaseAuthUnsub = firebaseAuth.onAuthStateChanged(async (user) => {
+        if (user) {
+          const email = user.email || '';
+          const username = email ? email.split('@')[0] : (user.uid || '').trim();
+          await resolveAuthSuccess(username);
+        }
+      });
+    }
 
-  function openHelp(){const m=document.getElementById("helpModal");if(m){m.style.display="flex";m.setAttribute("aria-hidden","false");}}
-  function closeHelp(){const m=document.getElementById("helpModal");if(m){m.style.display="none";m.setAttribute("aria-hidden","true");}}
+    async function handleFirebaseAuth(e){
+      e.preventDefault();
+      if(!firebaseEnabled || !firebaseAuth) return alert('Firebase is not enabled/configured yet.');
+      const mode = document.getElementById('authMode')?.value || 'signin';
+      const email = (document.getElementById('email')?.value || '').trim();
+      const password = document.getElementById('password')?.value || '';
+      const passwordConfirm = document.getElementById('passwordConfirm')?.value || '';
 
-  /************ Song loading ************/
-  async function loadSongs(){
-    const endpoints=[
-      "https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks",
-      "https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks"
-    ];
-    for(const ep of endpoints){
+      if(!email || !password) return alert('Enter email & password.');
+
       try{
-        const res=await fetch(ep);
-        if(!res.ok)continue;
-        const data=await res.json();
-        songs=Object.entries(data).filter(([k])=>!k.startsWith("_")).map(([id,item])=>{
-          const t=item.track||{};
-          if(!t.tt)return null;
-          const detected=detectGenre(t.an||"",t.tt);
-          const finalGenre=genreOverrides[id]||detected;
-          let art="";
-          if(t.au)art=t.au.trim();
-          if(!art && t.at)art=t.at.trim();
-          if(!art && t.im)art=t.im.trim();
-          if(!art && Array.isArray(t.images) && t.images.length)art=t.images[0];
-          if(art && art.startsWith("//"))art=window.location.protocol+art;
-          if(art && art.startsWith("/"))art="https://fortnitecontent-website-prod07.ol.epicgames.com"+art;
-          return {
-            id,
-            title:t.tt,
-            artist:t.an||"Unknown",
-            bpm:Number(t.mt)||0,
-            key:t.mk||"?",
-            mode:t.mm||"",
-            camelot:convertToCamelot(t.mk||""),
-            duration:Number(t.dn)||0,
-            albumArt:art||"",
-            genre:finalGenre
-          };
-        }).filter(s=>s && s.bpm>0);
-        if(songs.length>0){
+        if(mode === 'signup'){
+          if(password.length < 6) return alert('Password must be at least 6 characters.');
+          if(password !== passwordConfirm) return alert('Passwords do not match.');
+          await firebaseAuth.createUserWithEmailAndPassword(email,password);
+        } else {
+          await firebaseAuth.signInWithEmailAndPassword(email,password);
+        }
+
+        setupFirebaseAuthListener();
+        await resolveAuthSuccess(email.split('@')[0]);
+
+      } catch(err){
+        console.error(err);
+        const code = err?.code || '';
+        if(code === 'auth/invalid-login-credentials' || code === 'auth/user-not-found' || code === 'auth/wrong-password'){
+          alert('Sign-in failed: Email/password not found.\n\nIf this is your first time using email login, click "Sign up" and create the account first.');
+        } else if(code === 'auth/email-already-in-use'){
+          alert('That email already has an account. Click "Already a member" and sign in.');
+        } else {
+          alert('Auth failed: ' + (err.message || err));
+        }
+      }
+    }
+    window.handleFirebaseAuth = handleFirebaseAuth;
+
+window.handleLogin = async (event) => {
+      event.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const djName = (document.getElementById('djName').value || username).trim() || username;
+      if(username.length<3){ alert('Username must be at least 3 characters'); return; }
+      const profile = await loadUserProfile(username);
+      if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; bandMembers = profile.bandMembers || []; genreOverrides = profile.genreOverrides || {}; }
+      else { currentUser = { username, djName, avatar: '', ownedTracks: [], setlists: [], bandMembers: [], genreOverrides: {} }; await saveUserProfileToBackend(currentUser); }
+      localStorage.setItem('currentUser', username);
+      loadSongs();
+    };
+
+    async function logoutUser(){
+      saveUserProfile();
+      if(firebaseAuth){ try{ await firebaseAuth.signOut(); } catch(e){ console.warn('signout',e); } }
+      authSettledUser = null; authProcessing = false;
+      currentUser = null; ownedTracks = []; setlist = []; bandMembers = []; viewingMember = null; genreOverrides = {};
+      localStorage.removeItem('currentUser');
+      showLoginScreen();
+    }
+
+    // -------------------- Songs loading -----------------------
+    async function loadSongs(){
+      console.log('Loading tracks...');
+      const endpoints=[ 'https://api.allorigins.win/raw?url=https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks', 'https://corsproxy.io/?https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks' ];
+      for(let i=0;i<endpoints.length;i++){
+        try{
+          const res = await fetch(endpoints[i]);
+          if(!res.ok) continue;
+          const data = await res.json();
+          songs = Object.entries(data).filter(([k])=>!k.startsWith('_')).map(([id,item])=>{
+            const track = item?.track || {};
+            if(!track?.tt) return null;
+            const detectedGenre = detectGenre(track.an||'', track.tt);
+            const finalGenre = genreOverrides[id] || detectedGenre;
+            return { id, title: track.tt, artist: track.an || 'Unknown', bpm: Number(track.mt) || 0, key: track.mk || '?', mode:track.mm||'', camelot:convertToCamelot(track.mk||''), duration: Number(track.dn)||0, albumArt: track.au||'', genre: finalGenre };
+          }).filter(s=>s && s.bpm>0);
           songs.sort((a,b)=>a.title.localeCompare(b.title));
-          renderSongList();
-          updateOwnedCounter();
+          if(songs.length>0){ render(); setupEventListeners(); return; }
+        }catch(e){ console.warn('endpoint err',e); }
+      }
+      console.warn('endpoints failed, using fallback sample');
+      songs = [
+        { id:'s1', title:'Bad Guy', artist:'Billie Eilish', bpm:135, key:'C', mode:'major', camelot:'8B', duration:180, albumArt:'', genre:'Pop'},
+        { id:'s2', title:'Need You Tonight', artist:'INXS', bpm:115, key:'C', mode:'minor', camelot:'8A', duration:210, albumArt:'', genre:'Rock'},
+        { id:'s3', title:'Electric Night', artist:'Daft Sample', bpm:128, key:'D', mode:'major', camelot:'10B', duration:200, albumArt:'', genre:'Electronic'},
+        { id:'s4', title:'Slow Burn', artist:'Indie Star', bpm:95, key:'G', mode:'minor', camelot:'9A', duration:190, albumArt:'', genre:'Indie'},
+        { id:'s5', title:'Drop The Bass', artist:'SkrillSample', bpm:142, key:'A', mode:'minor', camelot:'11A', duration:160, albumArt:'', genre:'Electronic'}
+      ];
+      render(); setupEventListeners();
+    }
+
+    // ---------------------- Render list & setlist -----------------------
+    function formatDuration(sec){ const m=Math.floor(sec/60); const s=sec%60; return `${m}:${s.toString().padStart(2,'0')}`; }
+    function updateOwnedCount(){ const el=document.getElementById('ownedCount'); if(el){ const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks; el.textContent = `${viewingMember ? viewingMember.djName : 'You'} own ${displayTracks.length}/${songs.length} tracks`; } }
+
+    function renderSongList(){
+      const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
+      const filtered = songs.filter(s=>{
+        if(selectedSong && s.id === selectedSong.id) return false;
+        const matchesSearch = !searchTerm || s.title.toLowerCase().includes(searchTerm.toLowerCase()) || s.artist.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesOwned = !showOwnedOnly || displayTracks.includes(s.id);
+        const matchesMixable = !showMixableOnly || !selectedSong || isMixable(selectedSong, s);
+        const matchesGenre = selectedGenre === 'All' || s.genre === selectedGenre;
+        return matchesSearch && matchesOwned && matchesMixable && matchesGenre;
+      });
+
+      const scored = filtered.map(song=>{
+        const comp = selectedSong ? mashupCompatibility(selectedSong, song) : null;
+        const bpmDiff = selectedSong ? Math.abs(song.bpm - selectedSong.bpm) : null;
+        const camelotGap = selectedSong ? camelotDistance(selectedSong.camelot, song.camelot) : null;
+        const genreTie = selectedSong ? (song.genre === selectedSong.genre ? 0 : 1) : null;
+        return { song, comp, bpmDiff, camelotGap, genreTie };
+      });
+
+      if(selectedSong){
+        scored.sort((a,b)=>{
+          const scoreDiff = (b.comp?.total || 0) - (a.comp?.total || 0);
+          if(Math.abs(scoreDiff) > 3) return scoreDiff; // keep strong matches on top always
+
+          const tieBreaker = (()=>{
+            if(sortMode === 'bpm') return (a.bpmDiff ?? 999) - (b.bpmDiff ?? 999);
+            if(sortMode === 'camelot') return (a.camelotGap ?? 999) - (b.camelotGap ?? 999);
+            if(sortMode === 'genre') return (a.genreTie ?? 2) - (b.genreTie ?? 2);
+            return 0;
+          })();
+
+          if(scoreDiff !== 0) return scoreDiff || tieBreaker;
+          if(tieBreaker !== 0) return tieBreaker;
+          return a.song.title.localeCompare(b.song.title);
+        });
+      } else {
+        scored.sort((a,b)=> a.song.title.localeCompare(b.song.title));
+      }
+
+      const songListEl = document.getElementById('songList'); if(!songListEl) return;
+      songListEl.innerHTML = scored.map(entry=>{
+        const song = entry.song;
+        const isOwned = displayTracks.includes(song.id);
+        const comp = entry.comp;
+        const pct = comp ? Math.min(100, Math.max(0, Math.round(comp.total))) : null;
+        const hasOverride = genreOverrides[song.id];
+        const glowClass = pct>=80 ? 'glow-perfect' : pct>=60 ? 'glow-good' : (pct!==null ? 'glow-bad' : '');
+        if(showMixableOnly && selectedSong){
+          const bpmOk = Math.abs(song.bpm - selectedSong.bpm) <= 4;
+          const keyOk = getCompatibleKeys(selectedSong.camelot).includes(song.camelot);
+          if(!bpmOk || !keyOk) return '';
+        }
+        return `
+          <div class="song-card panel p-4 relative hover:border-cyan-400 transition-all" data-song-id="${song.id}" draggable="true">
+            <div class="star-icon absolute top-2 right-2 text-xl" style="display:${isOwned?'block':'none'}">⭐</div>
+            ${selectedSong && isMixable(selectedSong,song) ? `<div class="absolute top-2 left-2 text-xl">🎧</div>` : ''}
+            <div class="flex gap-4 mb-3">
+              ${song.albumArt ? `<img src="${song.albumArt}" class="w-20 h-20 rounded-lg cursor-pointer hover:scale-110 transition-transform" onclick="selectSong('${song.id}')"/>` : `<div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg"></div>`}
+              <div class="flex-1 cursor-pointer" onclick="selectSong('${song.id}')">
+                <div class="font-bold text-lg mb-1 text-white">${song.title}</div>
+                <div class="text-gray-300 mb-2 text-sm">${song.artist}</div>
+                <div class="flex items-center gap-2 text-sm flex-wrap">
+                  <button data-genre-tag="${song.id}" data-song-id-genre="${song.id}" class="px-2 py-1 ${hasOverride ? 'bg-green-500/30 border-green-500/50' : 'bg-orange-500/30 border-orange-500/50'} border rounded text-xs ${currentUser && currentUser.username === 'BattleNeBody' ? 'cursor-pointer' : 'cursor-default opacity-75'}">${song.genre}${hasOverride ? ' ✓' : ''}</button>
+                  <span class="px-3 py-1 rounded-lg font-mono font-bold text-white" style="background:${camelotColors[song.camelot] || '#666'}">${song.camelot}</span>
+                  <span class="px-2 py-1 bg-gray-700 rounded text-xs">${song.key} ${song.mode}</span>
+                  <span class="font-semibold text-cyan-300">${song.bpm} BPM</span>
+                  ${selectedSong && isMixable(selectedSong,song) ? `<span class="px-2 py-1 bg-purple-600/40 border border-purple-400/40 rounded text-xs text-purple-200 font-bold">±${Math.abs(song.bpm - selectedSong.bpm)} BPM</span>` : ''}
+                  <span class="text-gray-400">${formatDuration(song.duration)}</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="toggleOwned('${song.id}')" class="flex-1 px-3 py-2 ${isOwned ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} rounded-lg text-sm font-medium transition" ${viewingMember ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>${isOwned ? '✓ Owned' : 'Mark Owned'}</button>
+              <button class="addSetBtn px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-sm font-medium transition" data-id="${song.id}">+ Set</button>
+              ${selectedSong ? `<div class="${pct!==null?glowClass:''} ml-2 px-3 py-2 score-badge">${pct!==null?pct+'%':'—'}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+      // attach right-click genre handlers
+      document.querySelectorAll('[data-song-id-genre]').forEach(btn=>{
+        btn.addEventListener('click',(e)=>{ e.stopPropagation(); const songId = btn.getAttribute('data-song-id-genre'); showGenreMenu(songId, e); });
+      });
+    }
+
+    function renderSetlist(){
+      const setlistEl = document.getElementById('setlistContent'); if(!setlistEl) return;
+      if(setlist.length===0){
+        setlistEl.innerHTML = `<div class="text-center py-12"><div class="text-6xl mb-4">🎵</div><p class="text-xl mb-4 text-white">Your setlist is empty</p><button onclick="switchView('browser')" class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg font-bold">Browse Tracks</button></div>`;
+      } else {
+        setlistEl.innerHTML = `<div class="space-y-4">${setlist.map((song,i)=>`<div class="bg-black/40 backdrop-blur-sm border border-gray-700 rounded-xl p-4 flex items-center gap-4 hover:border-cyan-400 transition"><div class="text-2xl font-bold text-pink-400">${i+1}</div>${song.albumArt?`<img src="${song.albumArt}" class="w-16 h-16 rounded-lg"/>`:''}<div class="flex-1"><div class="font-bold text-lg text-white">${song.title}</div><div class="text-gray-300">${song.artist}</div><div class="text-xs text-orange-300">${song.genre}</div></div><div class="text-xl font-mono font-bold" style="color:${camelotColors[song.camelot]}">${song.camelot}</div><button onclick="removeFromSetlist('${song.id}')" class="p-2 hover:bg-red-500/20 rounded text-red-400 text-xl">✕</button></div>`).join('')}</div>`;
+      }
+    }
+
+    function render(){
+      const displayTracks = viewingMember ? viewingMember.ownedTracks : ownedTracks;
+      const ownedCount = displayTracks.length;
+      const avatarMarkup = currentUser?.avatar ? `<img src="${currentUser.avatar}" class="w-10 h-10 rounded-full border border-cyan-400/40" alt="avatar"/>` : `<div class="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-lg">${(currentUser?.djName||currentUser?.username||'DJ').slice(0,1).toUpperCase()}</div>`;
+      document.getElementById('app').innerHTML = `
+        <div class="min-h-screen">
+          <div class="bg-black/60 backdrop-blur-xl border-b border-cyan-500/30 sticky top-0 z-50 shadow-lg">
+            <div class="max-w-7xl mx-auto px-6 py-4">
+              <div class="flex items-center justify-between gap-4 mb-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center text-2xl vinyl-spin">🎵</div>
+                  <div>
+                    <h1 class="text-2xl font-bold text-white graffiti-text">FESTIVAL PRO MIXER</h1>
+                    <p id="ownedCount" class="text-xs text-cyan-300 font-semibold">${viewingMember?viewingMember.djName:'You'} own ${ownedCount}/${songs.length} tracks</p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  ${viewingMember?`<button onclick="backToMyProfile()" class="px-3 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm">← Back</button>`:`
+                    <div class="flex items-center gap-3">
+                      ${avatarMarkup}
+                      <div class="text-right"><div class="text-sm text-pink-300 font-bold">${currentUser?currentUser.djName:''}</div><div class="text-xs text-gray-400">@${currentUser?currentUser.username:''}${Object.keys(genreOverrides).length>0?` • ${Object.keys(genreOverrides).length} corrections`:''}</div></div>
+                    </div>
+                    <button onclick="openProfile()" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm text-cyan-100 border border-cyan-500/20">Profile</button>
+                    <button onclick="exportCollection()" class="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 rounded-lg text-blue-300 text-sm">Export</button>
+                    <button onclick="importCollection()" class="px-3 py-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/50 rounded-lg text-green-300 text-sm">Import</button>
+                    <button onclick="openHelp()" class="px-3 py-2 bg-white/6 hover:bg-white/12 border border-cyan-500/20 rounded-lg text-cyan-200 text-sm">❓ Help</button>
+                    <button onclick="logoutUser()" class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-300 text-sm">Logout</button>
+                  `}
+                </div>
+              </div>
+
+              ${!viewingMember && bandMembers.length>0 ? `<div class="mb-4"><div class="text-sm text-purple-300 mb-2 font-bold">🎸 Band Members:</div><div class="flex gap-2 flex-wrap">${bandMembers.map(member=>`<button onclick="viewBandMember('${member.username}')" class="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">${member.djName}</button>`).join('')}<button onclick="addBandMember()" class="px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm">+ Add Member</button></div></div>` : !viewingMember?`<div class="mb-4"><button onclick="addBandMember()" class="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/50 rounded-lg text-purple-200 text-sm">🎸 + Add Band Member</button></div>` : ''}
+
+              <div class="flex gap-2">
+                <button id="browserBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Browse</button>
+                <button id="setlistBtn" class="px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}">Setlist (<span id="setlistCount">${setlist.length}</span>)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="max-w-7xl mx-auto px-6 py-6 pb-20">
+            <div id="browserView" style="display:${view==='browser'?'block':'none'}">
+              <div class="mb-6 space-y-4">
+                <div class="relative">
+                  <input type="text" id="searchInput" placeholder="🔍 Quick search (optional)..." class="w-full px-4 py-3 pr-12 bg-black/40 backdrop-blur-sm border border-cyan-500/30 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"/>
+                  <button id="clearSearchBtn" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition text-xl" style="display:none;">✕</button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <button id="mixableFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showMixableOnly?'bg-gradient-to-r from-blue-500 to-cyan-500':'bg-white/10 hover:bg-white/20'}">${showMixableOnly? '🎧 Mixable Only' : 'Show Mixable'}</button>
+                  <button id="ownedFilterBtn" class="px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly?'bg-gradient-to-r from-green-500 to-emerald-500':'bg-white/10 hover:bg-white/20'}">${showOwnedOnly? '✓ Owned Only' : 'Show All'}</button>
+                  ${!viewingMember?`<button id="markAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Mark All Owned</button><button id="clearAllBtn" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg">Clear All</button>`:''}
+                </div>
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-black/30 border border-cyan-500/10 rounded-xl p-3">
+                  <div>
+                    <div class="text-sm text-cyan-200 font-semibold">Smart Match Priority</div>
+                    <div class="text-xs text-gray-400">Best matches stay on top. Choose what to emphasize as a tiebreaker.</div>
+                    ${selectedSong?`<div class="text-xs text-pink-200 mt-1">Selected: <span class="font-semibold">${selectedSong.title}</span> • ${selectedSong.camelot} • ${selectedSong.bpm} BPM</div>`:''}
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <button onclick="setSortMode('bpm')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='bpm'?'border-cyan-400 bg-cyan-500/20 text-cyan-100':'border-white/10 bg-white/5 text-gray-200'}">Priority: Tempo (BPM)</button>
+                    <button onclick="setSortMode('camelot')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='camelot'?'border-pink-400 bg-pink-500/20 text-pink-100':'border-white/10 bg-white/5 text-gray-200'}">Camelot</button>
+                    <button onclick="setSortMode('genre')" class="px-3 py-2 rounded-lg text-sm font-semibold border ${sortMode==='genre'?'border-emerald-400 bg-emerald-500/20 text-emerald-100':'border-white/10 bg-white/5 text-gray-200'}">Genre</button>
+                  </div>
+                </div>
+              </div>
+              <div id="songList"></div>
+            </div>
+
+            <div id="setlistView" style="display:${view==='setlist'?'block':'none'}">
+              <div id="setlistContent"></div>
+            </div>
+          </div>
+        </div>
+      `;
+      if(view==='browser'){ renderSongList(); } else { renderSetlist(); }
+    }
+
+    // ------------------ Genre context menu ------------------------
+    function showGenreMenu(songId,event){
+      if(!currentUser||currentUser.username!=='BattleNeBody'){ alert('🔒 Only the admin (BattleNeBody) can correct genre tags!'); return; }
+      const existing = document.getElementById('genreContextMenu'); if(existing) existing.remove();
+      const menu=document.createElement('div'); menu.id='genreContextMenu'; menu.className='context-menu';
+      const rect = event.target.getBoundingClientRect();
+      let left=rect.left, top=rect.bottom+5;
+      if(left+220>window.innerWidth) left=rect.right-220;
+      if(top+300>window.innerHeight) top=rect.top-305;
+      menu.style.left = left+'px'; menu.style.top = top+'px';
+      const genres = Object.keys(genreMap).concat(['Other']);
+      menu.innerHTML = `<div style="padding:8px 12px;color:#00d9ff;font-weight:bold;border-bottom:1px solid rgba(0,217,255,0.3);margin-bottom:6px;">Select Genre:</div>`;
+      genres.forEach(g=>{
+        const btn=document.createElement('button'); btn.textContent=g; btn.style.display='block'; btn.style.width='100%'; btn.style.padding='8px 12px'; btn.style.background='transparent'; btn.style.border='none'; btn.style.textAlign='left'; btn.style.color='#e6f7ff'; btn.style.cursor='pointer';
+        btn.addEventListener('click',async()=>{ await setGenreOverride(songId,g); menu.remove(); });
+        menu.appendChild(btn);
+      });
+      document.body.appendChild(menu);
+      setTimeout(()=>{ const closeMenu=(e)=>{ if(!menu.contains(e.target)){ menu.remove(); document.removeEventListener('click', closeMenu); } }; document.addEventListener('click', closeMenu); },100);
+    }
+
+    window.setGenreOverride = async (songId,newGenre) => {
+      if(!currentUser) return;
+      genreOverrides[songId] = newGenre;
+      const song = songs.find(s=>s.id===songId); if(song) song.genre = newGenre;
+      localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides));
+      await saveUserProfile();
+      renderSongList();
+      const genreTag = document.querySelector(`[data-genre-tag="${songId}"]`);
+      if(genreTag){ genreTag.textContent = newGenre + ' ✓'; genreTag.classList.add('animate-pulse'); setTimeout(()=>genreTag.classList.remove('animate-pulse'),1000); }
+    };
+
+    // ------------------ Event listeners and interactions --------------
+    function setupEventListeners(){
+      const searchInput = document.getElementById('searchInput');
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+      if(searchInput && clearSearchBtn){
+        searchInput.oninput = (e)=>{ searchTerm = e.target.value; clearSearchBtn.style.display = searchTerm ? 'block' : 'none'; renderSongList(); };
+        clearSearchBtn.onclick = ()=>{ searchInput.value=''; searchTerm=''; clearSearchBtn.style.display='none'; renderSongList(); };
+      }
+      document.getElementById('browserBtn')?.addEventListener('click', ()=> switchView('browser'));
+      document.getElementById('setlistBtn')?.addEventListener('click', ()=> switchView('setlist'));
+      document.getElementById('mixableFilterBtn')?.addEventListener('click', toggleMixableFilter);
+      document.getElementById('ownedFilterBtn')?.addEventListener('click', toggleOwnedFilter);
+      if(!viewingMember){ document.getElementById('markAllBtn')?.addEventListener('click', markAllOwned); document.getElementById('clearAllBtn')?.addEventListener('click', clearAllOwned); }
+      document.querySelectorAll('.addSetBtn').forEach(btn=>{ btn.onclick = (e)=>{ e.preventDefault(); addToSetlist(btn.dataset.id); }; });
+    }
+
+    window.setSortMode = (mode) => {
+      sortMode = mode;
+      renderSongList();
+    };
+
+    window.selectSong = (id) => {
+      selectedSong = songs.find(s=>s.id===id);
+      const btn = document.getElementById('mixableFilterBtn');
+      if(btn){ btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`; btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable'; }
+      renderSongList();
+    };
+
+    window.clearSelection = () => {
+      selectedSong = null;
+      const btn = document.getElementById('mixableFilterBtn');
+      if(btn){ btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white/10 hover:bg-white/20'; btn.textContent = 'Show Mixable'; }
+      showMixableOnly = false;
+      renderSongList();
+    };
+
+    window.toggleOwned = (id) => {
+      if(viewingMember){ alert("You can't edit other people's collections!"); return; }
+      if(ownedTracks.includes(id)) ownedTracks = ownedTracks.filter(t=>t!==id); else ownedTracks.push(id);
+      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      saveUserProfile();
+      updateOwnedCount();
+      renderSongList();
+    };
+
+    window.addToSetlist = (id) => {
+      const song = songs.find(s=>s.id===id); if(!song) return;
+      if(!setlist.find(s=>s.id===id)){
+        setlist.push(song);
+        localStorage.setItem('setlist', JSON.stringify(setlist));
+        const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
+        if(view==='setlist') renderSetlist(); else { if(countEl){ countEl.classList.add('animate-pulse'); setTimeout(()=>countEl.classList.remove('animate-pulse'),800); } }
+      }
+    };
+
+    window.removeFromSetlist = (id) => {
+      setlist = setlist.filter(s=>s.id!==id);
+      localStorage.setItem('setlist', JSON.stringify(setlist));
+      renderSetlist();
+      const countEl = document.getElementById('setlistCount'); if(countEl) countEl.textContent = setlist.length;
+    };
+
+    window.switchView = (newView) => {
+      view = newView;
+      document.getElementById('browserView').style.display = view==='browser' ? 'block' : 'none';
+      document.getElementById('setlistView').style.display = view==='setlist' ? 'block' : 'none';
+      const browserBtn = document.getElementById('browserBtn'); const setlistBtn = document.getElementById('setlistBtn');
+      if(browserBtn) browserBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='browser'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
+      if(setlistBtn) setlistBtn.className = `px-4 py-2 rounded-lg font-medium transition ${view==='setlist'?'bg-gradient-to-r from-purple-500 to-pink-500':'bg-white/10 hover:bg-white/20'}`;
+      if(view==='browser'){ renderSongList(); setupEventListeners(); } else { renderSetlist(); setupEventListeners(); }
+    };
+
+    window.toggleMixableFilter = () => {
+      if(!selectedSong){ alert('Select a song first to see mixable tracks!'); return; }
+      showMixableOnly = !showMixableOnly;
+      const btn = document.getElementById('mixableFilterBtn');
+      if(btn){ btn.className = `px-4 py-2 rounded-lg font-medium transition ${showMixableOnly ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-white/10 hover:bg-white/20'}`; btn.textContent = showMixableOnly ? '🎧 Mixable Only' : 'Show Mixable'; }
+      renderSongList();
+    };
+
+    window.toggleOwnedFilter = () => {
+      showOwnedOnly = !showOwnedOnly;
+      const btn = document.getElementById('ownedFilterBtn');
+      if(btn){ btn.className = `px-4 py-2 rounded-lg font-medium transition ${showOwnedOnly ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-white/10 hover:bg-white/20'}`; btn.textContent = showOwnedOnly ? '✓ Owned Only' : 'Show All'; }
+      renderSongList();
+    };
+
+    window.markAllOwned = () => {
+      if(viewingMember) return;
+      if(!confirm(`⚠️ Mark ALL ${songs.length} songs as owned?\nThis will override your current selection!`)) return;
+      ownedTracks = songs.map(s=>s.id);
+      localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks));
+      saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`✅ Marked all ${songs.length} songs as owned!`);
+    };
+
+    window.clearAllOwned = () => {
+      if(viewingMember) return;
+      if(!confirm(`⚠️ CLEAR ALL owned songs?`)) return;
+      const count = ownedTracks.length; ownedTracks = []; localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks)); saveUserProfile(); renderSongList(); updateOwnedCount(); alert(`🗑️ Cleared ${count} owned songs.`);
+    };
+
+    async function addBandMember(){
+      const username = prompt('Enter bandmate username:'); if(!username) return;
+      const memberProfile = await loadUserProfile(username); if(!memberProfile){ alert(`❌ User "${username}" not found!`); return; }
+      if(bandMembers.find(m=>m.username===username)){ alert('This person is already in your band!'); return; }
+      bandMembers.push({ username: memberProfile.username, djName: memberProfile.djName }); await saveUserProfile(); alert(`✅ Added ${memberProfile.djName} (@${username}) to your band!`); render(); setupEventListeners();
+    }
+
+    async function viewBandMember(username){
+      const memberProfile = await loadUserProfile(username); if(!memberProfile) return alert('Could not load member profile');
+      viewingMember = memberProfile; render(); setupEventListeners();
+    }
+    function backToMyProfile(){ viewingMember=null; render(); setupEventListeners(); }
+
+    // --------------------- Preview & two-track (simple) ---------------
+    function onPreviewClick(id){
+      const b = songs.find(s => s.id === id); if(!selectedSong){ selectedSong = b; renderSongList(); alert('Main track selected. Click Preview on another track to compare.'); return; }
+      previewSong = b; displayTwoTrackPreview(selectedSong, previewSong);
+    }
+    function displayTwoTrackPreview(A,B){
+      const comp = mashupCompatibility(A,B); const pct = Math.round(comp.total);
+      alert(`${A.title} → ${B.title}\nCompatibility: ${pct}%\nBPM diff: ${Math.abs(A.bpm-B.bpm)}\n${bpmShiftSuggestion(A.bpm,B.bpm)}`);
+    }
+
+    // -------------------- Sandbox functions --------------------------
+    function sandboxInit(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML=`<div class="small-muted p-2">Drop tracks here</div>`; el.addEventListener('dragover', (e)=>e.preventDefault()); el.addEventListener('drop', (e)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text/plain'); const track = songs.find(s=>s.id===id); if(!track) return; if(sandboxTracks.find(t=>t.id===id)) return; if(sandboxTracks.length>=4){ alert('Sandbox limit: 4 tracks'); return; } sandboxTracks.push(track); renderSandbox(); }); }
+    function renderSandbox(){ const el=document.getElementById('sandbox'); if(!el) return; el.innerHTML = sandboxTracks.map((t,i)=>`<div class="flex items-center gap-3 panel p-2 mb-2"><div class="w-10 h-10 rounded" style="background:${camelotColors[t.camelot]||'#666'};display:flex;align-items:center;justify-content:center">${t.camelot}</div><div style="flex:1"><div class="font-semibold">${t.title}</div><div class="small-muted text-xs">${t.artist} • ${t.genre} • ${t.bpm} BPM</div></div><div class="small-muted">${computeEnergy(t)}</div><button class="ml-2 px-2 py-1 bg-red-600/40" onclick="removeSandbox('${t.id}')">✕</button></div>`).join('') || `<div class="small-muted p-2">Drop tracks here</div>`; const info=document.getElementById('sandboxInfo'); if(sandboxTracks.length===0){ if(info) info.textContent=''; renderEnergyGraph([]); return; } const bpms=sandboxTracks.map(s=>s.bpm); const keys=sandboxTracks.map(s=>s.camelot); const bpmDiffs=bpms.length>1?Math.abs(bpms[0]-bpms[bpms.length-1]):0; const genreBlend=getGenreBlendScore(sandboxTracks); if(info) info.innerHTML=`BPM range: ${Math.min(...bpms)}–${Math.max(...bpms)} (Δ ${bpmDiffs}) • Key set: ${[...new Set(keys)].join(', ')} • Genre-blend: ${Math.round(genreBlend*100)}%`; renderEnergyGraph(sandboxTracks); }
+    function removeSandbox(id){ sandboxTracks=sandboxTracks.filter(s=>s.id!==id); renderSandbox(); }
+    function getGenreBlendScore(list){ if(!list.length) return 0; const counts={}; list.forEach(s=>counts[s.genre]=(counts[s.genre]||0)+1); const max=Math.max(...Object.values(counts)); return max/list.length; }
+
+    function renderEnergyGraph(list){ const container=document.getElementById('energyGraph'); if(!container) return; if(!list||list.length===0){ container.innerHTML='<div class="small-muted">No tracks selected</div>'; return; } container.innerHTML = list.map((t,i)=>{ const e=computeEnergy(t); const pct=(e/5)*100; const color = e>=4 ? 'linear-gradient(90deg,#f97316,#ef4444)' : e>=3 ? 'linear-gradient(90deg,#f59e0b,#f97316)' : 'linear-gradient(90deg,#34d399,#10b981)'; return `<div class="flex items-center gap-3"><div style="width:40px" class="small-muted">${i+1}</div><div style="flex:1"><div class="small-muted text-xs">${t.title} — <span style="color:${camelotColors[t.camelot]||'#fff'}">${t.camelot}</span></div><div class="energy-bar mt-1"><div class="energy-fill" style="width:${pct}%;background:${color}"></div></div></div><div style="width:36px" class="text-center font-bold">${e}</div></div>`; }).join('<div style="height:8px"></div>'); }
+
+    // ---------------- Export / Import -------------------------
+    async function exportCollection(){
+      if(!currentUser) return alert('Login first');
+      const data = { username: currentUser.username, djName: currentUser.djName, ownedTracks, genreOverrides, exportDate: new Date().toISOString() };
+      if(firestore){
+        try{ await firestore.collection('backups').doc(`${currentUser.username}_${Date.now()}`).set(data); alert('Collection backed up to Firestore (backups collection).'); return; } catch(e){ console.warn('Firestore backup failed', e); }
+      }
+      const blob = new Blob([JSON.stringify(data,null,2)], { type:'application/json' }); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download = `festival-mixer-${currentUser.username}.json`; a.click(); URL.revokeObjectURL(url);
+    }
+    async function importCollection(){
+      if(!currentUser) return alert('Login first');
+      const input=document.createElement('input'); input.type='file'; input.accept='.json';
+      input.onchange = (e)=>{ const file=e.target.files[0]; const reader=new FileReader(); reader.onload = async (ev)=>{ try{ const data = JSON.parse(ev.target.result); if(!data.ownedTracks) throw new Error('Invalid file'); if(!confirm(`Import ${data.ownedTracks.length} songs from ${data.djName || data.username || 'file'}?`)) return; ownedTracks = data.ownedTracks; if(data.genreOverrides) genreOverrides = {...genreOverrides,...data.genreOverrides}; localStorage.setItem('ownedTracks', JSON.stringify(ownedTracks)); localStorage.setItem('genreOverrides', JSON.stringify(genreOverrides)); await saveUserProfile(); songs.forEach(song=>{ if(genreOverrides[song.id]) song.genre = genreOverrides[song.id]; }); renderSongList(); setupEventListeners(); alert('Collection imported successfully!'); }catch(err){ alert('Invalid file format'); } }; reader.readAsText(file); };
+      input.click();
+    }
+
+    // --------------------- Help modal functions -----------------------
+    function openHelp(){
+      const modal = document.getElementById('helpModal');
+      if(!modal) return;
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden','false');
+      modal.focus();
+    }
+    function closeHelp(){
+      const modal = document.getElementById('helpModal');
+      if(!modal) return;
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden','true');
+    }
+
+    // ----------------------- Profile modal ------------------------
+    function syncProfileFields(){
+      const nameInput = document.getElementById('profileDjName');
+      const handleInput = document.getElementById('profileHandle');
+      const preview = document.getElementById('profileAvatarPreview');
+      if(!currentUser) return;
+      if(nameInput) nameInput.value = currentUser.djName || currentUser.username || '';
+      if(handleInput) handleInput.value = currentUser.username || '';
+      if(preview){
+        if(currentUser.avatar){
+          preview.innerHTML = '';
+          preview.style.backgroundImage = `url(${currentUser.avatar})`;
+          preview.style.backgroundSize = 'cover';
+        } else {
+          preview.textContent = '👤';
+          preview.style.backgroundImage = 'none';
+        }
+      }
+      const avatarInput = document.getElementById('profileAvatar');
+      if(avatarInput){
+        avatarInput.value = '';
+        avatarInput.onchange = async (e)=>{
+          const file = e.target.files?.[0];
+          if(!file) return;
+          const reader = new FileReader();
+          reader.onload = ()=>{
+            const dataUrl = reader.result;
+            if(typeof dataUrl === 'string'){
+              currentUser.avatar = dataUrl;
+              if(preview){ preview.innerHTML=''; preview.style.backgroundImage=`url(${dataUrl})`; preview.style.backgroundSize='cover'; }
+            }
+          };
+          reader.readAsDataURL(file);
+        };
+      }
+    }
+    function openProfile(){
+      const modal = document.getElementById('profileModal');
+      if(!modal || !currentUser) return;
+      syncProfileFields();
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden','false');
+    }
+    function closeProfile(){
+      const modal = document.getElementById('profileModal');
+      if(!modal) return;
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden','true');
+    }
+    function clearAvatar(){
+      if(!currentUser) return;
+      currentUser.avatar = '';
+      const preview = document.getElementById('profileAvatarPreview');
+      if(preview){ preview.textContent='👤'; preview.style.backgroundImage='none'; }
+    }
+    async function saveProfileSettings(){
+      if(!currentUser) return;
+      const nameInput = document.getElementById('profileDjName');
+      const handleInput = document.getElementById('profileHandle');
+      const newName = (nameInput?.value || '').trim() || currentUser.username;
+      const newHandle = (handleInput?.value || '').trim() || currentUser.username;
+      const oldHandle = currentUser.username;
+      currentUser.djName = newName;
+      currentUser.username = newHandle;
+      if(oldHandle !== newHandle){
+        const profiles = JSON.parse(localStorage.getItem('userProfiles')||'{}');
+        profiles[newHandle] = { ...(profiles[oldHandle]||{}), ...currentUser, username:newHandle };
+        delete profiles[oldHandle];
+        localStorage.setItem('userProfiles', JSON.stringify(profiles));
+        localStorage.setItem('currentUser', newHandle);
+      }
+      await saveUserProfile();
+      render();
+      closeProfile();
+    }
+
+    const helpModal = document.getElementById('helpModal');
+    if(helpModal){
+      helpModal.addEventListener('click',(e)=>{ if(e.target === helpModal) closeHelp(); });
+    }
+    const profileModal = document.getElementById('profileModal');
+    if(profileModal){
+      profileModal.addEventListener('click',(e)=>{ if(e.target === profileModal) closeProfile(); });
+    }
+    document.addEventListener('keydown',(e)=>{ if(e.key === 'Escape'){ closeHelp(); closeProfile(); } });
+
+    // ----------------------- Init / Auth check ------------------------
+    async function checkAuth(){
+      if (firebaseEnabled && firebaseAuth) {
+        setupFirebaseAuthListener();
+        const fbUser = firebaseAuth.currentUser;
+        if (fbUser) {
+          const email = fbUser.email || '';
+          const username = email ? email.split('@')[0] : (fbUser.uid || '').trim();
+          await resolveAuthSuccess(username);
           return;
         }
-      }catch(e){
-        console.warn("Song endpoint error",e);
       }
-    }
-    // fallback demo data if API fails
-    songs=[
-      {id:"s1",title:"Bad Guy",artist:"Billie Eilish",bpm:135,key:"C",camelot:"8B",duration:180,albumArt:"",genre:"Pop"},
-      {id:"s2",title:"Need You Tonight",artist:"INXS",bpm:115,key:"C",camelot:"8A",duration:210,albumArt:"",genre:"Rock"},
-      {id:"s3",title:"Electric Night",artist:"Daft Sample",bpm:128,key:"D",camelot:"10B",duration:200,albumArt:"",genre:"Electronic"},
-      {id:"s4",title:"Slow Burn",artist:"Indie Star",bpm:95,key:"G",camelot:"9A",duration:190,albumArt:"",genre:"Indie"},
-      {id:"s5",title:"Drop The Bass",artist:"SkrillSample",bpm:142,key:"A",camelot:"11A",duration:160,albumArt:"",genre:"Electronic"}
-    ];
-    renderSongList();
-    updateOwnedCounter();
-  }
-
-  /************ Init ************/
-  (async function init(){
-    const ownedLocal=JSON.parse(localStorage.getItem("ownedTracks")||"[]");
-    const bandLocal =JSON.parse(localStorage.getItem("bandMembers")||"[]");
-    ownedTracks = Array.isArray(ownedLocal)?ownedLocal:[];
-    bandMembers= Array.isArray(bandLocal)?bandLocal:[];
-    genreOverrides=JSON.parse(localStorage.getItem("genreOverrides")||"{}");
-    setlist       =JSON.parse(localStorage.getItem("setlist")||"[]");
-
-    if(firebaseAuth){
-      firebaseAuth.onAuthStateChanged(async user=>{
-        if(user){
-          await hydrateProfileFromAuth(user);
-        }else{
-          currentUser=null;
-          localStorage.removeItem("currentUser");
-          render();
-        }
-      });
+      const savedUsername = localStorage.getItem('currentUser');
+      if(savedUsername){
+        const profile = await loadUserProfile(savedUsername);
+        if(profile){ currentUser = profile; ownedTracks = profile.ownedTracks || []; bandMembers = profile.bandMembers || []; genreOverrides = profile.genreOverrides || {}; loadSongs(); return; }
+      }
+      showLoginScreen();
     }
 
-    render();
-    await loadSongs();
-  })();
-</script>
+    if(!localStorage.getItem('hasSeenLanding')) showLandingPage(); else checkAuth();
+
+    // ------------------ Drag/drop support ---------------------------
+    document.addEventListener('dragstart', (e)=>{ const card = e.target.closest('.song-card'); if(card) e.dataTransfer.setData('text/plain', card.getAttribute('data-song-id')); });
+    document.addEventListener('click', (e)=>{ const preview = e.target.closest('.previewBtn'); if(preview){ e.preventDefault(); onPreviewClick(preview.dataset.id); } const addSet = e.target.closest('.addSetBtn'); if(addSet){ e.preventDefault(); addToSetlist(addSet.dataset.id); } });
+
+    // ---------------- Expose some helpers for debugging ----------------
+    window.openHelp = openHelp; window.closeHelp = closeHelp; window.render = render; window.loadSongs = loadSongs; window.renderSongList = renderSongList; window.renderSetlist = renderSetlist;
+  </script>
 </body>
 </html>
