@@ -697,39 +697,32 @@ function extractArt(t){
 
 /* ── Load songs ── */
 async function loadSongs(){
-  const TARGET="https://fortnitecontent-website-prod07.ol.epicgames.com/content/api/pages/fortnite-game/spark-tracks";
-  const PROXIES=[
-    "https://api.allorigins.win/raw?url="+encodeURIComponent(TARGET),
-    "https://corsproxy.io/?"+encodeURIComponent(TARGET),
-    "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(TARGET)
-  ];
-  for(const url of PROXIES){
-    try{
-      document.getElementById("loadStatus").textContent="Connecting...";
-      const res=await fetch(url);
-      if(!res.ok)continue;
-      const data=await res.json();
-      const parsed=Object.entries(data)
-        .filter(([k])=>!k.startsWith("_"))
-        .map(([id,item])=>{
-          const t=item.track||item||{};
-          if(!t.tt)return null;
-          return{
-            id,title:t.tt,artist:t.an||"Unknown",
-            bpm:Number(t.mt)||0,
-            camelot:toCam(t.mk||""),
-            albumArt:extractArt(t),
-            genre:detectGenre(t.an||"",t.tt)
-          };
-        })
-        .filter(s=>s&&s.bpm>0);
-      if(parsed.length>0){
-        songs=parsed.sort((a,b)=>a.title.localeCompare(b.title));
-        document.getElementById("songCount").textContent=`${songs.length} tracks`;
-        launch();return;
-      }
-    }catch(e){console.warn("Proxy failed",url,e);}
-  }
+  try{
+    document.getElementById("loadStatus").textContent="Loading tracks...";
+    const res=await fetch("/api/tracks");
+    if(!res.ok)throw new Error("API returned "+res.status);
+    const data=await res.json();
+    const parsed=Object.entries(data)
+      .filter(([k])=>!k.startsWith("_"))
+      .map(([id,item])=>{
+        const t=item.track||item||{};
+        if(!t.tt)return null;
+        return{
+          id,title:t.tt,artist:t.an||"Unknown",
+          bpm:Number(t.mt)||0,
+          camelot:toCam(t.mk||""),
+          albumArt:extractArt(t),
+          genre:detectGenre(t.an||"",t.tt)
+        };
+      })
+      .filter(s=>s&&s.bpm>0);
+    if(parsed.length>0){
+      songs=parsed.sort((a,b)=>a.title.localeCompare(b.title));
+      document.getElementById("songCount").textContent=`${songs.length} tracks`;
+      launch();return;
+    }
+  }catch(e){console.warn("API failed",e);}
+  {
   // Demo fallback
   songs=[
     {id:"s1",title:"Bad Guy",artist:"Billie Eilish",bpm:135,camelot:"8B",albumArt:"",genre:"Pop"},
