@@ -380,28 +380,27 @@ function compat(a,b){
 /* ── State ── */
 const PER_PAGE=15;
 let songs=[],filtered=[];
-// Migrate old key names from previous app versions
+// Migrate old key names from previous app versions - runs for every user
 (function(){
-  // ownedTracks -> fjm_owned
-  if(!localStorage.getItem("fjm_owned")){
-    const old=localStorage.getItem("ownedTracks");
-    if(old)localStorage.setItem("fjm_owned",old);
-  }
-  // setlist -> fjm_setlist
-  if(!localStorage.getItem("fjm_setlist")){
-    const old=localStorage.getItem("setlist");
-    if(old){
-      // old setlist stored full objects, extract just ids
-      try{
-        const arr=JSON.parse(old);
-        if(Array.isArray(arr)&&arr.length&&typeof arr[0]==="object"){
-          localStorage.setItem("fjm_setlist",JSON.stringify(arr));
-        }else{
-          localStorage.setItem("fjm_setlist",old);
-        }
-      }catch(e){}
+  try{
+    // Merge ownedTracks (old) into fjm_owned (new)
+    const oldOwned=localStorage.getItem("ownedTracks");
+    const newOwned=localStorage.getItem("fjm_owned");
+    if(oldOwned){
+      let oldArr=JSON.parse(oldOwned)||[];
+      let newArr=newOwned?JSON.parse(newOwned)||[]:[];
+      // Merge both arrays, remove duplicates
+      const merged=[...new Set([...newArr,...oldArr])];
+      localStorage.setItem("fjm_owned",JSON.stringify(merged));
+      localStorage.removeItem("ownedTracks");
     }
-  }
+    // Migrate setlist (old) into fjm_setlist (new)
+    const oldSetlist=localStorage.getItem("setlist");
+    if(oldSetlist&&!localStorage.getItem("fjm_setlist")){
+      localStorage.setItem("fjm_setlist",oldSetlist);
+      localStorage.removeItem("setlist");
+    }
+  }catch(e){}
 })();
 let owned=JSON.parse(localStorage.getItem("fjm_owned")||"[]");
 let setlist=JSON.parse(localStorage.getItem("fjm_setlist")||"[]");
